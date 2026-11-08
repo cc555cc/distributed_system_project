@@ -1,8 +1,8 @@
 import os
-
 import psycopg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from psycopg.rows import dict_row
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
@@ -19,10 +19,7 @@ class BusStateUpdate(BaseModel):
     sequence_number: int
     lamport: int
 
-
-#update a bus's live state (insert if this is the bus's first report)
-@router.put("/bus_states/{bus_id}")
-def update_bus_state(bus_id: str, state: BusStateUpdate):
+def apply_bus_state(bus_id: str, state: BusStateUpdate) -> bool:
     with psycopg.connect(db_url) as connection:
         cursor = connection.execute(
             """
@@ -47,17 +44,22 @@ def update_bus_state(bus_id: str, state: BusStateUpdate):
                 state.bus_status, state.occupancy, state.sequence_number, state.lamport,
             ),
         )
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=409, detail="Stale update: newer sequence_number already stored")
+        return cursor.rowcount == 1
 
-    return {"bus_id": bus_id, "applied": True}
+#HTTP route to update bus state
+@router.put("/bus_states/{bus_id}")
+def update_bus_state(bus_id: str, state: BusStateUpdate):
+    applied = apply_bus_state(bus_id, state)
+    return {"bus_id": bus_id, "applied": applied}
 
 #fetch a bus's status by id
-@router.get("/bus_state/{bus_id}")
+@router.get("/bus_states/{bus_id}")
 def get_bus_state(bus_id: str):
-    connection = connect_db()
-    rows = connection.execute("SELECT * FROM bus_states WHERE bus_id = %s", (bus_id,)).fetchall()
-    return rows.item().lat, rows.item().lon, rows.item().speed, rows.item().direction_id, rows.item().next_stop_id, rows.item().bus_status, rows.item().occupancy, rows.item().sequence_number, rows.item().lamport, rows.item().last_updated
+    with psycopg.connect(db_url, row_factory=dict_row) as connection:
+        row = connection.execute("SELECT * FROM bus_states WHERE bus_id = %s", (bus_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"Bus: {bus_id} not found")
+    return row
 
 def connect_db():
     return psycopg.connect(db_url)
