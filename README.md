@@ -78,14 +78,15 @@ Open `http://127.0.0.1:8000/docs` to inspect the API:
 
 The central MQTT subscriber expects `transit/<region_id>/bus/<bus_id>/state` and uses the same bus-state model as the HTTP update endpoint. Existing state is replaced only by a higher sequence number. Current validation checks field types; coordinate ranges, allowed statuses, regional ownership and full synchronization remain task work. Imports and route registration have been checked; a complete database/broker integration run has not been verified.
 
-## Working agreement
+## Branch workflow
 
-- Implement assigned tickets in the locations above. Agree on payloads, MQTT topics and API responses before changing shared contracts.
-- Use TEAM-02 to coordinate telemetry fields, bus/route/stop identifiers, sequence numbers, Lamport values and regional assignments.
-- Work on a feature branch, keep changes focused and integrate reviewed work into `main`.
-- Update affected imports and documentation when moving existing files.
-- Mark work complete only after implementation, relevant tests and integration checks. Capture evidence for report deliverables.
-- Keep credentials, local environments and generated caches out of commits.
+Everyone—Zachary, Julian, Ali, Carson and Danial—works on their assigned tickets in their own branch.
+
+1. Pull the latest `main` before starting a task, then switch to your own branch and merge the latest `main` into it.
+2. Implement and test the ticket on your branch. Keep unfinished work on that branch.
+3. When the task is complete, fetch and merge the latest `origin/main` into your branch. Resolve any conflicts and rerun the relevant checks.
+4. Push your branch and open a pull request into `main`. Merge only the completed task when checks pass and there are no unresolved conflicts.
+5. After the task is merged, everyone can pull the updated `main` and merge it into their own branch before continuing.
 
 ## Priorities
 
