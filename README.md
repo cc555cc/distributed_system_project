@@ -35,8 +35,8 @@ project/
 |-- tests/                      # end-to-end integration tests
 |-- docs/                       # diagrams and report evidence
 |-- legacy/                     # archived local remnants; no active source
-|   `-- central_server/          # old empty directories and generated caches
-|-- .env.example                # empty configuration template
+|   `-- central_server/          # old directories and generated caches
+|-- .env.example                # configuration template
 |-- .gitignore
 |-- requirements.txt
 |-- README.md
