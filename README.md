@@ -10,30 +10,30 @@ Intended data flow: **Bus simulator → MQTT broker → Regional edge services �
 project/
 |-- services/
 |   |-- simulator/              # Zachary: simulation and telemetry
-|   |   |-- main.py             # empty
-|   |   `-- tests/              # empty
+|   |   |-- main.py
+|   |   `-- tests/
 |   |-- messaging/              # Julian: MQTT and synchronization
 |   |   |-- mqtt_client.py      # existing central subscriber
-|   |   `-- tests/              # empty
+|   |   `-- tests/
 |   |-- edge/                   # Ali: regional processing and failover
-|   |   |-- main.py             # empty
-|   |   `-- tests/              # empty
+|   |   |-- main.py
+|   |   `-- tests/
 |   `-- central/                # Carson: API, ingestion and scheduling
 |       |-- main.py
 |       |-- routers/
 |       |   |-- bus_states.py
 |       |   |-- routes.py
 |       |   `-- stops.py
-|       `-- tests/              # empty
-|-- frontend/                   # Danial: passenger/operator UI; empty
+|       `-- tests/
+|-- frontend/                   # Danial: passenger/operator UI
 |-- shared/
-|   |-- routes.json             # empty; shared route definitions
+|   |-- routes.json             # shared route definitions
 |   `-- schema/
 |       |-- schema.sql          # database tables and constraints
 |       `-- seed.sql            # sample routes and stops
-|-- infrastructure/             # broker/deployment configuration; empty
-|-- tests/                      # end-to-end integration tests; empty
-|-- docs/                       # diagrams and report evidence; empty
+|-- infrastructure/             # broker/deployment configuration
+|-- tests/                      # end-to-end integration tests
+|-- docs/                       # diagrams and report evidence
 |-- legacy/                     # archived local remnants; no active source
 |   `-- central_server/          # old empty directories and generated caches
 |-- .env.example                # empty configuration template
