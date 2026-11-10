@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from fastapi import FastAPI
-from services.central import bus_states, stops, routes
+from services.central.routers import bus_states, stops, routes
 from contextlib import asynccontextmanager
 from services.messaging import mqtt_client
 
