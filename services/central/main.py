@@ -1,12 +1,12 @@
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / "config" / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from fastapi import FastAPI
-from app.routers import bus_states, stops, routes
+from services.central import bus_states, stops, routes
 from contextlib import asynccontextmanager
-from app import mqtt_client
+from services.messaging import mqtt_client
 
 @asynccontextmanager
 async def lifespan(app):

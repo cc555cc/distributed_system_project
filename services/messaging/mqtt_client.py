@@ -7,7 +7,7 @@ import logging
 import os
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
-from app.routers.bus_states import BusStateUpdate, apply_bus_state
+from services.central.bus_states import BusStateUpdate, apply_bus_state
 
 logger = logging.getLogger(__name__)
 

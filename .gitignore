@@ -1,2 +1,8 @@
 .venv/
-central_server/config/.env/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.pytest_cache/
