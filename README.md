@@ -98,7 +98,7 @@ The supplied task list did not include priorities. The labels below are proposed
 
 ## Individual task lists
 
-### Zachary Matasic — Bus Simulation
+### Zachary — Bus Simulation
 
 | Ticket | Priority | Task |
 | --- | --- | --- |
@@ -115,7 +115,7 @@ The supplied task list did not include priorities. The labels below are proposed
 
 Report deliverables: Telemetry schema, bus simulation design, route definitions, simulation scenarios, bus state diagram and test results.
 
-### Julian Olano Medina — MQTT & Synchronization
+### Julian — MQTT & Synchronization
 
 | Ticket | Priority | Task |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ Report deliverables: Telemetry schema, bus simulation design, route definitions,
 
 Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams, message-ordering examples, synchronization methods, security considerations and communication performance results.
 
-### Ali Hakkani — Regional Edge Computing
+### Ali — Regional Edge Computing
 
 | Ticket | Priority | Task |
 | --- | --- | --- |
@@ -149,7 +149,7 @@ Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams,
 
 Report deliverables: Edge architecture diagram, validation design, caching methodology, heartbeat and failover sequence, replication and load-balancing algorithms, performance graphs and recovery tests.
 
-### Lok Yung (Carson) Chan — Central Server & Scheduling
+### Carson — Central Server & Scheduling
 
 | Ticket | Priority | Task |
 | --- | --- | --- |
@@ -166,7 +166,7 @@ Report deliverables: Edge architecture diagram, validation design, caching metho
 
 Report deliverables: Database ER diagram, API architecture, route-management design, ETA algorithms, scheduling methodology, demand results, security/privacy and central-server performance.
 
-### Danial Shaikh — Passenger App & Operator Dashboard
+### Danial — Passenger App & Operator Dashboard
 
 | Ticket | Priority | Task |
 | --- | --- | --- |
