@@ -34,7 +34,8 @@ project/
 |-- infrastructure/             # broker/deployment configuration; empty
 |-- tests/                      # end-to-end integration tests; empty
 |-- docs/                       # diagrams and report evidence; empty
-|-- central_server/             # legacy local directories/cache only
+|-- legacy/                     # archived local remnants; no active source
+|   `-- central_server/          # old empty directories and generated caches
 |-- .env.example                # empty configuration template
 |-- .gitignore
 |-- requirements.txt
@@ -42,7 +43,7 @@ project/
 `-- SOFE4790U-Project-Proposal.docx
 ```
 
-This tree reflects the current local workspace, excluding Git internals and generated cache contents. `central_server/` has no remaining source code; use `services/central/` for central work. Git does not track empty directories, and the empty placeholders are currently untracked, so those locations may be absent in a fresh clone. Keep unfinished files empty until their tasks are implemented.
+This tree reflects the current local workspace, excluding Git internals and generated cache contents. `legacy/central_server/` contains only old empty directories and generated caches; all active source stays in `services/`. Use `services/central/` for central work. The legacy directory is local only because its contents are empty directories or ignored caches. Git does not track empty directories, and the empty placeholders are currently untracked, so those locations may be absent in a fresh clone. Keep unfinished files empty until their tasks are implemented.
 
 | Branch | Put implementation here |
 | --- | --- |
