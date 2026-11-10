@@ -55,57 +55,6 @@ This tree reflects the current local workspace, excluding Git internals and gene
 
 Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The existing central subscriber is implemented; simulator, regional edge and frontend implementations remain unfinished.
 
-## Running the existing central service
-
-Run these commands from the repository root in PowerShell. Python 3.10 or newer, PostgreSQL and an MQTT broker such as Mosquitto are required.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m pip install "paho-mqtt>=2,<3"
-```
-
-The dependency pins come from the existing central implementation. MQTT is imported by the code but is not yet listed in `requirements.txt`.
-
-Set configuration in the same terminal, substituting local database credentials:
-
-```powershell
-$env:DATABASE_URL = "postgresql://USER:PASSWORD@localhost:5432/transit"
-$env:MQTT_HOST = "localhost"
-$env:MQTT_PORT = "1883"
-$env:MQTT_TOPIC = "transit/+/bus/+/state"
-```
-
-The app also loads a root `.env` file if present. Keep credentials out of Git; `.env.example` is currently empty.
-
-Create a dedicated PostgreSQL development database named `transit`, then initialize it:
-
-```powershell
-psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/schema/schema.sql
-psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/schema/seed.sql
-```
-
-`schema.sql` drops and recreates the transit tables; use a database whose transit data can be replaced. The seed supplies routes and stops, but does not register buses or configure regional ownership. Register valid buses before sending their state updates, as foreign keys require them.
-
-Start the MQTT broker separately, then launch the API:
-
-```powershell
-python -m uvicorn services.central.main:app --reload
-```
-
-Open `http://127.0.0.1:8000/docs` to inspect the API:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| PUT | `/bus_states/{bus_id}` | Validate field types and insert/update a registered bus state |
-| GET | `/bus_states/{bus_id}` | Read a bus state |
-| GET | `/routes/{route_id}` | Read route metadata |
-| GET | `/stops/{stop_id}` | Read stop coordinates |
-| GET | `/routes/{route_id}/stops` | Read stops in direction/position order |
-
-The central MQTT subscriber expects `transit/<region_id>/bus/<bus_id>/state` and uses the same bus-state model as the HTTP update endpoint. Existing state is replaced only by a higher sequence number. Current validation checks field types; coordinate ranges, allowed statuses, regional ownership and full synchronization remain task work. Imports and route registration have been checked; a complete database/broker integration run has not been verified.
-
 ## Branch workflow
 
 Everyone uses their first-name branch listed above. All five branches start from the same updated `main`; completed tasks merge back into `main`.
