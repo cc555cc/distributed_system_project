@@ -1,14 +1,27 @@
 -- Durham Region Transit (DRT) sample data, generated from the DRT GTFS feed
 -- https://maps.durham.ca/OpenDataGTFS/GTFS_Durham_TXT.zip (service dates 2026-10-27 to 2026-11-29)
--- Regions (for edge servers): north = 302, 407, 409 | south = 900, 901
+-- Regions (for edge servers): west = 302, 900 | east = 407, 409, 901
 -- route_stops uses the most common stop pattern for each route + direction.
+-- Insert order matters for foreign keys: regions -> routes -> buses.
 
-INSERT INTO routes (route_id, name) VALUES
-  ('302', 'Route 302'),
-  ('407', 'Route 407'),
-  ('409', 'Route 409'),
-  ('900', 'PULSE 900'),
-  ('901', 'PULSE 901');
+INSERT INTO regions (region_id, name, primary_edge, backup_edge) VALUES
+  ('west', 'Whitby / Ajax / Pickering', 'edge-west-1', 'edge-west-2'),
+  ('east', 'Oshawa', 'edge-east-1', 'edge-east-2');
+
+INSERT INTO routes (route_id, name, region_id) VALUES
+  ('302', 'Route 302', 'west'),
+  ('407', 'Route 407', 'east'),
+  ('409', 'Route 409', 'east'),
+  ('900', 'PULSE 900', 'west'),
+  ('901', 'PULSE 901', 'east');
+
+-- default two buses for each route, add more for simulation test cases in the future
+INSERT INTO buses (bus_id, route_id) VALUES
+  ('bus-302-1', '302'), ('bus-302-2', '302'),
+  ('bus-407-1', '407'), ('bus-407-2', '407'),
+  ('bus-409-1', '409'), ('bus-409-2', '409'),
+  ('bus-900-1', '900'), ('bus-900-2', '900'),
+  ('bus-901-1', '901'), ('bus-901-2', '901');
 
 INSERT INTO stops (stop_id, name, lat, lon) VALUES
   ('166', 'Brock Street Northbound @ Arthur', 43.869007, -78.937411),
