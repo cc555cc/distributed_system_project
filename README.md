@@ -87,7 +87,7 @@ Status: ✅ Done · 🟨 Partial · ⬜ Pending. Mark a task Done only after its
 | `BUS-01` · **P0** | Define shared JSON telemetry schema and example sensor messages | ⬜ Pending |
 | `BUS-02` · **P0** | Create simulated bus routes, stops, coordinates and regional assignments | ⬜ Pending |
 | `BUS-03` · **P0** | Develop Python bus simulator for continuous GPS and sensor data generation | ⬜ Pending |
-| `BUS-04` · **P1** | Implement peak/off-peak demand, traffic delays and sensor-failure scenarios | ⬜ Pending |
+| `BUS-04` · **P1** | Simulator generates realistic traffic delays, changing speeds, peak/off-peak occupancy and sensor faults. Each scenario produces measurable telemetry changes. | ⬜ Pending |
 | `BUS-05` · **P1** | Build simulation controls for starting, stopping and modifying scenarios | ⬜ Pending |
 | `BUS-06` · **P1** | Test simulator reliability, multi-bus operation and sensor data validity | ⬜ Pending |
 | `BUS-07` · **P1** | Implement bus lifecycle events: boarding, arriving, departing and out of service | ⬜ Pending |
@@ -127,7 +127,7 @@ Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams,
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
 | `EDGE-01` · **P0** | Build regional MQTT subscribers and validate incoming bus telemetry | ⬜ Pending |
-| `EDGE-02` · **P0** | Implement regional bus-state cache, route processing and occupancy calculations | ⬜ Pending |
+| `EDGE-02` · **P0** | Cache validated telemetry by bus ID. Calculate occupancy %, track current speed, route progress and next stop, and reject stale updates. | ⬜ Pending |
 | `EDGE-03` · **P0** | Aggregate and forward validated regional telemetry to Carson's central server | ⬜ Pending |
 | `EDGE-04` · **P1** | Implement heartbeat monitoring and regional edge failure detection | ⬜ Pending |
 | `EDGE-05` · **P1** | Implement primary/backup edge recovery, replication and basic load balancing | ⬜ Pending |
@@ -150,16 +150,16 @@ Report deliverables: Edge architecture diagram, validation design, caching metho
 | --- | --- | --- |
 | `CENTRAL-01` · **P0** | Build FastAPI central server and database models for buses, routes, stops and regions | 🟨 Partial |
 | `CENTRAL-02` · **P0** | Implement processed regional telemetry ingestion and database updates | 🟨 Partial |
-| `CENTRAL-03` · **P0** | Develop route-management APIs and initial estimated arrival-time calculations | 🟨 Partial |
+| `CENTRAL-03` · **P0** | Calculate bus arrival times and A-to-B journey durations using route distance, current speed, simulated traffic delays and stop waiting times. | 🟨 Partial |
 | `CENTRAL-04` · **P1** | Implement demand-based scheduling and peak/off-peak dispatch recommendations | ⬜ Pending |
 | `CENTRAL-05` · **P1** | Develop system-health APIs, alerts, operator permissions and simulation endpoints | ⬜ Pending |
 | `CENTRAL-06` · **P1** | Test central services, route estimates, scheduling, API responses and consistency | ⬜ Pending |
-| `CENTRAL-07` · **P1** | Implement passenger route recommendations using origin/destination stops | ⬜ Pending |
+| `CENTRAL-07` · **P1** | Given origin A and destination B, identify valid routes, available buses and transfers, then calculate total estimated journey duration. | ⬜ Pending |
 | `CENTRAL-08` · **P1** | Connect dynamic scheduling decisions to actual simulated dispatch-frequency adjustments | ⬜ Pending |
 | `CENTRAL-09` · **P1** | Implement role-based access restrictions and privacy safeguards | ⬜ Pending |
 | `CENTRAL-10` · **P2** | Evaluate ETA accuracy, scheduling effectiveness and demand-response performance | ⬜ Pending |
 | `CENTRAL-11` · **P2** | Separate ingestion, route/scheduling logic and API handling so individual workloads can scale | ⬜ Pending |
-| `CENTRAL-12` · **P1** | Build `suggestions.py` for ETA-, occupancy-, and demand-aware passenger recommendations | ⬜ Pending |
+| `CENTRAL-12` · **P1** | Build `suggestions.py` to compare buses using arrival time, traffic-adjusted journey duration, occupancy and transfer requirements. Return a ranked recommendation with an explanation. | ⬜ Pending |
 
 Report deliverables: Database ER diagram, API architecture, route-management design, ETA algorithms, scheduling methodology, demand results, security/privacy and central-server performance.
 
@@ -168,19 +168,32 @@ Report deliverables: Database ER diagram, API architecture, route-management des
 <details>
 <summary><strong>Danial — Passenger App & Operator Dashboard</strong> — 11 tickets</summary>
 
-| Ticket / priority | Task | Status |
+### Week 1 — Build the basic UI (P0)
+
+| Ticket / priority | Task and definition of done | Status |
 | --- | --- | --- |
-| `UI-01` · **P0** | Create passenger app and operator dashboard wireframes and frontend structure | ⬜ Pending |
-| `UI-02` · **P0** | Build passenger route map, bus-location displays, stops and occupancy components | ⬜ Pending |
-| `UI-03` · **P0** | Integrate frontend with Carson's APIs to display live bus information | ⬜ Pending |
-| `UI-04` · **P1** | Implement arrival estimates, system health, alerts and operator monitoring | ⬜ Pending |
-| `UI-05` · **P1** | Develop simulation controls for demand surges, delays, faults and server failures | ⬜ Pending |
-| `UI-06` · **P1** | Test passenger/operator interfaces and capture integration screenshots | ⬜ Pending |
-| `UI-07` · **P1** | Implement passenger origin/destination search and route recommendations | ⬜ Pending |
-| `UI-08` · **P1** | Display regional topology, primary/backup edge status and failover alerts | ⬜ Pending |
-| `UI-09` · **P2** | Create peak/off-peak performance and dispatch recommendation visualizations | ⬜ Pending |
-| `UI-10` · **P2** | Prepare complete frontend demonstration walkthrough and evidence screenshots | ⬜ Pending |
-| `UI-11` · **P1** | Display intelligent recommendations, alternative buses, waiting times and crowding information | ⬜ Pending |
+| `UI-01` · **P0** | Create the main application layout. Build navigation between the Passenger Planner, Operator Dashboard and Simulation Controls. Use a consistent design, with separate passenger and operator views.<br>**Done when:** All three pages open correctly. Users can navigate between them. | ⬜ Pending |
+| `UI-02` · **P0** | Build the passenger map. Show bus locations, routes, stops, bus IDs and current occupancy. Allow passengers to select a bus or route to see more information.<br>**Done when:** Valid buses appear at the correct coordinates. Missing or invalid locations are not shown as live. | ⬜ Pending |
+| `UI-03` · **P0** | Connect the UI to Carson's API. Replace example data with live information from the central server. Refresh bus locations and route information automatically.<br>**Done when:** The UI updates when a bus moves. Loading, connection errors and missing data are handled clearly. | ⬜ Pending |
+
+### Week 2 — Smart transit features (P1)
+
+| Ticket / priority | Task and definition of done | Status |
+| --- | --- | --- |
+| `UI-04` · **P1** | Build the operator monitoring dashboard. Display active buses, routes, passenger demand, estimated arrivals, server health and system alerts.<br>**Done when:** Operators can view live transit information and identify crowded routes, delays and offline servers. | ⬜ Pending |
+| `UI-05` · **P1** | Build the simulation control panel. Add controls to start/pause the simulation, increase passenger demand, add traffic delays, simulate faulty sensors and trigger server failures.<br>**Done when:** Valid commands reach Carson's API and produce the expected simulation changes. Invalid commands show an error. | ⬜ Pending |
+| `UI-06` · **P1** | Test the interfaces. Test route searches, bus updates, API connections, missing data, invalid inputs, user permissions and simulation controls.<br>**Done when:** Tests pass and screenshots show the working application. | ⬜ Pending |
+| `UI-07` · **P1** | Build A-to-B journey search. Passengers select a starting stop and destination. Display routes and buses that can complete the trip, including transfers when needed.<br>**Done when:** Valid journeys are displayed. Unknown stops, unsupported trips and identical origin/destination selections receive clear messages. | ⬜ Pending |
+| `UI-08` · **P1** | Display edge server status. Show regions, active edge servers, workload distribution, failures and recovery. Include dynamically added servers such as Edge C.<br>**Done when:** Operators can distinguish healthy, overloaded, failed and recovering servers using backend information. | ⬜ Pending |
+| `UI-11` · **P1** | Display smart bus recommendations. Show the suggested bus, alternative buses, waiting time, traffic delay, crowding, transfers and total estimated journey time. Explain why a bus was recommended.<br>**Done when:** A passenger can compare suitable buses and understand which is faster or less crowded. Missing predictions are shown as unavailable rather than guessed. | ⬜ Pending |
+
+### Week 2 — Improvements and demonstration (P2)
+
+| Ticket / priority | Task and definition of done | Status |
+| --- | --- | --- |
+| `UI-09` · **P2** | Show peak/off-peak comparisons. Display changes in passenger demand, busy routes, traffic delays and scheduling recommendations.<br>**Done when:** Operators can compare normal and peak-hour conditions using actual backend results. | ⬜ Pending |
+| `UI-10` · **P2** | Prepare the final demonstration. Test and show the three pages working together, including journey planning, live tracking, peak demand and server failover.<br>**Done when:** A complete demo can be presented, with screenshots and a repeatable walkthrough. | ⬜ Pending |
+
 
 Report deliverables: Frontend architecture, passenger dashboard, operator dashboard, simulation controls, screenshots, user flows and usability testing.
 
