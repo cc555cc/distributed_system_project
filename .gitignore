@@ -9,3 +9,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.pyc
+
+# personal notes
+CENTRAL-02-checklist.md

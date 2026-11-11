@@ -33,13 +33,17 @@ def on_message(client, userdata, msg):
         if len(parts) != 5 or parts[2] != "bus":
             logger.warning("Ignoring unexpected topic %s", msg.topic)
             return
+        region_id = parts[1]
         bus_id = parts[3]
 
         bus_state = BusStateUpdate.model_validate_json(msg.payload)
-        applied_bus_state = apply_bus_state(bus_id, bus_state)
+        applied, reason = apply_bus_state(bus_id, region_id, bus_state)
 
-        if not applied_bus_state: #bus state update was not accepted
-            logger.debug("Stale update for %s (seq %s) ignored", bus_id, bus_state.sequence_number)
+        if not applied: #bus state update was not accepted
+            if reason == "stale update":
+                logger.debug("Stale update for %s (seq %s) ignored", bus_id, bus_state.sequence_number)
+            else:
+                logger.warning("Rejected update for %s on %s: %s",bus_id, msg.topic, reason)
 
     #errpr handling
     except ValidationError as error:

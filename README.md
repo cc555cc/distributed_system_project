@@ -116,6 +116,14 @@ The sender expects Carson's current per-bus fields (`lat`, `lon`, `speed`, `dire
 
 This sender is not connected to the automatic processing loop. The mapping of status, occupancy and clock fields, plus how city metadata reaches central, still needs agreement before full EDGE-03 integration. Broker receipts only confirm MQTT delivery to the broker, not a central database write. Live network integration remains unverified.
 
+### Central integration on `ali`
+
+Carson's regional ingestion checks and list-all route/stop endpoints are merged into this branch. The update endpoint is now `PUT /regions/{region_id}/bus_states/{bus_id}`. MQTT keeps `transit/<region_id>/bus/<bus_id>/state` and passes the topic's region into central validation. The per-bus model fields have not changed, so the outgoing edge contract still applies.
+
+The merge repairs central syntax/name mismatches, route-list queries and the new SQL stop reference. Initial next stops must belong to the assigned directional route; subsequent updates may keep the same next stop or advance to the following one. Your existing edge source files were preserved unchanged during this integration.
+
+Run `python -m pytest services/edge/tests services/central/tests -q` for 113 offline regression checks. Central imports and endpoint registration also pass. These checks do not prove live database migrations or broker-to-database delivery; those integration checks remain pending. No automatic EDGE-03 forwarding was enabled by this merge.
+
 ## Branch workflow
 
 Everyone uses their first-name branch listed above. All five branches start from the same updated `main`; completed tasks merge back into `main`.
