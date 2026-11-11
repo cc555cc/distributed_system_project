@@ -46,10 +46,21 @@ CREATE TABLE bus_states (
     lon DOUBLE PRECISION NOT NULL,
     speed DOUBLE PRECISION NOT NULL,
     direction_id INTEGER NOT NULL,
+    current_stop_id TEXT REFERENCE stop(stop_id),
     next_stop_id TEXT REFERENCES stops(stop_id),
     bus_status TEXT NOT NULL,
     occupancy INTEGER NOT NULL,
     sequence_number INTEGER NOT NULL,
     lamport INTEGER NOT NULL,
     last_updated TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE ingestion_rejections (
+    id           BIGSERIAL PRIMARY KEY,
+    received_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    source       TEXT NOT NULL,          
+    region_id    TEXT,                   
+    bus_id       TEXT,                   
+    reason       TEXT NOT NULL,         
+    payload      JSONB                   
 );

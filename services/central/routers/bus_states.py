@@ -3,6 +3,7 @@ import psycopg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from psycopg.rows import dict_row
+from services.central.ingestion_check import check_update #ingestion check function
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
@@ -19,8 +20,13 @@ class BusStateUpdate(BaseModel):
     sequence_number: int
     lamport: int
 
-def apply_bus_state(bus_id: str, state: BusStateUpdate) -> bool:
+def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> bool:
     with psycopg.connect(db_url) as connection:
+        #use ingestion check first before pushing update to the database
+        reason = check_update(connection, bus_id: str, region_id: str, state, BusStateUpdate) -> tuple[bool, str | None]:
+        if reason is not None:
+            return False, reason
+        
         cursor = connection.execute(
             """
             INSERT INTO bus_states (bus_id, lat, lon, speed, direction_id, next_stop_id,
@@ -44,12 +50,16 @@ def apply_bus_state(bus_id: str, state: BusStateUpdate) -> bool:
                 state.bus_status, state.occupancy, state.sequence_number, state.lamport,
             ),
         )
-        return cursor.rowcount == 1
+        if cursor.rowcount == 0:
+            return False, "stale update"
+        return True, None
 
 #HTTP route to update bus state
-@router.put("/bus_states/{bus_id}")
-def update_bus_state(bus_id: str, state: BusStateUpdate):
-    applied = apply_bus_state(bus_id, state)
+@router.put("/regions/{region_id}/bus_states/{bus_id}")
+def update_bus_state(region_id: str, bus_id: str, state: BusStateUpdate):
+    applied, reason = apply_bus_state(bus_id, region_id, state)
+    if not applied and reason != "stale update":
+        raise HTTPException(422, reason)
     return {"bus_id": bus_id, "applied": applied}
 
 #fetch a bus's status by id
