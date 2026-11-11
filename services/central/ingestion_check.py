@@ -11,6 +11,9 @@ def check_update(conn, bus_id: str, region_id: str, state) -> str | None:
     if row is None:
         return f"bus {bus_id} not found"
     route_id, stored_next_stop = row
+    metadata = getattr(state, "edge_metadata", None)
+    if metadata is not None and metadata.route_id != route_id:
+        return "metadata route differs from assigned route"
 
     if state.next_stop_id is not None:
         if not next_stop_check(conn, route_id, stored_next_stop, state.next_stop_id, state.direction_id):

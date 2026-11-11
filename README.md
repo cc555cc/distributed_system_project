@@ -23,8 +23,8 @@ project/
 |   |   |-- validation/         # validator.py and bus_registry.py
 |   |   |-- cache/              # bus_state_cache.py
 |   |   |-- processing/         # coordinator, route, occupancy, aggregation
-|   |   |-- transformation/     # versioned output builder
-|   |   `-- tests/              # ingress regression and EDGE-02 acceptance tests
+|   |   |-- transformation/     # local JSON builder and central field mapper
+|   |   `-- tests/              # validation, processing and forwarding tests
 |   `-- central/                # Carson: API, ingestion and scheduling
 |       |-- main.py
 |       |-- routers/
@@ -37,6 +37,7 @@ project/
 |   |-- examples/               # example telemetry and edge network proposal
 |   |-- routes.json             # shared route definitions
 |   `-- schema/
+|       |-- bus_state.py        # shared central input and edge metadata model
 |       |-- schema.sql          # database tables and constraints
 |       `-- seed.sql            # sample routes and stops
 |-- infrastructure/             # broker/deployment configuration
@@ -66,63 +67,83 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 ingress is preserved and reorganized by responsibility. EDGE-02 consumes its existing validated queue; it does not introduce another subscriber. The three test files contain 100 passing offline checks, including outgoing-contract checks against Carson's actual model. Broker interruption/reconnection over a real network remains unverified.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **127 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+
+### Follow the data
+
+1. `communication/mqtt_subscriber.py` decodes incoming MQTT telemetry, validates it and queues accepted messages.
+2. `edge_server.py` and `processing/processor.py` check ownership, sequence numbers and capacity before calculating route state, occupancy and local statistics. City/region/bus keys remain separate and cache updates stay locked.
+3. `transformation/central_mapper.py` maps only the newly accepted bus update to the central contract. It does not resend every bus in a snapshot or invent missing status/clock values.
+4. `communication/edge_to_central.py` rechecks ownership, metadata and the shared model, then sends to `transit/<region_id>/bus/<bus_id>/state`.
+5. Central's MQTT callback validates that same model, checks region/route/stop relationships and writes newer state to PostgreSQL. `GET /bus_states/{bus_id}` returns the stored core fields and edge metadata.
+
+`shared/schema/bus_state.py` is the single model imported by both edge and central. Existing core fields remain available; optional `edge_metadata` preserves city, region, edge, route, passenger count, capacity, source/processing timestamps, current stop, occupancy percentage, crowding, freshness, route progress and assignment-scoped statistics. Central stores it as JSONB instead of silently discarding extra information.
+
+### Field mapping
+
+| Incoming/processed information | Central field | Meaning |
+| --- | --- | --- |
+| `latitude`, `longitude` | `lat`, `lon` | Same coordinates; no conversion |
+| `speed_kmh` | `speed` | km/h |
+| `bus_status` | `bus_status` | Supplied status; not inferred from speed |
+| `lamport_clock` | `lamport` | Supplied logical-clock value; not fabricated |
+| `sequence_number`, `direction_id`, `next_stop_id` | Same names | Preserve accepted sequence and route direction/stop |
+| `passengers` or exact `occupancy_percent` | `occupancy` | Explicit `CENTRAL_OCCUPANCY_UNIT` setting |
+| City/region/edge/route, counts, timestamps and derived values | `edge_metadata` | Typed context preserved in storage/API |
+| Local statistics | `edge_metadata.statistics` | `edge_assigned_buses`; not a complete regional total |
+
+Confirm occupancy units and bus-status meanings with Carson before team deployment. Choose `passengers` or `percent` explicitly; fractional percentages cannot fit central's integer field and are rejected rather than silently rounded. New forwarding inputs need `bus_status` and `lamport_clock`. Missing values are not replaced with defaults. Faulty/offline sensor readings are not forwarded as healthy occupancy updates.
 
 ### Run and configure
 
-Use Python 3.11 or newer. From the repository root:
+Use Python 3.11 or newer and install the repository dependencies plus pytest. The existing pinned versions are retained; `paho-mqtt` is now listed in `requirements.txt`.
 
 ```powershell
-python -m pip install pytest "paho-mqtt>=2,<3"
-python -m pytest services/edge/tests -q
+python -m pip install -r requirements.txt
+python -m pip install pytest
+python -m pytest services/edge/tests services/central/tests -q
 $env:EDGE_NETWORK_CONFIG = "shared/examples/edge_network.json"
 $env:CITY_ID = "DURHAM"
 $env:REGION_ID = "west"
 $env:EDGE_ID = "edge-west-1"
+$env:CENTRAL_OCCUPANCY_UNIT = "passengers"
 python -m services.edge.main
 ```
 
-Start an MQTT broker before the final command. `MQTT_HOST`/`MQTT_PORT` default to `127.0.0.1`/`1883`. Optional settings are `EDGE_MAX_BUSES` (1000), `EDGE_FRESHNESS_SECONDS` (30), `EDGE_EXPIRE_SECONDS` (300), `EDGE_MEDIUM_THRESHOLD` (50), and `EDGE_HIGH_THRESHOLD` (80).
+The occupancy setting above is an explicit example, not evidence of Carson's approval. Start the broker and updated central receiver before the edge service. `MQTT_HOST`/`MQTT_PORT` default to `127.0.0.1`/`1883`; `CENTRAL_MQTT_HOST`/`CENTRAL_MQTT_PORT` can select a separate outbound broker. Cache settings remain `EDGE_MAX_BUSES` (1000), `EDGE_FRESHNESS_SECONDS` (30), `EDGE_EXPIRE_SECONDS` (300), `EDGE_MEDIUM_THRESHOLD` (50), and `EDGE_HIGH_THRESHOLD` (80).
 
-`shared/examples/edge_network.json` is a versioned configuration proposal derived from the current SQL seed's actual routes, ordered directional stops, buses and initial edge assignments. `DURHAM` labels this existing dataset; it does not invent a second city's routes. A second city can be configured in the same file and uses identical processing code; two-city isolation is tested with fixtures. Agree actual city mappings under BUS-02/TEAM-02 before deployment. The example is a configuration snapshot, not a replacement for the shared SQL source; update it deliberately if source assignments change.
+For an existing development database, add the optional metadata column before running this branch's central receiver:
 
-The network file uses `schema_version: "edge-network-proposal-v1"`, a `routes` list (`city_id`, `region_id`, `route_id`, ordered `stops`, optional `direction_id` defaulting to 0), and a `buses` list (`bus_id`, `city_id`, `region_id`, `route_id`, `edge_id`). Each bus needs an explicit edge owner and a matching route. Bus IDs are globally unique under the existing MQTT topic contract. All definitions load once at startup; there are no per-message database queries. Static ownership checks are included, but ownership transfer and balancing are not implemented.
+```sql
+ALTER TABLE bus_states ADD COLUMN IF NOT EXISTS edge_metadata JSONB;
+```
 
-### Local processing contract
+The fresh-development `schema.sql` already includes this column. Do not rerun its table-dropping setup just to add a column. No live database migration has been executed by this change.
 
-`EdgeProcessor.process(validated_telemetry)` returns a typed `ProcessingResult`: `ACCEPTED`, `DUPLICATE`, `STALE`, `CONFLICT`, `NOT_ASSIGNED`, `INVALID_ROUTE`, or `CAPACITY_EXCEEDED`. Only accepted results include output JSON. `EdgeIngress.drain_pending(subscriber)` returns these results for queued messages, and `processor.snapshot()` recalculates freshness when no messages arrive. The runtime loop consumes the same queue without retaining an unbounded history or publishing results.
+`shared/examples/edge_network.json` is a versioned snapshot derived from the current SQL seed's routes, directional stops, buses and initial edge assignments. `DURHAM` labels that existing dataset. A second city uses the same processing code and is tested with fixtures; actual second-city definitions and mappings still need BUS-02/TEAM-02 agreement. The network file is not a replacement for the SQL source.
 
-The existing ingress topic remains `transit/buses/<region_id>/<bus_id>/telemetry`. Optional `city_id` must match the bus registry; if omitted it is resolved from that registry. Optional `direction_id` defaults to 0 for compatibility. Route stops must match the configured directional ordering. Progress is based only on an explicitly reported current stop, never proximity or an invented GPS estimate. It remains unavailable when the input cannot establish progress.
+The network schema is `edge-network-proposal-v1`: `routes` contain city/region/route IDs, ordered stops and a direction (default 0); `buses` contain globally unique bus IDs and explicit city/region/route/edge assignments. Definitions load once; processing does not query a database per update. The old EDGE-01 sample telemetry now includes a sample status, but its temporary BUS-001/R1 assignments differ from the seed-derived network.
 
-The cache key is `(city_id, region_id, bus_id)`. A local lock covers sequence checking, calculations, cache commit and output snapshot. Equal sequences with different validated fields conflict; exact duplicates and older updates do not refresh freshness or mutate state. Freshness uses monotonic receipt time, while source timestamps are preserved. Capacity never silently evicts active buses: only entries beyond the configured expiry can release space, and their sequence floors remain until process restart. State and sequence history are in memory and do not survive restarts.
+### Delivery and freshness
 
-Output `schema_version: "edge-state-proposal-v1"` contains `city_id`, `region_id`, `edge_id`, a `buses` array and `statistics`. Each bus includes its identifiers, coordinates, speed, counts/capacity, stop/direction/progress fields, occupancy/crowding, sequence, source/processing timestamps and snapshot freshness. Statistics explicitly use `scope: "edge_assigned_buses"`, with active/crowded bus counts, average occupancy, occupancy sample count and active buses per route. Stale and offline buses are excluded from active totals. Faulty/offline sensor occupancy is unavailable and excluded from occupancy averages; raw readings remain identifiable rather than becoming invented estimates.
+Only accepted new updates are staged. Stale, duplicate and conflicting readings do not generate new sends. A broker failure leaves the latest pending payload per owned bus for retry; a newer accepted update replaces that slot. Expired pending updates are dropped rather than advertised as current. This queue and the cache are in memory, so restarts do not preserve unsent updates or sequence history. A broker receipt is not a database-write acknowledgement.
 
-This output is a proposal, not Carson's agreed ingestion format. City mappings, directional stop semantics, faulty-sensor interpretation, occupancy thresholds and the final output envelope need TEAM-02 agreement. No shared central API or MQTT format was silently replaced. Automatic EDGE-03 forwarding, monitoring, replication, failover, scaling, ETA, journey planning and scheduling remain outside this implementation.
+Freshness uses a monotonic clock. Cache entries expire only under the configured safe-capacity policy; sequence floors remain remembered during the process lifetime. Route progress uses reported stops, not GPS proximity. Stale/offline buses stay out of active totals, and unknown occupancy stays out of averages. No replication, failover, balancing, scaling, ETA, journey planning or scheduling was added.
 
-### How to read the edge code
+### End-to-end verification
 
-Follow the files in this order:
+Offline tests execute the full code path: input decoding/validation, queue, processing, mapping, outgoing validation, central MQTT callback, real central SQL statements via a SQLite adapter, and API readback. They compare coordinates, speed, counts, clocks, timestamps, city/region/route context, crowding and summaries. They also check invalid types/identifiers, stale and duplicate messages, conflicts, broker-failure retries and the actual runtime forwarding loop. SQLite and the in-memory transport do not substitute for a live PostgreSQL/MQTT run.
 
-1. `main.py` loads configuration, creates the subscriber, then runs the queue-processing loop.
-2. `communication/mqtt_subscriber.py` receives MQTT bytes, decodes JSON, calls validation and queues accepted readings.
-3. `validation/validator.py` checks the measurements; `bus_registry.py` checks registered city/region/route assignments.
-4. `edge_server.py` passes a queued reading to `processing/processor.py`.
-5. The processor checks ownership and sequence, checks capacity, calculates route/occupancy data, then saves the new state under one lock. Rejected readings stop before the save.
-6. `regional_aggregator.py` calculates local statistics; `transformation/output_builder.py` returns the proposed JSON snapshot.
-7. `communication/edge_to_central.py` is the separate outgoing boundary. Its `validate_payload()` checks ownership and validates an explicitly mapped central payload against a supplied central Pydantic model; `connect()`, `send()` and `close()` manage MQTT. It rejects unsupported fields instead of silently dropping them. The edge does not import central database configuration at startup or maintain a second copy of Carson's model.
+An opt-in test is provided for dedicated test services:
 
-The sender expects Carson's current per-bus fields (`lat`, `lon`, `speed`, `direction_id`, `next_stop_id`, `bus_status`, `occupancy`, `sequence_number`, `lamport`) and topic `transit/<region_id>/bus/<bus_id>/state`. It does not invent status, convert crowding to central occupancy, or fabricate a Lamport clock. The caller must supply agreed values from a current accepted update. Model validation checks the recipient's field requirements; it cannot prove every value is semantically correct or guarantee database acceptance.
+```powershell
+$env:EDGE_LIVE_DATABASE_URL = "postgresql://USER:PASSWORD@localhost:5432/TEST_DATABASE"
+$env:EDGE_LIVE_MQTT_HOST = "127.0.0.1"
+$env:EDGE_LIVE_MQTT_PORT = "1883"
+python -m pytest services/edge/tests/test_live_forwarding.py -q
+```
 
-This sender is not connected to the automatic processing loop. The mapping of status, occupancy and clock fields, plus how city metadata reaches central, still needs agreement before full EDGE-03 integration. Broker receipts only confirm MQTT delivery to the broker, not a central database write. Live network integration remains unverified.
-
-### Central integration on `ali`
-
-Carson's regional ingestion checks and list-all route/stop endpoints are merged into this branch. The update endpoint is now `PUT /regions/{region_id}/bus_states/{bus_id}`. MQTT keeps `transit/<region_id>/bus/<bus_id>/state` and passes the topic's region into central validation. The per-bus model fields have not changed, so the outgoing edge contract still applies.
-
-The merge repairs central syntax/name mismatches, route-list queries and the new SQL stop reference. Initial next stops must belong to the assigned directional route; subsequent updates may keep the same next stop or advance to the following one. Your existing edge source files were preserved unchanged during this integration.
-
-Run `python -m pytest services/edge/tests services/central/tests -q` for 113 offline regression checks. Central imports and endpoint registration also pass. These checks do not prove live database migrations or broker-to-database delivery; those integration checks remain pending. No automatic EDGE-03 forwarding was enabled by this merge.
+That test creates a unique PostgreSQL schema and unique bus/region/topic identifiers, sends telemetry over a real broker, reads the central database/API result and removes only its test schema. It requires permission to create/drop a schema. It is skipped when the database URL is absent. The Docker engine was unavailable in this environment, so **live delivery has not been verified**. Complete that run and confirm field semantics before marking EDGE-03 Done.
 
 ## Branch workflow
 
@@ -201,7 +222,7 @@ Each region initially has two active edge servers that divide processing respons
 | --- | --- | --- | --- |
 | `EDGE-01` | **P0** | Build regional MQTT subscribers that receive bus telemetry. Validate JSON structure, GPS, speed, capacity, timestamps, registered bus IDs and region assignments. Prevent invalid messages from entering the edge processing system. Validate that each bus belongs to the declared city and region.<br><br>**Done when:** Valid messages enter the processing queue. Invalid messages are rejected and logged safely. Tests 01–12 pass, including verification that invalid data does not reach edge processing. A bus claiming the wrong city or region is rejected before processing. | ✅ Done (`ali`; local tests) |
 | `EDGE-02` | **P0** | Create a regional cache storing the latest valid state of each bus. Track location, speed, current route, next stop and occupancy. Calculate occupancy percentage and crowding level. Check sequence numbers before updating cached information. Keep bus caches and regional calculations separated by city and region.<br><br>**Done when:** Each bus has an accurate latest state. Duplicate or older messages do not overwrite newer data. Occupancy calculations and stop information are correct. Expired information is marked stale. Updates and calculations for one city/region do not overwrite or mix with another. | ✅ Done (`ali`; local tests) |
-| `EDGE-03` | **P0** | Agree the outgoing field mapping with Carson, including field names, data types, units, required/optional values and meanings. Map accepted edge updates to that contract, validate them again in `communication/edge_to_central.py`, then connect automatic MQTT forwarding. Cover per-bus positions, speeds, occupancy, stop information, timestamps, sequence/Lamport metadata, city/region identifiers and scoped summaries through agreed topics or envelopes. Do not silently drop information Carson needs or invent unavailable values.<br><br>**Done when:** The mapping is verified against Carson's expected input. Live end-to-end tests trace multiple buses from telemetry input through edge validation/processing and MQTT to Carson's database and API. Received field names, types, units, identifiers and values match the agreed contract, including city/region separation and every agreed information category. Missing, invalid, duplicate, stale and conflicting updates are handled as agreed without corrupting current state. Rejected edge updates are not forwarded as accepted data. Tests verify database/API results, not just broker receipts, and record reproducible evidence. | 🟨 Partial (`ali`; outgoing boundary only) |
+| `EDGE-03` | **P0** | Agree the outgoing field mapping with Carson, including field names, data types, units, required/optional values and meanings. Map accepted edge updates to that contract, validate them again in `communication/edge_to_central.py`, then connect automatic MQTT forwarding. Cover per-bus positions, speeds, occupancy, stop information, timestamps, sequence/Lamport metadata, city/region identifiers and scoped summaries through agreed topics or envelopes. Do not silently drop information Carson needs or invent unavailable values.<br><br>**Done when:** The mapping is verified against Carson's expected input. Live end-to-end tests trace multiple buses from telemetry input through edge validation/processing and MQTT to Carson's database and API. Received field names, types, units, identifiers and values match the agreed contract, including city/region separation and every agreed information category. Missing, invalid, duplicate, stale and conflicting updates are handled as agreed without corrupting current state. Rejected edge updates are not forwarded as accepted data. Tests verify database/API results, not just broker receipts, and record reproducible evidence. | 🟨 Partial (`ali`; coded, live verification pending) |
 | `EDGE-04` | **P1** | Implement heartbeat monitoring for all regional edge servers. Detect when one server stops responding and report whether it is healthy, unavailable or recovering.<br><br>**Done when:** Stopping an edge server triggers failure detection within a configured timeout. The failure status is reported to the monitoring system. | ⬜ Pending |
 | `EDGE-05` | **P1** | Run two active edge servers per region. Divide bus workloads between them and replicate the latest required state. If one server fails, transfer its workload to the surviving server.<br><br>**Done when:** Both servers process assigned buses during normal operation. After one fails, the survivor processes the region's buses using synchronized state without conflicting updates. | ⬜ Pending |
 | `EDGE-06` | **P1** | Test regional processing, validation, caching, duplicate messages, server failures, backup takeover and recovery. Include normal and failure scenarios.<br><br>**Done when:** Tests confirm that valid information is processed correctly, invalid information is rejected, and edge processing continues after a supported single-server failure. | ⬜ Pending |

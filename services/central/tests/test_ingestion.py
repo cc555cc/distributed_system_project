@@ -59,7 +59,7 @@ def test_rejected_ingestion_does_not_write(bus_states):
     connection = Mock()
     with patch.object(bus_states.psycopg, "connect") as connect, patch.object(bus_states, "check_update", return_value="wrong region"):
         connect.return_value.__enter__.return_value = connection
-        assert bus_states.apply_bus_state("bus-302-1", "east", Mock()) == (False, "wrong region")
+        assert bus_states.apply_bus_state("bus-302-1", "east", SimpleNamespace(edge_metadata=None)) == (False, "wrong region")
     connection.execute.assert_not_called()
 
 

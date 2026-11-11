@@ -24,6 +24,7 @@ class BusTelemetry(TypedDict):
     capacity: int
     sequence_number: int
     timestamp: str
+    bus_status: NotRequired[str]
     city_id: NotRequired[str]
     direction_id: NotRequired[int]
     lamport_clock: NotRequired[int]
@@ -111,6 +112,8 @@ def parse_telemetry(
         if not isinstance(value, str) or not value.strip():
             errors.append(f"{key} must be a non-empty string")
 
+    if "bus_status" in payload and (not isinstance(payload["bus_status"], str) or not payload["bus_status"].strip()):
+        errors.append("bus_status must be a non-empty string")
     if "city_id" in payload and (not isinstance(payload["city_id"], str) or not payload["city_id"].strip()):
         errors.append("city_id must be a non-empty string")
     if "direction_id" in payload and not _valid_integer(payload["direction_id"], 0):

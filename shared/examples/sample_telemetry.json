@@ -11,5 +11,6 @@
   "lamport_clock": 1,
   "next_stop_id": "STOP-03",
   "sensor_status": "healthy",
-  "timestamp": "2026-11-10T15:00:00Z"
+  "timestamp": "2026-11-10T15:00:00Z",
+  "bus_status": "travelling"
 }

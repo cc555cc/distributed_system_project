@@ -1,17 +1,22 @@
 """Check outgoing bus information and manage its MQTT connection to central.
 
-This is an explicit sending boundary, not an automatic EDGE-02 forwarding loop.
-Pass Carson's agreed Pydantic model in as the contract. This avoids copying his
-model here or importing his database configuration into the edge service.
+CentralForwarder connects accepted processing to this sending boundary.
+Both edge and central use the model in shared/schema/bus_state.py; no database
+configuration needs to be imported by the edge service.
 """
 
+from collections import OrderedDict
 import json
+import logging
 from typing import Any
 
 from pydantic import BaseModel
 
 from services.edge.config import EdgeConfig
 from services.edge.validation.bus_registry import BusRegistry
+from services.edge.edge_server import EdgeIngress
+from services.edge.processing.processor import ProcessingResult, ProcessingStatus
+from services.edge.transformation.central_mapper import OccupancyUnit, map_bus_update
 
 
 class EdgeToCentral:
@@ -42,8 +47,14 @@ class EdgeToCentral:
 
         # Use the recipient's actual model, with no automatic string-to-number fixes.
         checked = self.contract.model_validate(payload, strict=True)
+        metadata = getattr(checked, "edge_metadata", None)
+        if metadata is not None:
+            expected = (cfg.city_id, cfg.region_id, cfg.edge_id, assignment.route_id)
+            supplied = (metadata.city_id, metadata.region_id, metadata.edge_id, metadata.route_id)
+            if supplied != expected:
+                raise ValueError("Outgoing metadata differs from registered ownership")
         # NaN and infinity are not valid JSON measurements.
-        return json.dumps(checked.model_dump(mode="json"), allow_nan=False)
+        return json.dumps(checked.model_dump(mode="json", exclude_none=True), allow_nan=False)
 
     def connect(self, host: str, port: int = 1883) -> None:
         """Open the outgoing MQTT connection when the caller explicitly asks."""
@@ -92,3 +103,49 @@ class EdgeToCentral:
             finally:
                 self._client.loop_stop()
                 self._client = None
+
+
+class CentralForwarder:
+    """Connect accepted local processing to sending; retry only the latest bus state."""
+
+    def __init__(self, receiver: EdgeIngress, sender: EdgeToCentral,
+                 occupancy_unit: OccupancyUnit) -> None:
+        if occupancy_unit not in ("passengers", "percent"):
+            raise ValueError("Set CENTRAL_OCCUPANCY_UNIT to passengers or percent")
+        self.receiver = receiver
+        self.sender = sender
+        self.occupancy_unit = occupancy_unit
+        self.pending: OrderedDict[str, tuple[dict, float]] = OrderedDict()
+
+    def process(self, telemetry: dict) -> ProcessingResult:
+        # Fail visibly rather than fill required central values with guesses.
+        if not telemetry.get("bus_status") or "lamport_clock" not in telemetry:
+            raise ValueError("Forwarding needs supplied bus_status and lamport_clock")
+        result = self.receiver.process_telemetry(telemetry)
+        if result.status == ProcessingStatus.ACCEPTED:
+            bus_id = telemetry["bus_id"]
+            # The new accepted reading replaces any pending older one, even if
+            # the new reading cannot be forwarded (for example a faulty sensor).
+            self.pending.pop(bus_id, None)
+            payload = map_bus_update(result.output, bus_id, self.occupancy_unit)
+            self.sender.validate_payload(bus_id, payload)
+            self.pending[bus_id] = (payload, self.receiver.processor.clock())
+        return result
+
+    def flush_one(self) -> bool:
+        """Try one current update per loop; a broker problem must not stop ingestion."""
+        if not self.pending:
+            return False
+        bus_id, (payload, accepted_at) = self.pending.popitem(last=False)
+        processor = self.receiver.processor
+        if processor.clock() - accepted_at >= processor.config.freshness_seconds:
+            logging.warning("Discarded expired outgoing update for bus=%s", bus_id)
+            return False
+        try:
+            self.sender.send(bus_id, payload)
+        except (ConnectionError, TimeoutError, RuntimeError, OSError):
+            # One slot per owned registered bus bounds memory. No event history.
+            self.pending[bus_id] = (payload, accepted_at)
+            logging.warning("Central delivery pending for bus=%s", bus_id)
+            return False
+        return True

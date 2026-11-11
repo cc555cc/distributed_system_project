@@ -53,6 +53,7 @@ CREATE TABLE bus_states (
     occupancy INTEGER NOT NULL,
     sequence_number INTEGER NOT NULL,
     lamport INTEGER NOT NULL,
+    edge_metadata JSONB,
     last_updated TIMESTAMPTZ NOT NULL
 );
 

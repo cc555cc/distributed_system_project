@@ -1,10 +1,12 @@
-"""Run one configured edge instance, without EDGE-03 forwarding."""
+"""Run one configured edge instance, with validated automatic EDGE-03 forwarding."""
 
 import logging
 import os
 from queue import Empty
 
 from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
+from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
+from shared.schema.bus_state import BusStateUpdate
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.edge_server import EdgeIngress
 from services.edge.processing.processor import EdgeProcessor
@@ -32,17 +34,24 @@ def create_subscriber(config: EdgeConfig, network: NetworkConfig) -> TelemetrySu
     )
 
 
-def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngress) -> None:
+def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngress,
+                             forwarder: CentralForwarder | None = None) -> None:
     """Wait for checked telemetry and process it outside the MQTT callback."""
     while True:
         try:
             telemetry = subscriber.messages.get(timeout=1.0)
         except Empty:
+            if forwarder is not None:
+                forwarder.flush_one()
             continue
         try:
-            result = receiver.process_telemetry(telemetry)
+            result = (forwarder.process(telemetry) if forwarder is not None
+                      else receiver.process_telemetry(telemetry))
             logging.info("Processing result=%s", result.status.value)
-            # result.output is returned to callers; no MQTT send yet.
+            if forwarder is not None:
+                forwarder.flush_one()
+        except ValueError as error:
+            logging.warning("Not forwarded: validation failed (%s)", type(error).__name__)
         finally:
             subscriber.messages.task_done()
 
@@ -55,13 +64,19 @@ def main() -> None:
     config = load_edge_config()
     subscriber = create_subscriber(config, network)
     receiver = EdgeIngress(EdgeProcessor(config, network))
-    subscriber.start()
+    # Units must be explicitly selected; an integer alone does not define them.
+    sender = EdgeToCentral(config, network.registry, BusStateUpdate)
+    forwarder = CentralForwarder(receiver, sender, os.environ["CENTRAL_OCCUPANCY_UNIT"])
     try:
-        process_pending_messages(subscriber, receiver)
+        sender.connect(os.getenv("CENTRAL_MQTT_HOST", os.getenv("MQTT_HOST", "127.0.0.1")),
+                       int(os.getenv("CENTRAL_MQTT_PORT", os.getenv("MQTT_PORT", "1883"))))
+        subscriber.start()
+        process_pending_messages(subscriber, receiver, forwarder)
     except KeyboardInterrupt:
         logging.info("Stopping edge ingestion")
     finally:
         subscriber.stop()
+        sender.close()
 
 
 if __name__ == "__main__":
