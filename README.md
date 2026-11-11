@@ -9,7 +9,6 @@ Intended data flow: **Bus simulator → MQTT broker → Regional edge services �
 ```text
 project/
 |-- services/
-|   |-- __init__.py
 |   |-- simulator/              # Zachary: simulation and telemetry
 |   |   |-- main.py
 |   |   `-- tests/
@@ -17,14 +16,8 @@ project/
 |   |   |-- mqtt_client.py      # existing central subscriber
 |   |   `-- tests/
 |   |-- edge/                   # Ali: regional processing and failover
-|   |   |-- __init__.py
 |   |   |-- main.py
-|   |   |-- mqtt_subscriber.py
-|   |   |-- validator.py
-|   |   |-- bus_registry.py
-|   |   |-- edge_server.py
 |   |   `-- tests/
-|   |       `-- test_mqtt_validator.py
 |   `-- central/                # Carson: API, ingestion and scheduling
 |       |-- main.py
 |       |-- routers/
@@ -34,8 +27,6 @@ project/
 |       `-- tests/
 |-- frontend/                   # Danial: passenger/operator UI
 |-- shared/
-|   |-- examples/
-|   |   `-- sample_telemetry.json
 |   |-- routes.json             # shared route definitions
 |   `-- schema/
 |       |-- schema.sql          # database tables and constraints
@@ -62,24 +53,7 @@ This tree reflects the current local workspace, excluding Git internals and gene
 | `carson` | `services/central/`; database SQL in `shared/schema/` |
 | `danial` | `frontend/` |
 
-Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The existing central subscriber is implemented; EDGE-01 ingress and validation are implemented on `ali`; simulator, subsequent edge processing and frontend work remain unfinished.
-
-
-## EDGE-01 completed — ali branch
-
-Regional MQTT ingress, payload validation, temporary bus/route/region registry checks and a bounded queue are implemented. The callback-to-edge acceptance suite passes 49 cases, including invalid payloads, topic identity, geographic limits, oversized messages, queue overflow and reconnect callback resubscription. Live broker connection/recovery has not been verified; the broker integration check remains open under messaging/integration work.
-
-Use Python 3.11 or newer for this edge implementation:
-
-```powershell
-python -m pip install pytest "paho-mqtt>=2,<3"
-python -m pytest services/edge/tests -q
-python -m services.edge.edge_server
-```
-
-Start a local MQTT broker before the last command. Configuration uses `REGION_ID`, `EDGE_ID`, `MQTT_HOST` and `MQTT_PORT` (defaults: `north`, `north-edge-a`, `127.0.0.1`, `1883`). The sample message is in `shared/examples/sample_telemetry.json`; publish it to `transit/buses/north/BUS-001/telemetry`.
-
-These temporary fields/topics differ from central ingestion (`transit/<region_id>/bus/<bus_id>/state`). Shared-contract alignment belongs to TEAM-02 and forwarding/transformation to EDGE-03. Registry IDs are temporary fixtures, not database seed assignments or publisher authentication. EDGE-02 caching, ordering and occupancy calculations are not implemented. This completion note and the edge code stay on `ali` until integration.
+Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The existing central subscriber is implemented; simulator, regional edge and frontend implementations remain unfinished.
 
 ## Branch workflow
 
@@ -93,7 +67,7 @@ Everyone uses their first-name branch listed above. All five branches start from
 
 ## Priorities
 
-The supplied task list did not include priorities. The labels below are proposed implementation order, not completion status:
+Priorities indicate implementation order, not completion status:
 
 - **P0:** Foundational setup, contracts, core data flow and required integration/submission work.
 - **P1:** Main features, reliability, security, testing and documentation.
@@ -108,107 +82,111 @@ Status: ✅ Done · 🟨 Partial · ⬜ Pending. Mark a task Done only after its
 <details>
 <summary><strong>Zachary — Bus Simulation</strong> — 11 tickets</summary>
 
-| Ticket / priority | Task | Status |
-| --- | --- | --- |
-| `BUS-01` · **P0** | Define shared JSON telemetry schema and example sensor messages | ⬜ Pending |
-| `BUS-02` · **P0** | Create simulated bus routes, stops, coordinates and regional assignments | ⬜ Pending |
-| `BUS-03` · **P0** | Develop Python bus simulator for continuous GPS and sensor data generation | ⬜ Pending |
-| `BUS-04` · **P1** | Implement peak/off-peak demand, traffic delays and sensor-failure scenarios | ⬜ Pending |
-| `BUS-05` · **P1** | Build simulation controls for starting, stopping and modifying scenarios | ⬜ Pending |
-| `BUS-06` · **P1** | Test simulator reliability, multi-bus operation and sensor data validity | ⬜ Pending |
-| `BUS-07` · **P1** | Implement bus lifecycle events: boarding, arriving, departing and out of service | ⬜ Pending |
-| `BUS-08` · **P1** | Support configurable fleet sizes: 5, 10, 25 and 50 buses | ⬜ Pending |
-| `BUS-09` · **P1** | Implement simulated dispatch-frequency adjustments from Carson's scheduler | ⬜ Pending |
-| `BUS-10` · **P2** | Create reproducible simulation test scenarios with expected outputs | ⬜ Pending |
-| `BUS-11` · **P1** | Support registering new buses and sensor types using versioned configuration/schema objects | ⬜ Pending |
+Generate simulated bus movement, sensor telemetry and configurable scenarios using the agreed shared format.
 
-Report deliverables: Telemetry schema, bus simulation design, route definitions, simulation scenarios, bus state diagram and test results.
+| Ticket | Priority | Description and completion criteria | Status |
+| --- | --- | --- | --- |
+| `BUS-01` | **P0** | Create a standard JSON format for bus telemetry. Include bus ID, region ID, route ID, GPS coordinates, speed, passenger count, capacity, current/next stop, timestamp, sequence number and sensor status. Agree on logical-clock metadata with Julian.<br><br>**Done when:** Example messages contain the required fields, use correct data types, and pass validation. Julian and Ali can use the format without modifying field names. | ⬜ Pending |
+| `BUS-02` | **P0** | Define at least two simulated regions with multiple routes, stops, GPS coordinates and bus assignments. Each route must contain stops in the correct travel order. Define routes, stops and bus assignments for both cities, with city identifiers.<br><br>**Done when:** Every bus belongs to a valid region and route. Stops have unique IDs and coordinates. The simulator can load route data without hardcoded routes in its logic. Both cities load valid routes, stops and buses without mixing assignments. | ⬜ Pending |
+| `BUS-03` | **P0** | Build a Python simulator that generates continuous bus movement and sensor data. Each bus should update its location, speed, stop status and passenger count at configurable intervals.<br><br>**Done when:** At least three buses move between stops and continuously generate valid telemetry. Buses can run simultaneously without interfering with one another. | ⬜ Pending |
+| `BUS-04` | **P1** | Simulate normal traffic, traffic congestion, peak/off-peak passenger demand and sensor failures. Traffic should affect bus speed and journey duration, while demand affects passenger occupancy.<br><br>**Done when:** Each scenario creates measurable changes. For example, a traffic delay increases travel time, while peak demand increases passenger counts without exceeding the simulated capacity rules. | ⬜ Pending |
+| `BUS-05` | **P1** | Add controls to start, pause, resume and stop simulations. Allow supported commands to change traffic, demand or sensor conditions while the simulator is running.<br><br>**Done when:** Valid commands change the requested scenario. Invalid commands or nonexistent bus/route IDs are rejected without crashing the simulator. | ⬜ Pending |
+| `BUS-06` | **P1** | Test the simulator's GPS movement, route assignments, passenger counts, sensor readings and simultaneous bus operation. Include normal and invalid-data scenarios.<br><br>**Done when:** Tests confirm valid movement and sensor values. Multiple buses operate correctly, and errors are reported without unexpectedly stopping the entire simulation. | ⬜ Pending |
+| `BUS-07` | **P1** | Add bus states such as travelling, arriving, stopped, boarding, departing and out of service. Simulate waiting at bus stops before continuing along the route.<br><br>**Done when:** Buses transition through valid states in the correct order. Stop durations affect simulated journey time, and out-of-service buses stop accepting passengers. | ⬜ Pending |
+| `BUS-08` | **P1** | Allow the simulator to run different fleet sizes, such as 5, 10, 25 and 50 buses, using configuration instead of manually creating each bus.<br><br>**Done when:** Each fleet size starts successfully, uses valid bus IDs and route assignments, and produces the expected number of active bus streams. | ⬜ Pending |
+| `BUS-09` | **P1** | Allow Carson's scheduler to request changes in bus service. Support adding an available simulated bus to a route or adjusting the time between departures.<br><br>**Done when:** A valid scheduling command changes the simulated service. The changes appear in subsequent telemetry and can be observed by Carson's central server. | ⬜ Pending |
+| `BUS-10` | **P2** | Create repeatable test scenarios for normal traffic, peak demand, traffic congestion and sensor failures. Use fixed simulation settings so results can be compared.<br><br>**Done when:** Running the same scenario with the same configuration produces consistent, comparable results. Expected behaviours are documented and checked. | ⬜ Pending |
+| `BUS-11` | **P1** | Support adding new buses and optional sensor types through versioned configuration objects. Avoid rewriting the main simulator whenever a supported sensor is added.<br><br>**Done when:** A new registered bus or supported sensor can be added through configuration. Existing buses and sensor messages continue working correctly. | ⬜ Pending |
 
 </details>
 
 <details>
 <summary><strong>Julian — MQTT & Synchronization</strong> — 11 tickets</summary>
 
-| Ticket / priority | Task | Status |
-| --- | --- | --- |
-| `MQTT-01` · **P0** | Configure Mosquitto broker, MQTT topics and communication settings | ⬜ Pending |
-| `MQTT-02` · **P0** | Connect Zachary's simulator to MQTT publisher and test subscriber | ⬜ Pending |
-| `MQTT-03` · **P0** | Implement Lamport clocks, per-bus sequence-number conventions and timestamp handling | ⬜ Pending |
-| `MQTT-04` · **P0** | Handle reconnects, duplicate messages and delayed/out-of-order delivery | ⬜ Pending |
-| `MQTT-05` · **P1** | Implement multicast-style publish-subscribe alerts and simulation commands | ⬜ Pending |
-| `MQTT-06` · **P1** | Test communication ordering, reliability and delivery latency | ⬜ Pending |
-| `MQTT-07` · **P1** | Configure MQTT authentication and topic access permissions | ⬜ Pending |
-| `MQTT-08` · **P1** | Implement physical-clock synchronization assumptions and simulated clock-offset tests | ⬜ Pending |
-| `MQTT-09` · **P2** | Evaluate causal ordering, sequence numbers and delayed-message scenarios | ⬜ Pending |
-| `MQTT-10` · **P1** | Test MQTT broker interruption, reconnection and recovery limitations | ⬜ Pending |
-| `MQTT-11` · **P1** | Stress-test concurrent telemetry, Lamport clocks, per-bus ordering, queue delays and message throughput | ⬜ Pending |
+Transport data between services, maintain synchronization information and ensure messaging remains reliable as the number of buses increases.
 
-Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams, message-ordering examples, synchronization methods, security considerations and communication performance results.
+| Ticket | Priority | Description and completion criteria | Status |
+| --- | --- | --- | --- |
+| `MQTT-01` | **P0** | Set up a Mosquitto MQTT broker and define standard topics for bus telemetry, regional processing, alerts and simulation commands. Identify which services publish and subscribe to each topic.<br><br>**Done when:** Independent programs can connect to the broker and exchange messages using the agreed topics. Topic naming and connection settings are documented. | ⬜ Pending |
+| `MQTT-02` | **P0** | Connect Zachary's bus simulator to the MQTT broker. Publish each bus's telemetry to its assigned region and bus topic.<br><br>**Done when:** At least three buses publish messages successfully, and Ali's regional subscriber receives the correct telemetry. | ⬜ Pending |
+| `MQTT-03` | **P0** | Implement Lamport logical clocks and agree on per-bus sequence numbering. Include UTC timestamps to record when sensor events were generated.<br><br>**Done when:** Logical clocks follow the correct send/receive update rules. Per-bus sequence numbers increase, and every published message includes the agreed ordering metadata. | ⬜ Pending |
+| `MQTT-04` | **P0** | Handle MQTT connection loss, reconnection, delayed delivery and duplicate messages. Preserve sequence and clock information so Ali can identify stale telemetry.<br><br>**Done when:** Clients reconnect after a temporary disconnection. Duplicate or delayed messages can be identified, and tests confirm they do not cause Ali's accepted bus state to move backward. | ⬜ Pending |
+| `MQTT-05` | **P1** | Implement MQTT communication for system alerts and simulation commands. Ensure alerts and commands reach the intended subscribing services.<br><br>**Done when:** A failure alert reaches the central service, and a simulation command reaches its intended recipient. Unrelated services do not act on the command. | ⬜ Pending |
+| `MQTT-06` | **P1** | Test message delivery and communication performance. Measure messages sent, messages received, delivery delays and duplicate deliveries.<br><br>**Done when:** Tests produce recorded results showing the communication system's behaviour under normal conditions and temporary delays. | ⬜ Pending |
+| `MQTT-07` | **P1** | Add MQTT authentication and topic-based authorization. Only registered services should connect and publish or subscribe to their approved topics.<br><br>**Done when:** Invalid credentials are rejected. A bus publisher cannot publish to another bus's protected topic. Authorized services continue communicating normally. | ⬜ Pending |
+| `MQTT-08` | **P1** | Define how physical timestamps are handled using UTC and clock synchronization assumptions. Simulate different clock offsets and compare physical timestamps against Lamport ordering.<br><br>**Done when:** Tests show how clock differences can affect timestamps and demonstrate correct logical-clock updates despite those differences. | ⬜ Pending |
+| `MQTT-09` | **P2** | Test logical-clock behaviour when multiple buses and services generate concurrent events. Include delayed and out-of-order delivery scenarios.<br><br>**Done when:** Event diagrams and tests show correct Lamport values, identify causal relationships and distinguish genuinely concurrent events. | ⬜ Pending |
+| `MQTT-10` | **P1** | Test what happens when the MQTT broker temporarily becomes unavailable. Implement client reconnection and resubscription where necessary.<br><br>**Done when:** After the broker restarts, clients reconnect and resume communication. Any lost or unrecovered messages are identified rather than assumed delivered. | ⬜ Pending |
+| `MQTT-11` | **P1** | Test MQTT communication with increasing numbers of buses, such as 5, 10, 25 and 50. Monitor message throughput, queue delays, duplicates and ordering behaviour.<br><br>**Done when:** Results compare multiple bus counts. The system preserves the agreed ordering rules, and any performance limitations are measured and explained. | ⬜ Pending |
 
 </details>
 
 <details>
 <summary><strong>Ali — Regional Edge Computing</strong> — 12 tickets</summary>
 
-| Ticket / priority | Task | Status |
-| --- | --- | --- |
-| `EDGE-01` · **P0** | Build regional MQTT subscribers and validate incoming bus telemetry | ✅ Done (`ali`; offline checks) |
-| `EDGE-02` · **P0** | Implement regional bus-state cache, route processing and occupancy calculations | ⬜ Pending |
-| `EDGE-03` · **P0** | Aggregate and forward validated regional telemetry to Carson's central server | ⬜ Pending |
-| `EDGE-04` · **P1** | Implement heartbeat monitoring and regional edge failure detection | ⬜ Pending |
-| `EDGE-05` · **P1** | Implement primary/backup edge recovery, replication and basic load balancing | ⬜ Pending |
-| `EDGE-06` · **P1** | Test regional processing, failure detection, backup recovery and performance | ⬜ Pending |
-| `EDGE-07` · **P1** | Implement workload monitoring for bus counts, throughput and processing latency | ⬜ Pending |
-| `EDGE-08` · **P1** | Develop workload migration and regional load-balancing policies | ⬜ Pending |
-| `EDGE-09` · **P1** | Implement primary/backup ownership coordination and state synchronization after recovery | ⬜ Pending |
-| `EDGE-10` · **P2** | Benchmark scalability, throughput, processing latency and failover duration | ⬜ Pending |
-| `EDGE-11` · **P2** | Implement threshold-based horizontal scaling: launch Edge C, transfer bus assignments and safely scale down | ⬜ Pending |
-| `EDGE-12` · **P1** | Extend workload ownership to dynamically added and cross-region servers, including synchronized recovery | ⬜ Pending |
+Receive valid telemetry, process regional bus information, share workloads between edge servers and recover when servers fail.
 
-Report deliverables: Edge architecture diagram, validation design, caching methodology, heartbeat and failover sequence, replication and load-balancing algorithms, performance graphs and recovery tests.
+Each region initially has two active edge servers that divide processing responsibilities.
+
+| Ticket | Priority | Description and completion criteria | Status |
+| --- | --- | --- | --- |
+| `EDGE-01` | **P0** | Build regional MQTT subscribers that receive bus telemetry. Validate JSON structure, GPS, speed, capacity, timestamps, registered bus IDs and region assignments. Prevent invalid messages from entering the edge processing system. Validate that each bus belongs to the declared city and region.<br><br>**Done when:** Valid messages enter the processing queue. Invalid messages are rejected and logged safely. Tests 01–12 pass, including verification that invalid data does not reach edge processing. A bus claiming the wrong city or region is rejected before processing. | ⬜ Pending |
+| `EDGE-02` | **P0** | Create a regional cache storing the latest valid state of each bus. Track location, speed, current route, next stop and occupancy. Calculate occupancy percentage and crowding level. Check sequence numbers before updating cached information. Keep bus caches and regional calculations separated by city and region.<br><br>**Done when:** Each bus has an accurate latest state. Duplicate or older messages do not overwrite newer data. Occupancy calculations and stop information are correct. Expired information is marked stale. Updates and calculations for one city/region do not overwrite or mix with another. | ⬜ Pending |
+| `EDGE-03` | **P0** | Process and forward regional bus information to Carson. Send validated positions, speeds, occupancy, stop information, timestamps and regional summaries through the agreed MQTT topic. Include `city_id` and `region_id` in the JSON sent to Carson.<br><br>**Done when:** Carson receives correctly formatted regional information for multiple buses. Invalid or outdated data is not forwarded as current information, and Carson has enough data to calculate ETAs. Forwarded messages preserve the validated city and region identifiers. | ⬜ Pending |
+| `EDGE-04` | **P1** | Implement heartbeat monitoring for all regional edge servers. Detect when one server stops responding and report whether it is healthy, unavailable or recovering.<br><br>**Done when:** Stopping an edge server triggers failure detection within a configured timeout. The failure status is reported to the monitoring system. | ⬜ Pending |
+| `EDGE-05` | **P1** | Run two active edge servers per region. Divide bus workloads between them and replicate the latest required state. If one server fails, transfer its workload to the surviving server.<br><br>**Done when:** Both servers process assigned buses during normal operation. After one fails, the survivor processes the region's buses using synchronized state without conflicting updates. | ⬜ Pending |
+| `EDGE-06` | **P1** | Test regional processing, validation, caching, duplicate messages, server failures, backup takeover and recovery. Include normal and failure scenarios.<br><br>**Done when:** Tests confirm that valid information is processed correctly, invalid information is rejected, and edge processing continues after a supported single-server failure. | ⬜ Pending |
+| `EDGE-07` | **P1** | Monitor each edge server's active bus count, assigned workloads, incoming message rate, processing latency and queue backlog. Use these measurements to identify overloaded servers.<br><br>**Done when:** Each server reports measurable workload information. The system can distinguish a lightly loaded server from an overloaded one. | ⬜ Pending |
+| `EDGE-08` | **P1** | Implement workload distribution between the two active servers. Aim for approximately 50/50 bus assignments and move workloads when a server becomes overloaded or unavailable.<br><br>**Done when:** Bus assignments are balanced under normal conditions. Reassignment works without losing the latest required state or allowing two authoritative owners for one bus. | ⬜ Pending |
+| `EDGE-09` | **P1** | Implement safe ownership transfer and recovery. Synchronize returning servers before restoring their workloads. Support a controlled transfer to another healthy region if both local servers fail.<br><br>**Done when:** A recovered server receives current state before resuming work. Tests demonstrate that ownership remains consistent and cross-region takeover works when capacity is available. | ⬜ Pending |
+| `EDGE-10` | **P2** | Measure performance with 5, 10, 25 and 50 simulated buses. Compare processing latency, throughput, workload distribution and failover duration.<br><br>**Done when:** Results demonstrate how performance changes with increasing bus counts and different failure conditions. | ⬜ Pending |
+| `EDGE-11` | **P2** | Add optional automatic scaling. When both regional servers remain overloaded, start a third edge server, synchronize it and redistribute bus assignments. Support safe scale-down when demand decreases.<br><br>**Done when:** A sustained overload triggers Edge C when resources permit. Edge C receives valid assignments and processes them correctly. Scale-down preserves state and ownership. | ⬜ Pending |
+| `EDGE-12` | **P1** | Make bus ownership configurable so newly added edge servers and healthy servers in other regions can take over workloads without changing the processing logic.<br><br>**Done when:** A new edge server can register, receive an approved assignment and begin processing. Ownership changes prevent duplicate authoritative processing. | ⬜ Pending |
 
 </details>
 
 <details>
-<summary><strong>Carson — Central Server & Scheduling</strong> — 12 tickets</summary>
+<summary><strong>Carson — Central Server & Smart Scheduling</strong> — 12 tickets</summary>
 
-| Ticket / priority | Task | Status |
-| --- | --- | --- |
-| `CENTRAL-01` · **P0** | Build FastAPI central server and database models for buses, routes, stops and regions | 🟨 Partial |
-| `CENTRAL-02` · **P0** | Implement processed regional telemetry ingestion and database updates | 🟨 Partial |
-| `CENTRAL-03` · **P0** | Develop route-management APIs and initial estimated arrival-time calculations | 🟨 Partial |
-| `CENTRAL-04` · **P1** | Implement demand-based scheduling and peak/off-peak dispatch recommendations | ⬜ Pending |
-| `CENTRAL-05` · **P1** | Develop system-health APIs, alerts, operator permissions and simulation endpoints | ⬜ Pending |
-| `CENTRAL-06` · **P1** | Test central services, route estimates, scheduling, API responses and consistency | ⬜ Pending |
-| `CENTRAL-07` · **P1** | Implement passenger route recommendations using origin/destination stops | ⬜ Pending |
-| `CENTRAL-08` · **P1** | Connect dynamic scheduling decisions to actual simulated dispatch-frequency adjustments | ⬜ Pending |
-| `CENTRAL-09` · **P1** | Implement role-based access restrictions and privacy safeguards | ⬜ Pending |
-| `CENTRAL-10` · **P2** | Evaluate ETA accuracy, scheduling effectiveness and demand-response performance | ⬜ Pending |
-| `CENTRAL-11` · **P2** | Separate ingestion, route/scheduling logic and API handling so individual workloads can scale | ⬜ Pending |
-| `CENTRAL-12` · **P1** | Build `suggestions.py` for ETA-, occupancy-, and demand-aware passenger recommendations | ⬜ Pending |
+Receive processed regional data, calculate arrival times, plan A-to-B journeys, recommend suitable buses and adjust transit schedules based on demand.
 
-Report deliverables: Database ER diagram, API architecture, route-management design, ETA algorithms, scheduling methodology, demand results, security/privacy and central-server performance.
+| Ticket | Priority | Description and completion criteria | Status |
+| --- | --- | --- | --- |
+| `CENTRAL-01` | **P0** | Build a FastAPI central server and database for buses, routes, stops, regions and current bus information. Load the agreed route definitions and provide basic API endpoints.<br><br>**Done when:** The server starts correctly, stores valid information and returns expected bus, route and stop records through its APIs. | 🟨 Partial |
+| `CENTRAL-02` | **P0** | Receive Ali's processed regional telemetry and update the central database. Maintain the latest accepted state for each bus and prevent outdated messages from replacing newer information.<br><br>**Done when:** Valid regional updates appear in the database and APIs. Duplicate or outdated messages do not corrupt current bus information. | 🟨 Partial |
+| `CENTRAL-03` | **P0** | Calculate estimated bus arrival times using remaining route distance, current speed, simulated traffic delays and stop waiting times. Estimate travel durations along the route rather than using only straight-line distance.<br><br>**Done when:** Active buses return reasonable arrival estimates. Traffic delays affect ETA results, and missing information produces an unavailable estimate rather than an invented value. | 🟨 Partial |
+| `CENTRAL-04` | **P1** | Analyze passenger occupancy and demand across routes. Identify overcrowded or underused routes and recommend increasing or decreasing bus frequency using agreed thresholds.<br><br>**Done when:** Peak and off-peak scenarios produce explainable scheduling recommendations. A single unusual reading does not unnecessarily trigger repeated changes. | ⬜ Pending |
+| `CENTRAL-05` | **P1** | Create APIs for system health, alerts, current routes, scheduling recommendations and simulation commands. Provide the information Danial needs for passenger and operator interfaces.<br><br>**Done when:** Valid API requests return the expected information. Operator commands are accepted only through the appropriate backend endpoints. | ⬜ Pending |
+| `CENTRAL-06` | **P1** | Test database updates, bus information, ETA calculations, scheduling recommendations, API responses and invalid requests. Include cases with missing or stale regional data.<br><br>**Done when:** Tests confirm correct API responses, current-state consistency and appropriate error handling. | ⬜ Pending |
+| `CENTRAL-07` | **P1** | Build an A-to-B journey planner. Given a starting stop and destination, find suitable bus routes, available buses and supported transfers. Calculate estimated waiting, riding and total journey times. Find valid journeys using the selected city's routes and stops.<br><br>**Done when:** Valid A-to-B searches return usable journey options. Invalid or unreachable stops return clear results. Transfer and travel times are calculated without double-counting delays. Journey results use the selected city; stops from another city are not combined into unsupported trips. | ⬜ Pending |
+| `CENTRAL-08` | **P1** | Connect scheduling decisions to Zachary's simulator. Allow an approved scheduling decision to request more buses or change departure frequency.<br><br>**Done when:** A scheduling command changes the simulated dispatch plan. The central server receives updated information confirming the change. | ⬜ Pending |
+| `CENTRAL-09` | **P1** | Add role-based access and privacy safeguards. Passengers may view public transit information, while authorized operators can access management features and send simulation commands.<br><br>**Done when:** Unauthorized users cannot execute operator-only actions. Access checks occur in the backend, and unnecessary personal information is not stored. | ⬜ Pending |
+| `CENTRAL-10` | **P2** | Compare predicted bus arrivals against simulated arrival times. Evaluate how scheduling recommendations affect passenger waiting times and route overcrowding.<br><br>**Done when:** Recorded results show ETA errors and demand-response outcomes under normal and delayed scenarios. | ⬜ Pending |
+| `CENTRAL-11` | **P2** | Separate backend functionality into clear modules for data ingestion, database operations, route management, scheduling, recommendations and APIs. Avoid tightly coupling unrelated functions.<br><br>**Done when:** Modules can be tested independently, existing APIs continue working, and responsibilities are clearly separated. | ⬜ Pending |
+| `CENTRAL-12` | **P1** | Build suggestions.py to rank suitable A-to-B journeys. Compare waiting time, traffic-adjusted riding time, occupancy and transfers. Explain why one bus or route is recommended over alternatives.<br><br>**Done when:** A valid journey search returns a recommended option and alternatives. The result includes estimated journey time, crowding information and a clear reason for the recommendation. | ⬜ Pending |
+
+CENTRAL-01, CENTRAL-02 and CENTRAL-03 remain partial until their completion criteria are verified.
 
 </details>
 
 <details>
 <summary><strong>Danial — Passenger App & Operator Dashboard</strong> — 11 tickets</summary>
 
-| Ticket / priority | Task | Status |
-| --- | --- | --- |
-| `UI-01` · **P0** | Create passenger app and operator dashboard wireframes and frontend structure | ⬜ Pending |
-| `UI-02` · **P0** | Build passenger route map, bus-location displays, stops and occupancy components | ⬜ Pending |
-| `UI-03` · **P0** | Integrate frontend with Carson's APIs to display live bus information | ⬜ Pending |
-| `UI-04` · **P1** | Implement arrival estimates, system health, alerts and operator monitoring | ⬜ Pending |
-| `UI-05` · **P1** | Develop simulation controls for demand surges, delays, faults and server failures | ⬜ Pending |
-| `UI-06` · **P1** | Test passenger/operator interfaces and capture integration screenshots | ⬜ Pending |
-| `UI-07` · **P1** | Implement passenger origin/destination search and route recommendations | ⬜ Pending |
-| `UI-08` · **P1** | Display regional topology, primary/backup edge status and failover alerts | ⬜ Pending |
-| `UI-09` · **P2** | Create peak/off-peak performance and dispatch recommendation visualizations | ⬜ Pending |
-| `UI-10` · **P2** | Prepare complete frontend demonstration walkthrough and evidence screenshots | ⬜ Pending |
-| `UI-11` · **P1** | Display intelligent recommendations, alternative buses, waiting times and crowding information | ⬜ Pending |
+Build one web application containing three interfaces: Passenger Journey Planner, Operator Dashboard and Simulation Control Panel.
 
-Report deliverables: Frontend architecture, passenger dashboard, operator dashboard, simulation controls, screenshots, user flows and usability testing.
+| Ticket | Priority | Description and completion criteria | Status |
+| --- | --- | --- | --- |
+| `UI-01` | **P0** | Build the main web application with navigation between Passenger Planner, Operator Dashboard and Simulation Controls. Use consistent layouts and make the pages usable on desktop and mobile.<br><br>**Done when:** All three pages open and navigation works. Passenger and operator views are clearly separated. | ⬜ Pending |
+| `UI-02` | **P0** | Create a passenger map showing bus locations, routes, stops, bus IDs and occupancy. Allow passengers to select a bus or stop to view additional information. Allow passengers to select a city and view that city's routes, stops and buses.<br><br>**Done when:** Valid buses display at the correct locations. Missing or invalid positions are not presented as live information. Changing city refreshes the map without retaining live buses from the previous city. | ⬜ Pending |
+| `UI-03` | **P0** | Connect the frontend to Carson's APIs. Retrieve live bus locations, routes, occupancy and other available information. Refresh the display as the central server receives new updates.<br><br>**Done when:** Bus movements appear automatically. Loading, missing data and API errors are handled without crashing the application. | ⬜ Pending |
+| `UI-04` | **P1** | Build the operator dashboard showing active buses, routes, regional occupancy, traffic delays, arrival estimates, server health and alerts.<br><br>**Done when:** Operators can identify crowded routes, delayed buses, inactive services and reported system problems. | ⬜ Pending |
+| `UI-05` | **P1** | Build the Simulation Control Panel. Provide controls to start/pause simulations, change demand, introduce traffic delays, simulate sensor faults and trigger regional server failures.<br><br>**Done when:** Valid operator commands reach the backend and produce the intended changes. Invalid commands show understandable error messages. | ⬜ Pending |
+| `UI-06` | **P1** | Test passenger searches, bus displays, API updates, missing information, invalid inputs, simulation controls and user permissions.<br><br>**Done when:** Important user flows work, invalid actions are handled correctly and the UI remains functional during API failures. | ⬜ Pending |
+| `UI-07` | **P1** | Allow passengers to choose a starting stop and destination. Display suitable A-to-B routes, available buses, stops and supported transfers. Use the passenger's selected city to filter origin/destination stops, routes and available buses.<br><br>**Done when:** Valid journeys are shown with estimated durations. Unknown stops, identical locations and unavailable journeys receive clear messages. Journey searches and results stay within the selected city. | ⬜ Pending |
+| `UI-08` | **P1** | Display regions, edge servers, server health, workload distribution and failover events. Include additional edge instances when reported by the backend.<br><br>**Done when:** Operators can distinguish healthy, overloaded, failed and recovering servers. Server status reflects backend information rather than assumed values. | ⬜ Pending |
+| `UI-09` | **P2** | Add a simple comparison between normal and peak-hour operations. Display demand changes, traffic delays, busy routes and scheduling recommendations.<br><br>**Done when:** Comparisons use actual simulation or backend results and are labelled clearly. | ⬜ Pending |
+| `UI-10` | **P2** | Prepare a complete demonstration showing journey search, live bus tracking, traffic delays, changing passenger demand and server failures.<br><br>**Done when:** The demonstration can be repeated reliably and shows the key features working together. | ⬜ Pending |
+| `UI-11` | **P1** | Show intelligent bus recommendations. Display the recommended bus, alternatives, waiting times, traffic delays, occupancy, transfers and estimated total journey time. Explain the recommendation in simple language.<br><br>**Done when:** Passengers can compare suitable options, understand why one is recommended and see when information is unavailable or outdated. | ⬜ Pending |
 
 </details>
 
@@ -217,27 +195,27 @@ Report deliverables: Frontend architecture, passenger dashboard, operator dashbo
 <details>
 <summary><strong>Integration, documentation and submission</strong> — 20 tickets</summary>
 
-| Ticket / priority | Task | Status |
-| --- | --- | --- |
-| `TEAM-01` · **P0** | Set up GitHub repository, branches, shared folders and development environment | ⬜ Pending |
-| `TEAM-02` · **P0** | Finalize telemetry schema, MQTT topics, regional JSON contracts and central API formats | ⬜ Pending |
-| `TEAM-03` · **P0** | Integrate bus simulator → MQTT → regional edge server | ⬜ Pending |
-| `TEAM-04` · **P0** | Integrate regional edge → central server and verify database updates | ⬜ Pending |
-| `TEAM-05` · **P0** | Integrate central server → passenger interface | ⬜ Pending |
-| `TEAM-06` · **P0** | Complete first end-to-end system integration test | ⬜ Pending |
-| `TEAM-07` · **P1** | Test delayed messages, duplicate events and regional edge failover | ⬜ Pending |
-| `TEAM-08` · **P1** | Test dynamic demand scheduling and simulation controls | ⬜ Pending |
-| `TEAM-09` · **P1** | Capture integration screenshots, metrics and testing evidence | ⬜ Pending |
-| `TEAM-10` · **P1** | Complete report sections, diagrams, findings, references and contribution matrix draft | ⬜ Pending |
-| `TEAM-11` · **P0** | Finalize README, verify clean installation, submit code and final report | ⬜ Pending |
-| `TEAM-12` · **P2** | Prepare demonstration script and individual speaking sections | ⬜ Pending |
-| `TEAM-13` · **P0** | Verify independent multi-process deployment across two regions | ⬜ Pending |
-| `TEAM-14` · **P1** | Test complete scheduling feedback loop, from demand detection to adjusted dispatch frequency | ⬜ Pending |
-| `TEAM-15` · **P1** | Test failure recovery during delayed, duplicated and temporarily unavailable messages | ⬜ Pending |
-| `TEAM-16` · **P2** | Run scalability benchmarks across different simulated fleet sizes | ⬜ Pending |
-| `TEAM-17` · **P2** | Compare system architecture and capabilities with existing public transit solutions | ⬜ Pending |
-| `TEAM-18` · **P1** | Evaluate security, privacy, fault tolerance, scalability and architectural limitations | ⬜ Pending |
-| `TEAM-19` · **P1** | Finalize individual contribution percentages and supporting implementation evidence | ⬜ Pending |
-| `TEAM-20` · **P2** | Create PowerPoint slides, rehearse the 10-minute presentation and prepare Q&A answers | ⬜ Pending |
+| Ticket | Priority | Task | Status |
+| --- | --- | --- | --- |
+| `TEAM-01` | **P0** | Set up GitHub repository, branches, shared folders and development environment | ⬜ Pending |
+| `TEAM-02` | **P0** | Finalize telemetry schema, MQTT topics, regional JSON contracts and central API formats | ⬜ Pending |
+| `TEAM-03` | **P0** | Integrate bus simulator → MQTT → regional edge server | ⬜ Pending |
+| `TEAM-04` | **P0** | Integrate regional edge → central server and verify database updates | ⬜ Pending |
+| `TEAM-05` | **P0** | Integrate central server → passenger interface | ⬜ Pending |
+| `TEAM-06` | **P0** | Complete first end-to-end system integration test | ⬜ Pending |
+| `TEAM-07` | **P1** | Test delayed messages, duplicate events and regional edge failover | ⬜ Pending |
+| `TEAM-08` | **P1** | Test dynamic demand scheduling and simulation controls | ⬜ Pending |
+| `TEAM-09` | **P1** | Capture integration screenshots, metrics and testing evidence | ⬜ Pending |
+| `TEAM-10` | **P1** | Complete report sections, diagrams, findings, references and contribution matrix draft | ⬜ Pending |
+| `TEAM-11` | **P0** | Finalize README, verify clean installation, submit code and final report | ⬜ Pending |
+| `TEAM-12` | **P2** | Prepare demonstration script and individual speaking sections | ⬜ Pending |
+| `TEAM-13` | **P0** | Verify independent multi-process deployment across two regions | ⬜ Pending |
+| `TEAM-14` | **P1** | Test complete scheduling feedback loop, from demand detection to adjusted dispatch frequency | ⬜ Pending |
+| `TEAM-15` | **P1** | Test failure recovery during delayed, duplicated and temporarily unavailable messages | ⬜ Pending |
+| `TEAM-16` | **P2** | Run scalability benchmarks across different simulated fleet sizes | ⬜ Pending |
+| `TEAM-17` | **P2** | Compare system architecture and capabilities with existing public transit solutions | ⬜ Pending |
+| `TEAM-18` | **P1** | Evaluate security, privacy, fault tolerance, scalability and architectural limitations | ⬜ Pending |
+| `TEAM-19` | **P1** | Finalize individual contribution percentages and supporting implementation evidence | ⬜ Pending |
+| `TEAM-20` | **P2** | Create PowerPoint slides, rehearse the 10-minute presentation and prepare Q&A answers | ⬜ Pending |
 
 </details>
