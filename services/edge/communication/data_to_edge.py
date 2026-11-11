@@ -1,7 +1,6 @@
-"""MQTT ingress boundary: decode, validate and queue accepted telemetry.
-
-The broker client is imported only when start() runs. Consequently the
-validation tests can run without a broker or the Paho package installed.
+"""Take input from the publisher and validate it so it is ready for the edge
+server to do some processing on it. Valid messages are added to the queue,
+and invalid messages are rejected.
 """
 
 from __future__ import annotations
