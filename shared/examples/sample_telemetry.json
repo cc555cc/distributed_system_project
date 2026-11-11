@@ -1,0 +1,15 @@
+{
+  "bus_id": "BUS-001",
+  "route_id": "R1",
+  "region_id": "north",
+  "latitude": 43.945,
+  "longitude": -78.895,
+  "speed_kmh": 35.0,
+  "passengers": 32,
+  "capacity": 50,
+  "sequence_number": 1,
+  "lamport_clock": 1,
+  "next_stop_id": "STOP-03",
+  "sensor_status": "healthy",
+  "timestamp": "2026-11-10T15:00:00Z"
+}

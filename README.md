@@ -9,6 +9,7 @@ Intended data flow: **Bus simulator → MQTT broker → Regional edge services �
 ```text
 project/
 |-- services/
+|   |-- __init__.py
 |   |-- simulator/              # Zachary: simulation and telemetry
 |   |   |-- main.py
 |   |   `-- tests/
@@ -16,8 +17,14 @@ project/
 |   |   |-- mqtt_client.py      # existing central subscriber
 |   |   `-- tests/
 |   |-- edge/                   # Ali: regional processing and failover
+|   |   |-- __init__.py
 |   |   |-- main.py
+|   |   |-- mqtt_subscriber.py
+|   |   |-- validator.py
+|   |   |-- bus_registry.py
+|   |   |-- edge_server.py
 |   |   `-- tests/
+|   |       `-- test_mqtt_validator.py
 |   `-- central/                # Carson: API, ingestion and scheduling
 |       |-- main.py
 |       |-- routers/
@@ -27,6 +34,8 @@ project/
 |       `-- tests/
 |-- frontend/                   # Danial: passenger/operator UI
 |-- shared/
+|   |-- examples/
+|   |   `-- sample_telemetry.json
 |   |-- routes.json             # shared route definitions
 |   `-- schema/
 |       |-- schema.sql          # database tables and constraints
@@ -53,7 +62,24 @@ This tree reflects the current local workspace, excluding Git internals and gene
 | `carson` | `services/central/`; database SQL in `shared/schema/` |
 | `danial` | `frontend/` |
 
-Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The existing central subscriber is implemented; simulator, regional edge and frontend implementations remain unfinished.
+Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The existing central subscriber is implemented; EDGE-01 ingress and validation are implemented on `ali`; simulator, subsequent edge processing and frontend work remain unfinished.
+
+
+## EDGE-01 completed — ali branch
+
+Regional MQTT ingress, payload validation, temporary bus/route/region registry checks and a bounded queue are implemented. The callback-to-edge acceptance suite passes 49 cases, including invalid payloads, topic identity, geographic limits, oversized messages, queue overflow and reconnect callback resubscription. Live broker connection/recovery has not been verified; the broker integration check remains open under messaging/integration work.
+
+Use Python 3.11 or newer for this edge implementation:
+
+```powershell
+python -m pip install pytest "paho-mqtt>=2,<3"
+python -m pytest services/edge/tests -q
+python -m services.edge.edge_server
+```
+
+Start a local MQTT broker before the last command. Configuration uses `REGION_ID`, `EDGE_ID`, `MQTT_HOST` and `MQTT_PORT` (defaults: `north`, `north-edge-a`, `127.0.0.1`, `1883`). The sample message is in `shared/examples/sample_telemetry.json`; publish it to `transit/buses/north/BUS-001/telemetry`.
+
+These temporary fields/topics differ from central ingestion (`transit/<region_id>/bus/<bus_id>/state`). Shared-contract alignment belongs to TEAM-02 and forwarding/transformation to EDGE-03. Registry IDs are temporary fixtures, not database seed assignments or publisher authentication. EDGE-02 caching, ordering and occupancy calculations are not implemented. This completion note and the edge code stay on `ali` until integration.
 
 ## Branch workflow
 
@@ -126,7 +152,7 @@ Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams,
 
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
-| `EDGE-01` · **P0** | Build regional MQTT subscribers and validate incoming bus telemetry | ⬜ Pending |
+| `EDGE-01` · **P0** | Build regional MQTT subscribers and validate incoming bus telemetry | ✅ Done (`ali`; offline checks) |
 | `EDGE-02` · **P0** | Implement regional bus-state cache, route processing and occupancy calculations | ⬜ Pending |
 | `EDGE-03` · **P0** | Aggregate and forward validated regional telemetry to Carson's central server | ⬜ Pending |
 | `EDGE-04` · **P1** | Implement heartbeat monitoring and regional edge failure detection | ⬜ Pending |
