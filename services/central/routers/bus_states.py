@@ -26,7 +26,7 @@ def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> tuple
         reason = check_update(connection, bus_id, region_id, state)
         if reason is not None:
             return False, reason
-        
+
         cursor = connection.execute(
             """
             INSERT INTO bus_states (bus_id, lat, lon, speed, direction_id, next_stop_id,

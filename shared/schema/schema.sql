@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS regions;
 
 CREATE TABLE regions (
     region_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL, 
+    name TEXT NOT NULL,
     primary_edge TEXT NOT NULL,
     backup_edge TEXT NOT NULL,
     active_edge TEXT,
@@ -59,9 +59,9 @@ CREATE TABLE bus_states (
 CREATE TABLE ingestion_rejections (
     id           BIGSERIAL PRIMARY KEY,
     received_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    source       TEXT NOT NULL,          
-    region_id    TEXT,                   
-    bus_id       TEXT,                   
-    reason       TEXT NOT NULL,         
-    payload      JSONB                   
+    source       TEXT NOT NULL,
+    region_id    TEXT,
+    bus_id       TEXT,
+    reason       TEXT NOT NULL,
+    payload      JSONB
 );

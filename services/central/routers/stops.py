@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
-#get all stops 
+#get all stops
 @router.get("/stops")
 def get_all_stops():
     with psycopg.connect(db_url, row_factory=dict_row) as connection:

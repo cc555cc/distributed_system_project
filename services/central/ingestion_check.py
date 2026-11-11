@@ -1,4 +1,4 @@
-#runs check functions, return a reason for rejection 
+#runs check functions, return a reason for rejection
 def check_update(conn, bus_id: str, region_id: str, state) -> str | None:
     if not bus_in_region_check(conn, bus_id, region_id):
         return f"bus {bus_id} not in region"
@@ -46,7 +46,7 @@ def next_stop_check(conn, route_id: str, current_stop: str | None, next_stop: st
         return True
 
     for i in range(0,len(stop_ids)-1):
-        current_match = current_stop == stop_ids[i] 
+        current_match = current_stop == stop_ids[i]
         next_match = next_stop == stop_ids[i+1]
         if current_match and next_match:  #both must match to pass
             return True
@@ -76,6 +76,3 @@ def edge_server_validation_check(conn, region_id: str, edge_id: str) -> bool:
         (region_id, edge_id),
     ).fetchone()
     return row is not None
-
-
-
