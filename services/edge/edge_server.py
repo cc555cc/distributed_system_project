@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from queue import Empty
 
-from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
+from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.processing.processor import EdgeProcessor, ProcessingResult
 from services.edge.validation.validator import BusTelemetry
 

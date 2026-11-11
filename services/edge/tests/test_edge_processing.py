@@ -11,7 +11,7 @@ from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus as Status
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 from services.edge.validation.validator import parse_telemetry
-from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
+from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.edge_server import EdgeIngress
 
 

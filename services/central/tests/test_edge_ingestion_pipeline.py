@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 
 from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
-from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
+from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.edge_server import EdgeIngress
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
@@ -221,7 +221,7 @@ def test_percent_mapping_requires_exact_integer(pipeline):
 
 # ==================== THE ACTUAL AUTOMATIC RUNTIME LOOP ====================
 def test_runtime_loop_forwards_and_marks_queue_complete(pipeline, monkeypatch):
-    from services.edge.main import process_pending_messages
+    from services.edge.communication.data_to_edge import process_pending_messages
     source = telemetry()
     assert pipeline.subscriber.handle_raw_message("transit/buses/north/A1/telemetry", json.dumps(source).encode())
     original_get = pipeline.subscriber.messages.get

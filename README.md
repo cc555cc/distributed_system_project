@@ -16,10 +16,9 @@ project/
 |   |   |-- mqtt_client.py      # existing central subscriber
 |   |   `-- tests/
 |   |-- edge/                   # Ali: local ingress and processing
-|   |   |-- main.py             # runtime entry point
 |   |   |-- config.py           # network configuration and cache policy
 |   |   |-- edge_server.py      # accepted-message queue adapter
-|   |   |-- communication/      # mqtt_subscriber.py and edge_to_central.py
+|   |   |-- communication/      # data_to_edge.py and edge_to_central.py
 |   |   |-- validation/         # validator.py and bus_registry.py
 |   |   |-- cache/              # edge_state_cache.py
 |   |   |-- processing/         # processor.py: route, occupancy and statistics
@@ -71,7 +70,9 @@ EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 map
 
 ### Follow the data
 
-1. `communication/mqtt_subscriber.py` decodes incoming MQTT telemetry, validates it and queues accepted messages.
+There is no separate edge `main.py` or edge HTTP server. `communication/data_to_edge.py` runs the MQTT worker: receive, validate, queue and pass accepted readings through processing and forwarding. `communication/edge_to_central.py` owns outgoing validation and delivery. A running worker is still needed to keep MQTT connections alive; instance orchestration and balancing belong to later tickets.
+
+1. `communication/data_to_edge.py` decodes incoming MQTT telemetry, validates it and queues accepted messages.
 2. `edge_server.py` passes the queued reading to `processing/processor.py`. That file keeps the small route, occupancy, statistics and snapshot-building helpers together. `cache/edge_state_cache.py` stores bus states and remembered sequences, scoped by city/region/bus. Cache updates remain locked.
 3. `transformation/central_mapper.py` maps only the newly accepted bus update to the central contract. It does not resend every bus in a snapshot or invent missing status/clock values.
 4. `communication/edge_to_central.py` rechecks ownership, metadata and the shared model, then sends to `transit/<region_id>/bus/<bus_id>/state`.
@@ -109,7 +110,7 @@ $env:CITY_ID = "DURHAM"
 $env:REGION_ID = "west"
 $env:EDGE_ID = "edge-west-1"
 $env:CENTRAL_OCCUPANCY_UNIT = "passengers"
-python -m services.edge.main
+python -m services.edge.communication.data_to_edge
 ```
 
 The occupancy setting above is an explicit example, not evidence of Carson's approval. Start the broker and updated central receiver before the edge service. `MQTT_HOST`/`MQTT_PORT` default to `127.0.0.1`/`1883`; `CENTRAL_MQTT_HOST`/`CENTRAL_MQTT_PORT` can select a separate outbound broker. Cache settings remain `EDGE_MAX_BUSES` (1000), `EDGE_FRESHNESS_SECONDS` (30), `EDGE_EXPIRE_SECONDS` (300), `EDGE_MEDIUM_THRESHOLD` (50), and `EDGE_HIGH_THRESHOLD` (80).

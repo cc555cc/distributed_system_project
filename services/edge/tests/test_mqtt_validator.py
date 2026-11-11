@@ -13,7 +13,7 @@ from services.edge.edge_server import EdgeIngress
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.validation.bus_registry import BusRegistry, BusAssignment
-from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
+from services.edge.communication.data_to_edge import TelemetrySubscriber
 
 
 @dataclass

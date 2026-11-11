@@ -26,7 +26,7 @@ def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
     from fastapi.testclient import TestClient
 
     from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
-    from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
+    from services.edge.communication.data_to_edge import TelemetrySubscriber
     from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
     from services.edge.edge_server import EdgeIngress
     from services.edge.processing.processor import EdgeProcessor
