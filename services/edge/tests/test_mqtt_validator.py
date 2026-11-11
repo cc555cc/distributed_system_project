@@ -10,7 +10,10 @@ from dataclasses import dataclass
 import pytest
 
 from services.edge.edge_server import EdgeIngress
-from services.edge.mqtt_subscriber import TelemetrySubscriber
+from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
+from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
+from services.edge.validation.bus_registry import BusRegistry, BusAssignment
+from services.edge.communication.mqtt_subscriber import TelemetrySubscriber
 
 
 @dataclass
@@ -30,7 +33,11 @@ def subscriber() -> TelemetrySubscriber:
 @pytest.fixture
 def edge() -> EdgeIngress:
     """Real EDGE-01 receiver (not a mock), initially empty."""
-    return EdgeIngress(region_id="north")
+    network = NetworkConfig(BusRegistry({
+        "BUS-001": BusAssignment("north", "R1", "CITY-A", "north-edge-test"),
+        "BUS-002": BusAssignment("north", "R1", "CITY-A", "north-edge-test"),
+    }), (RouteDefinition("CITY-A", "north", "R1", ("STOP-01", "STOP-02", "STOP-03")),))
+    return EdgeIngress(EdgeProcessor(EdgeConfig("CITY-A", "north", "north-edge-test"), network))
 
 
 @pytest.fixture
@@ -69,7 +76,7 @@ def assert_never_reaches_edge(
     subscriber: TelemetrySubscriber, edge: EdgeIngress
 ) -> None:
     """Check the boundary, not just the validator's return value."""
-    assert edge.drain_pending(subscriber) == 0
+    assert edge.drain_pending(subscriber) == []
     assert edge.accepted == []
     assert subscriber.messages.empty()
 
@@ -81,7 +88,7 @@ def test_01_valid_data_reaches_edge(
     valid_data: dict[str, object],
 ) -> None:
     publish_to_callback(subscriber, valid_data)
-    assert edge.drain_pending(subscriber) == 1
+    assert [r.status for r in edge.drain_pending(subscriber)] == [ProcessingStatus.ACCEPTED]
     assert edge.accepted[0]["bus_id"] == "BUS-001"
 
 
@@ -179,7 +186,8 @@ def test_08_bus_with_wrong_region_is_rejected(
     valid_data: dict[str, object],
 ) -> None:
     south_subscriber = TelemetrySubscriber("south", "south-edge-test")
-    south_edge = EdgeIngress("south")
+    network = NetworkConfig(BusRegistry({}), ())
+    south_edge = EdgeIngress(EdgeProcessor(EdgeConfig("CITY-A", "south", "south-edge-test"), network))
     valid_data["region_id"] = "south"  # Topic and payload agree, registry does not.
     publish_to_callback(
         south_subscriber,
@@ -248,8 +256,8 @@ def test_11_multiple_valid_messages_reach_edge(
     second = dict(valid_data)
     second["sequence_number"] = 2
     publish_to_callback(subscriber, second)
-    assert edge.drain_pending(subscriber) == 2
-    assert [m["sequence_number"] for m in edge.accepted] == [1, 2]
+    assert [r.status for r in edge.drain_pending(subscriber)] == [ProcessingStatus.ACCEPTED] * 2
+    assert [m["sequence_number"] for m in edge.accepted] == [2]
 
 
 # TEST-12: One invalid message must not block the next valid message.
@@ -262,13 +270,11 @@ def test_12_invalid_followed_by_valid(
     broken["latitude"] = 1000
     publish_to_callback(subscriber, broken)
     publish_to_callback(subscriber, valid_data)
-    assert edge.drain_pending(subscriber) == 1
+    assert [r.status for r in edge.drain_pending(subscriber)] == [ProcessingStatus.ACCEPTED]
     assert edge.accepted[0]["latitude"] == 43.945
 
 
-# TODO TEST-13 (EDGE-02): send sequence 12 and then sequence 11;
-# verify the real edge-state cache rejects the stale update.
-# Do NOT implement here yet: EDGE-01 is stateless by design.
+# Sequence freshness and cache tests live in test_edge_processing.py.
 #
 # TODO TEST-14 (Julian/integration): start a real Mosquitto broker,
 # disconnect it, restart it and confirm subscriber reconnection,

@@ -8,7 +8,7 @@ import math
 from datetime import datetime
 from typing import NotRequired, TypedDict, cast
 
-from services.edge.bus_registry import BusRegistry
+from services.edge.validation.bus_registry import BusRegistry
 
 
 class BusTelemetry(TypedDict):
@@ -24,6 +24,8 @@ class BusTelemetry(TypedDict):
     capacity: int
     sequence_number: int
     timestamp: str
+    city_id: NotRequired[str]
+    direction_id: NotRequired[int]
     lamport_clock: NotRequired[int]
     heading_degrees: NotRequired[float]
     current_stop_id: NotRequired[str]
@@ -109,6 +111,11 @@ def parse_telemetry(
         if not isinstance(value, str) or not value.strip():
             errors.append(f"{key} must be a non-empty string")
 
+    if "city_id" in payload and (not isinstance(payload["city_id"], str) or not payload["city_id"].strip()):
+        errors.append("city_id must be a non-empty string")
+    if "direction_id" in payload and not _valid_integer(payload["direction_id"], 0):
+        errors.append("direction_id must be a non-negative integer")
+
     # The topic and payload must identify the same bus and regional stream.
     if payload["region_id"] != expected_region:
         errors.append("Payload region_id does not match MQTT topic")
@@ -169,7 +176,7 @@ def parse_telemetry(
     ):
         errors.extend(
             registry.check_identity(
-                payload["bus_id"], payload["region_id"], payload["route_id"]
+                payload["bus_id"], payload["region_id"], payload["route_id"], payload.get("city_id")
             )
         )
 

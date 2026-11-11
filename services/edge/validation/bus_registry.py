@@ -14,6 +14,14 @@ class BusAssignment:
 
     region_id: str
     route_id: str
+    city_id: str = "CITY-A"
+    edge_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not all(isinstance(x, str) and x.strip() for x in (self.city_id, self.region_id, self.route_id)):
+            raise ValueError("Bus assignment identifiers must be nonempty strings")
+        if self.edge_id is not None and (not isinstance(self.edge_id, str) or not self.edge_id.strip()):
+            raise ValueError("Edge owner must be a nonempty string")
 
 
 class BusRegistry:
@@ -22,8 +30,12 @@ class BusRegistry:
     def __init__(self, assignments: Mapping[str, BusAssignment]) -> None:
         self._assignments = dict(assignments)
 
+    def get(self, bus_id: str) -> BusAssignment | None:
+        """Resolve the single authoritative configured assignment."""
+        return self._assignments.get(bus_id)
+
     def check_identity(
-        self, bus_id: str, region_id: str, route_id: str
+        self, bus_id: str, region_id: str, route_id: str, city_id: str | None = None
     ) -> list[str]:
         """Return human-readable errors; empty list means a valid assignment."""
         assigned = self._assignments.get(bus_id)
@@ -31,6 +43,8 @@ class BusRegistry:
             return [f"Unknown bus ID: {bus_id}"]
 
         errors: list[str] = []
+        if city_id is not None and assigned.city_id != city_id:
+            errors.append("Bus is not assigned to declared city")
         if assigned.region_id != region_id:
             errors.append(f"Bus {bus_id} is not assigned to region {region_id}")
         if assigned.route_id != route_id:

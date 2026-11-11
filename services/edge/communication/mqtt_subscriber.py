@@ -9,8 +9,8 @@ import logging
 from queue import Full, Queue
 from typing import Any, Protocol
 
-from services.edge.bus_registry import DEFAULT_BUS_REGISTRY, BusRegistry
-from services.edge.validator import BusTelemetry, parse_telemetry
+from services.edge.validation.bus_registry import DEFAULT_BUS_REGISTRY, BusRegistry
+from services.edge.validation.validator import BusTelemetry, parse_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +36,14 @@ class TelemetrySubscriber:
         broker_port: int = 1883,
         registry: BusRegistry = DEFAULT_BUS_REGISTRY,
         queue_size: int = 1000,
+        city_id: str | None = None,
     ) -> None:
         if not region_id or not edge_id:
             raise ValueError("region_id and edge_id are required")
         if queue_size <= 0:
             raise ValueError("queue_size must be positive")
 
+        self.city_id = city_id
         self.region_id = region_id
         self.edge_id = edge_id
         self.broker_host = broker_host
@@ -74,7 +76,7 @@ class TelemetrySubscriber:
 
         try:
             decoded: object = json.loads(raw_payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, ValueError, RecursionError):
             logger.warning("Rejected message: malformed UTF-8 or JSON")
             return False
 
@@ -87,6 +89,11 @@ class TelemetrySubscriber:
         if telemetry is None:
             # Avoid logging raw, potentially sensitive or malformed payloads.
             logger.warning("Rejected telemetry: %s", "; ".join(errors))
+            return False
+
+        assignment = self.registry.get(telemetry["bus_id"])
+        if self.city_id is not None and (assignment is None or assignment.city_id != self.city_id):
+            logger.warning("Rejected telemetry: bus belongs to another city")
             return False
 
         try:
