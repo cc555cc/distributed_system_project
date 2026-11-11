@@ -67,7 +67,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **127 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **131 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
@@ -132,6 +132,14 @@ Only accepted new updates are staged. Stale, duplicate and conflicting readings 
 
 Freshness uses a monotonic clock. Cache entries expire only under the configured safe-capacity policy; sequence floors remain remembered during the process lifetime. Route progress uses reported stops, not GPS proximity. Stale/offline buses stay out of active totals, and unknown occupancy stays out of averages. No replication, failover, balancing, scaling, ETA, journey planning or scheduling was added.
 
+### Test ownership
+
+Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for 104 passing edge tests.
+
+Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Run `python -m pytest services/central/tests -q` for 27 passing tests and one skipped live test. These tests are preserved for central integration, not counted as completion of Carson's tickets.
+
+Production roles remain separate: `central_mapper.py` maps fields, `edge_to_central.py` sends, and `shared/schema/bus_state.py` is the common model. Carson's existing MQTT callback and ingestion functions receive the messages; the edge does not duplicate those central operations.
+
 ### End-to-end verification
 
 Offline tests execute the full code path: input decoding/validation, queue, processing, mapping, outgoing validation, central MQTT callback, real central SQL statements via a SQLite adapter, and API readback. They compare coordinates, speed, counts, clocks, timestamps, city/region/route context, crowding and summaries. They also check invalid types/identifiers, stale and duplicate messages, conflicts, broker-failure retries and the actual runtime forwarding loop. SQLite and the in-memory transport do not substitute for a live PostgreSQL/MQTT run.
@@ -142,7 +150,7 @@ An opt-in test is provided for dedicated test services:
 $env:EDGE_LIVE_DATABASE_URL = "postgresql://USER:PASSWORD@localhost:5432/TEST_DATABASE"
 $env:EDGE_LIVE_MQTT_HOST = "127.0.0.1"
 $env:EDGE_LIVE_MQTT_PORT = "1883"
-python -m pytest services/edge/tests/test_live_forwarding.py -q
+python -m pytest services/central/tests/test_live_edge_ingestion.py -q
 ```
 
 That test creates a unique PostgreSQL schema and unique bus/region/topic identifiers, sends telemetry over a real broker, reads the central database/API result and removes only its test schema. It requires permission to create/drop a schema. It is skipped when the database URL is absent. The Docker engine was unavailable in this environment, so **live delivery has not been verified**. Complete that run and confirm field semantics before marking EDGE-03 Done.
