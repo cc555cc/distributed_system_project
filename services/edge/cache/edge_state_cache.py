@@ -16,7 +16,7 @@ class CacheEntry:
     accepted_at: float
 
 
-class BusStateCache:
+class EdgeStateCache:
     """Retain sequence floors when expired entries release state capacity.
 
     Floors are bounded by the static configured registry: unknown/unowned buses

@@ -1,5 +1,6 @@
 """The single EDGE-02 entry point; local transactions are serialized by a lock."""
 
+from collections import Counter
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
@@ -7,12 +8,86 @@ from datetime import datetime, timezone
 from enum import Enum
 import time
 
-from services.edge.cache.bus_state_cache import BusStateCache, CacheEntry
-from services.edge.config import EdgeConfig, NetworkConfig
-from services.edge.processing.occupancy_processor import calculate_occupancy
-from services.edge.processing.route_processor import RouteProcessor
-from services.edge.transformation.output_builder import build_output
+from services.edge.cache.edge_state_cache import EdgeStateCache, CacheEntry
+from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.validation.validator import BusTelemetry
+
+
+# Small processing helpers stay here until they need their own modules.
+
+def calculate_occupancy(telemetry: dict, medium: float, high: float) -> dict:
+    """Use reported counts only; conservatively suppress faulty sensor results."""
+    # Keep faulty sensor information unavailable rather than guessing a count.
+    if telemetry.get("sensor_status", "healthy") != "healthy":
+        return {"occupancy_percent": None, "crowding_status": "unavailable"}
+    percent = telemetry["passengers"] / telemetry["capacity"] * 100
+    status = "high" if percent >= high else "medium" if percent >= medium else "low"
+    return {"occupancy_percent": percent, "crowding_status": status}
+
+
+def aggregate(states: list[dict]) -> dict:
+    """Exclude stale/offline readings; keep unknown occupancy out of the mean."""
+    # Old or offline readings must not make the region look busier than it is.
+    active = [s for s in states if s["freshness"] == "current"
+              and s.get("sensor_status", "healthy") != "offline"]
+    # Unavailable readings stay out of the average; they are not zero occupancy.
+    occupancy = [s["occupancy_percent"] for s in active
+                 if s["occupancy_percent"] is not None]
+    return {
+        "scope": "edge_assigned_buses",
+        "active_buses": len(active),
+        "crowded_buses": sum(s["crowding_status"] == "high" for s in active),
+        "average_occupancy_percent": sum(occupancy) / len(occupancy) if occupancy else None,
+        "occupancy_samples": len(occupancy),
+        "active_buses_per_route": dict(Counter(s["route_id"] for s in active)),
+    }
+
+
+OUTPUT_SCHEMA_VERSION = "edge-state-proposal-v1"
+
+
+def build_output(config: EdgeConfig, states: list[dict]) -> dict:
+    """Return a JSON-serializable per-bus snapshot and explicitly scoped totals."""
+    # These totals cover this edge server, not every server in the region.
+    return {"schema_version": OUTPUT_SCHEMA_VERSION,
+            "city_id": config.city_id, "region_id": config.region_id,
+            "edge_id": config.edge_id, "buses": states, "statistics": aggregate(states)}
+
+
+class _RouteProcessor:
+    def __init__(self, routes: tuple[RouteDefinition, ...]) -> None:
+        self.routes = {}
+        self.positions = {}
+        for route in routes:
+            key = (route.city_id, route.region_id, route.route_id, route.direction_id)
+            if key in self.routes:
+                raise ValueError("Duplicate directional route")
+            self.routes[key] = route
+            # Build the stop lookup once instead of searching the route every time.
+            self.positions[key] = {stop: i for i, stop in enumerate(route.stops)}
+
+    def process(self, telemetry: dict, city: str, region: str) -> dict:
+        """Return only progress explicitly supported by reported stop IDs."""
+        direction = telemetry.get("direction_id", 0)
+        key = (city, region, telemetry["route_id"], direction)
+        route = self.routes.get(key)
+        if route is None:
+            raise ValueError("Route/city/region/direction is not configured")
+        positions = self.positions[key]
+        current, following = telemetry.get("current_stop_id"), telemetry.get("next_stop_id")
+        for stop in (current, following):
+            if stop is not None and stop not in positions:
+                raise ValueError("Reported stop does not belong to route")
+        if current is not None and following is not None:
+            if positions[following] != positions[current] + 1:
+                raise ValueError("Current and next stop must be adjacent in travel order")
+        # GPS proximity does not prove arrival. Use the reported current stop only.
+        progress = None
+        if current is not None and len(route.stops) > 1:
+            progress = positions[current] / (len(route.stops) - 1) * 100
+        return {"direction_id": direction, "current_stop_id": current,
+                "next_stop_id": following, "route_progress_percent": progress,
+                "progress_basis": "reported_current_stop" if progress is not None else "unavailable"}
 
 
 class ProcessingStatus(str, Enum):
@@ -40,8 +115,8 @@ class EdgeProcessor:
                  utc_now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
         self.config = config
         self.registry = network.registry
-        self.routes = RouteProcessor(network.routes)
-        self.cache = BusStateCache()
+        self.routes = _RouteProcessor(network.routes)
+        self.cache = EdgeStateCache()
         self.clock = clock
         self.utc_now = utc_now
 

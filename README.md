@@ -21,9 +21,9 @@ project/
 |   |   |-- edge_server.py      # accepted-message queue adapter
 |   |   |-- communication/      # mqtt_subscriber.py and edge_to_central.py
 |   |   |-- validation/         # validator.py and bus_registry.py
-|   |   |-- cache/              # bus_state_cache.py
-|   |   |-- processing/         # coordinator, route, occupancy, aggregation
-|   |   |-- transformation/     # local JSON builder and central field mapper
+|   |   |-- cache/              # edge_state_cache.py
+|   |   |-- processing/         # processor.py: route, occupancy and statistics
+|   |   |-- transformation/     # central_mapper.py: EDGE-03 mapping
 |   |   `-- tests/              # validation, processing and forwarding tests
 |   `-- central/                # Carson: API, ingestion and scheduling
 |       |-- main.py
@@ -72,12 +72,14 @@ EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 map
 ### Follow the data
 
 1. `communication/mqtt_subscriber.py` decodes incoming MQTT telemetry, validates it and queues accepted messages.
-2. `edge_server.py` and `processing/processor.py` check ownership, sequence numbers and capacity before calculating route state, occupancy and local statistics. City/region/bus keys remain separate and cache updates stay locked.
+2. `edge_server.py` passes the queued reading to `processing/processor.py`. That file keeps the small route, occupancy, statistics and snapshot-building helpers together. `cache/edge_state_cache.py` stores bus states and remembered sequences, scoped by city/region/bus. Cache updates remain locked.
 3. `transformation/central_mapper.py` maps only the newly accepted bus update to the central contract. It does not resend every bus in a snapshot or invent missing status/clock values.
 4. `communication/edge_to_central.py` rechecks ownership, metadata and the shared model, then sends to `transit/<region_id>/bus/<bus_id>/state`.
 5. Central's MQTT callback validates that same model, checks region/route/stop relationships and writes newer state to PostgreSQL. `GET /bus_states/{bus_id}` returns the stored core fields and edge metadata.
 
 `shared/schema/bus_state.py` is the single model imported by both edge and central. Existing core fields remain available; optional `edge_metadata` preserves city, region, edge, route, passenger count, capacity, source/processing timestamps, current stop, occupancy percentage, crowding, freshness, route progress and assignment-scoped statistics. Central stores it as JSONB instead of silently discarding extra information.
+
+EDGE-02 uses two main files: `cache/edge_state_cache.py` for state storage, and `processing/processor.py` for checks and calculations. Small helpers remain functions in the processor; separate modules can be added if a responsibility grows enough to need one. Communication and EDGE-03 mapping remain separate.
 
 ### Field mapping
 
