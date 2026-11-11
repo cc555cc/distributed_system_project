@@ -80,7 +80,7 @@ Existing central startup, ingestion and route lookup cover parts of CENTRAL-01�
 Status: ✅ Done · 🟨 Partial · ⬜ Pending. Mark a task Done only after its implementation and relevant checks are complete; commit and push the README update. Pending means completion has not been verified.
 
 <details>
-<summary><strong>Zachary — Bus Simulation</strong> — 10 tickets</summary>
+<summary><strong>Zachary — Bus Simulation</strong> — 11 tickets</summary>
 
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
@@ -94,13 +94,14 @@ Status: ✅ Done · 🟨 Partial · ⬜ Pending. Mark a task Done only after its
 | `BUS-08` · **P1** | Support configurable fleet sizes: 5, 10, 25 and 50 buses | ⬜ Pending |
 | `BUS-09` · **P1** | Implement simulated dispatch-frequency adjustments from Carson's scheduler | ⬜ Pending |
 | `BUS-10` · **P2** | Create reproducible simulation test scenarios with expected outputs | ⬜ Pending |
+| `BUS-11` · **P1** | Support registering new buses and sensor types using versioned configuration/schema objects | ⬜ Pending |
 
 Report deliverables: Telemetry schema, bus simulation design, route definitions, simulation scenarios, bus state diagram and test results.
 
 </details>
 
 <details>
-<summary><strong>Julian — MQTT & Synchronization</strong> — 10 tickets</summary>
+<summary><strong>Julian — MQTT & Synchronization</strong> — 11 tickets</summary>
 
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
@@ -114,13 +115,14 @@ Report deliverables: Telemetry schema, bus simulation design, route definitions,
 | `MQTT-08` · **P1** | Implement physical-clock synchronization assumptions and simulated clock-offset tests | ⬜ Pending |
 | `MQTT-09` · **P2** | Evaluate causal ordering, sequence numbers and delayed-message scenarios | ⬜ Pending |
 | `MQTT-10` · **P1** | Test MQTT broker interruption, reconnection and recovery limitations | ⬜ Pending |
+| `MQTT-11` · **P1** | Stress-test concurrent telemetry, Lamport clocks, per-bus ordering, queue delays and message throughput | ⬜ Pending |
 
 Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams, message-ordering examples, synchronization methods, security considerations and communication performance results.
 
 </details>
 
 <details>
-<summary><strong>Ali — Regional Edge Computing</strong> — 10 tickets</summary>
+<summary><strong>Ali — Regional Edge Computing</strong> — 12 tickets</summary>
 
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
@@ -134,13 +136,15 @@ Report deliverables: MQTT architecture, topic hierarchy, Lamport clock diagrams,
 | `EDGE-08` · **P1** | Develop workload migration and regional load-balancing policies | ⬜ Pending |
 | `EDGE-09` · **P1** | Implement primary/backup ownership coordination and state synchronization after recovery | ⬜ Pending |
 | `EDGE-10` · **P2** | Benchmark scalability, throughput, processing latency and failover duration | ⬜ Pending |
+| `EDGE-11` · **P2** | Implement threshold-based horizontal scaling: launch Edge C, transfer bus assignments and safely scale down | ⬜ Pending |
+| `EDGE-12` · **P1** | Extend workload ownership to dynamically added and cross-region servers, including synchronized recovery | ⬜ Pending |
 
 Report deliverables: Edge architecture diagram, validation design, caching methodology, heartbeat and failover sequence, replication and load-balancing algorithms, performance graphs and recovery tests.
 
 </details>
 
 <details>
-<summary><strong>Carson — Central Server & Scheduling</strong> — 10 tickets</summary>
+<summary><strong>Carson — Central Server & Scheduling</strong> — 12 tickets</summary>
 
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
@@ -154,13 +158,15 @@ Report deliverables: Edge architecture diagram, validation design, caching metho
 | `CENTRAL-08` · **P1** | Connect dynamic scheduling decisions to actual simulated dispatch-frequency adjustments | ⬜ Pending |
 | `CENTRAL-09` · **P1** | Implement role-based access restrictions and privacy safeguards | ⬜ Pending |
 | `CENTRAL-10` · **P2** | Evaluate ETA accuracy, scheduling effectiveness and demand-response performance | ⬜ Pending |
+| `CENTRAL-11` · **P2** | Separate ingestion, route/scheduling logic and API handling so individual workloads can scale | ⬜ Pending |
+| `CENTRAL-12` · **P1** | Build `suggestions.py` for ETA-, occupancy-, and demand-aware passenger recommendations | ⬜ Pending |
 
 Report deliverables: Database ER diagram, API architecture, route-management design, ETA algorithms, scheduling methodology, demand results, security/privacy and central-server performance.
 
 </details>
 
 <details>
-<summary><strong>Danial — Passenger App & Operator Dashboard</strong> — 10 tickets</summary>
+<summary><strong>Danial — Passenger App & Operator Dashboard</strong> — 11 tickets</summary>
 
 | Ticket / priority | Task | Status |
 | --- | --- | --- |
@@ -174,6 +180,7 @@ Report deliverables: Database ER diagram, API architecture, route-management des
 | `UI-08` · **P1** | Display regional topology, primary/backup edge status and failover alerts | ⬜ Pending |
 | `UI-09` · **P2** | Create peak/off-peak performance and dispatch recommendation visualizations | ⬜ Pending |
 | `UI-10` · **P2** | Prepare complete frontend demonstration walkthrough and evidence screenshots | ⬜ Pending |
+| `UI-11` · **P1** | Display intelligent recommendations, alternative buses, waiting times and crowding information | ⬜ Pending |
 
 Report deliverables: Frontend architecture, passenger dashboard, operator dashboard, simulation controls, screenshots, user flows and usability testing.
 
