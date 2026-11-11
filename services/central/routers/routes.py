@@ -6,6 +6,13 @@ from fastapi import APIRouter, HTTPException
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
+#list all
+@router.get("/routes")
+def get_all_route():
+    with psycopg.connection(db_url) as connection:
+        row = connection.execure("SELECT routes_id, name, region_id FROM routes ORDER BY route_id").fetchall()
+    return row
+
 #get a route's name and region by id
 @router.get("/routes/{route_id}")
 def get_route_info(route_id: str):
