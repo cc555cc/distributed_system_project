@@ -168,34 +168,33 @@ Report deliverables: Database ER diagram, API architecture, route-management des
 <details>
 <summary><strong>Danial — Passenger App & Operator Dashboard</strong> — 11 tickets</summary>
 
-### Week 1 — Build the basic UI (P0)
+### Build the basic UI (P0)
 
 | Ticket / priority | Task and definition of done | Status |
 | --- | --- | --- |
-| `UI-01` · **P0** | Create the main application layout. Build navigation between the Passenger Planner, Operator Dashboard and Simulation Controls. Use a consistent design, with separate passenger and operator views.<br>**Done when:** All three pages open correctly. Users can navigate between them. | ⬜ Pending |
-| `UI-02` · **P0** | Build the passenger map. Show bus locations, routes, stops, bus IDs and current occupancy. Allow passengers to select a bus or route to see more information.<br>**Done when:** Valid buses appear at the correct coordinates. Missing or invalid locations are not shown as live. | ⬜ Pending |
-| `UI-03` · **P0** | Connect the UI to Carson's API. Replace example data with live information from the central server. Refresh bus locations and route information automatically.<br>**Done when:** The UI updates when a bus moves. Loading, connection errors and missing data are handled clearly. | ⬜ Pending |
+| `UI-01` · **P0** | Create the main application layout. Build navigation between the Passenger Planner, Operator Dashboard and Simulation Controls. Use a consistent design, with separate passenger and operator views.<br><br>**Done when:** All three pages open correctly. Users can navigate between them. | ⬜ Pending |
+| `UI-02` · **P0** | Build the passenger map. Show bus locations, routes, stops, bus IDs and current occupancy. Allow passengers to select a bus or route to see more information.<br><br>**Done when:** Valid buses appear at the correct coordinates. Missing or invalid locations are not shown as live. | ⬜ Pending |
+| `UI-03` · **P0** | Connect the UI to Carson's API. Replace example data with live information from the central server. Refresh bus locations and route information automatically.<br><br>**Done when:** The UI updates when a bus moves. Loading, connection errors and missing data are handled clearly. | ⬜ Pending |
 
-### Week 2 — Smart transit features (P1)
-
-| Ticket / priority | Task and definition of done | Status |
-| --- | --- | --- |
-| `UI-04` · **P1** | Build the operator monitoring dashboard. Display active buses, routes, passenger demand, estimated arrivals, server health and system alerts.<br>**Done when:** Operators can view live transit information and identify crowded routes, delays and offline servers. | ⬜ Pending |
-| `UI-05` · **P1** | Build the simulation control panel. Add controls to start/pause the simulation, increase passenger demand, add traffic delays, simulate faulty sensors and trigger server failures.<br>**Done when:** Valid commands reach Carson's API and produce the expected simulation changes. Invalid commands show an error. | ⬜ Pending |
-| `UI-06` · **P1** | Test the interfaces. Test route searches, bus updates, API connections, missing data, invalid inputs, user permissions and simulation controls.<br>**Done when:** Tests pass and screenshots show the working application. | ⬜ Pending |
-| `UI-07` · **P1** | Build A-to-B journey search. Passengers select a starting stop and destination. Display routes and buses that can complete the trip, including transfers when needed.<br>**Done when:** Valid journeys are displayed. Unknown stops, unsupported trips and identical origin/destination selections receive clear messages. | ⬜ Pending |
-| `UI-08` · **P1** | Display edge server status. Show regions, active edge servers, workload distribution, failures and recovery. Include dynamically added servers such as Edge C.<br>**Done when:** Operators can distinguish healthy, overloaded, failed and recovering servers using backend information. | ⬜ Pending |
-| `UI-11` · **P1** | Display smart bus recommendations. Show the suggested bus, alternative buses, waiting time, traffic delay, crowding, transfers and total estimated journey time. Explain why a bus was recommended.<br>**Done when:** A passenger can compare suitable buses and understand which is faster or less crowded. Missing predictions are shown as unavailable rather than guessed. | ⬜ Pending |
-
-### Week 2 — Improvements and demonstration (P2)
+### Smart transit features (P1)
 
 | Ticket / priority | Task and definition of done | Status |
 | --- | --- | --- |
-| `UI-09` · **P2** | Show peak/off-peak comparisons. Display changes in passenger demand, busy routes, traffic delays and scheduling recommendations.<br>**Done when:** Operators can compare normal and peak-hour conditions using actual backend results. | ⬜ Pending |
-| `UI-10` · **P2** | Prepare the final demonstration. Test and show the three pages working together, including journey planning, live tracking, peak demand and server failover.<br>**Done when:** A complete demo can be presented, with screenshots and a repeatable walkthrough. | ⬜ Pending |
+| `UI-04` · **P1** | Build the operator monitoring dashboard. Display active buses, routes, passenger demand, estimated arrivals, server health and system alerts.<br><br>**Done when:** Operators can view live transit information and identify crowded routes, delays and offline servers. | ⬜ Pending |
+| `UI-05` · **P1** | Build the simulation control panel. Add controls to start/pause the simulation, increase passenger demand, add traffic delays, simulate faulty sensors and trigger server failures.<br><br>**Done when:** Valid commands reach Carson's API and produce the expected simulation changes. Invalid commands show an error. | ⬜ Pending |
+| `UI-06` · **P1** | Test the interfaces. Test route searches, bus updates, API connections, missing data, invalid inputs, user permissions and simulation controls.<br><br>**Done when:** Tests pass and screenshots show the working application. | ⬜ Pending |
+| `UI-07` · **P1** | Build A-to-B journey search. Passengers select a starting stop and destination. Display routes and buses that can complete the trip, including transfers when needed.<br><br>**Done when:** Valid journeys are displayed. Unknown stops, unsupported trips and identical origin/destination selections receive clear messages. | ⬜ Pending |
+| `UI-08` · **P1** | Display edge server status. Show regions, active edge servers, workload distribution, failures and recovery. Include dynamically added servers such as Edge C.<br><br>**Done when:** Operators can distinguish healthy, overloaded, failed and recovering servers using backend information. | ⬜ Pending |
+| `UI-11` · **P1** | Display smart bus recommendations. Show the suggested bus, alternative buses, waiting time, traffic delay, crowding, transfers and total estimated journey time. Explain why a bus was recommended.<br><br>**Done when:** A passenger can compare suitable buses and understand which is faster or less crowded. Missing predictions are shown as unavailable rather than guessed. | ⬜ Pending |
+
+### Improvements and demonstration (P2)
+
+| Ticket / priority | Task and definition of done | Status |
+| --- | --- | --- |
+| `UI-09` · **P2** | Show peak/off-peak comparisons. Display changes in passenger demand, busy routes, traffic delays and scheduling recommendations.<br><br>**Done when:** Operators can compare normal and peak-hour conditions using actual backend results. | ⬜ Pending |
+| `UI-10` · **P2** | Prepare the final demonstration. Test and show the three pages working together, including journey planning, live tracking, peak demand and server failover.<br><br>**Done when:** A complete demo can be presented, with screenshots and a repeatable walkthrough. | ⬜ Pending |
 
 
-Report deliverables: Frontend architecture, passenger dashboard, operator dashboard, simulation controls, screenshots, user flows and usability testing.
 
 </details>
 
