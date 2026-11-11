@@ -53,6 +53,7 @@ class BusRegistry:
 
 
 # TODO (Zachary integration): load assignments from agreed shared route data.
+# These are only legacy EDGE-01 fixtures. Runtime uses NetworkConfig.load().
 DEFAULT_BUS_REGISTRY = BusRegistry(
     {
         "BUS-001": BusAssignment(region_id="north", route_id="R1"),

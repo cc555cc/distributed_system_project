@@ -5,8 +5,10 @@ from collections import Counter
 
 def aggregate(states: list[dict]) -> dict:
     """Exclude stale/offline readings; keep unknown occupancy out of the mean."""
+    # Old or offline readings must not make the region look busier than it is.
     active = [s for s in states if s["freshness"] == "current"
               and s.get("sensor_status", "healthy") != "offline"]
+    # Unavailable readings stay out of the average; they are not zero occupancy.
     occupancy = [s["occupancy_percent"] for s in active
                  if s["occupancy_percent"] is not None]
     return {

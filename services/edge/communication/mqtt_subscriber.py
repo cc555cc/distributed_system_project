@@ -80,6 +80,7 @@ class TelemetrySubscriber:
             logger.warning("Rejected message: malformed UTF-8 or JSON")
             return False
 
+        # Check the decoded message before letting it enter the processing queue.
         telemetry, errors = parse_telemetry(
             decoded,
             expected_region=parts[2],
@@ -97,6 +98,7 @@ class TelemetrySubscriber:
             return False
 
         try:
+            # Do not block the MQTT callback while waiting for processing space.
             self.messages.put_nowait(telemetry)
         except Full:
             # EDGE-02/08 will add a deliberate backpressure/retry policy.

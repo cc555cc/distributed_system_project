@@ -73,6 +73,7 @@ class NetworkConfig:
             raise ValueError("Unsupported edge network schema")
         routes = tuple(RouteDefinition(**{**r, "stops": tuple(r["stops"])})
                        for r in data["routes"])
+        # Resolve route membership once, before the subscriber starts.
         route_keys = {(r.city_id, r.region_id, r.route_id, r.direction_id) for r in routes}
         if len(route_keys) != len(routes):
             raise ValueError("Duplicate directional route")

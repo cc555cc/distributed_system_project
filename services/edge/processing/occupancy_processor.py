@@ -3,6 +3,7 @@
 
 def calculate_occupancy(telemetry: dict, medium: float, high: float) -> dict:
     """Use reported counts only; conservatively suppress faulty sensor results."""
+    # Keep faulty sensor information unavailable rather than guessing a count.
     if telemetry.get("sensor_status", "healthy") != "healthy":
         return {"occupancy_percent": None, "crowding_status": "unavailable"}
     percent = telemetry["passengers"] / telemetry["capacity"] * 100

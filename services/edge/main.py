@@ -10,11 +10,9 @@ from services.edge.edge_server import EdgeIngress
 from services.edge.processing.processor import EdgeProcessor
 
 
-def main() -> None:
-    """Load network definitions once and consume the existing ingress queue."""
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    network = NetworkConfig.load(os.environ["EDGE_NETWORK_CONFIG"])
-    config = EdgeConfig(
+def load_edge_config() -> EdgeConfig:
+    """Read this server's city, region and cache settings from the environment."""
+    return EdgeConfig(
         city_id=os.environ["CITY_ID"], region_id=os.environ["REGION_ID"],
         edge_id=os.environ["EDGE_ID"],
         max_buses=int(os.getenv("EDGE_MAX_BUSES", "1000")),
@@ -23,25 +21,43 @@ def main() -> None:
         medium_threshold=float(os.getenv("EDGE_MEDIUM_THRESHOLD", "50")),
         high_threshold=float(os.getenv("EDGE_HIGH_THRESHOLD", "80")),
     )
-    subscriber = TelemetrySubscriber(
+
+
+def create_subscriber(config: EdgeConfig, network: NetworkConfig) -> TelemetrySubscriber:
+    """Use the same bus registry for incoming validation and local processing."""
+    return TelemetrySubscriber(
         config.region_id, config.edge_id, city_id=config.city_id,
         registry=network.registry, broker_host=os.getenv("MQTT_HOST", "127.0.0.1"),
         broker_port=int(os.getenv("MQTT_PORT", "1883")),
     )
+
+
+def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngress) -> None:
+    """Wait for checked telemetry and process it outside the MQTT callback."""
+    while True:
+        try:
+            telemetry = subscriber.messages.get(timeout=1.0)
+        except Empty:
+            continue
+        try:
+            result = receiver.process_telemetry(telemetry)
+            logging.info("Processing result=%s", result.status.value)
+            # result.output is returned to callers; no MQTT send yet.
+        finally:
+            subscriber.messages.task_done()
+
+
+def main() -> None:
+    """Start the subscriber, run local processing and clean up on shutdown."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # Load definitions once. Do not fetch routes from the database per message.
+    network = NetworkConfig.load(os.environ["EDGE_NETWORK_CONFIG"])
+    config = load_edge_config()
+    subscriber = create_subscriber(config, network)
     receiver = EdgeIngress(EdgeProcessor(config, network))
     subscriber.start()
     try:
-        while True:
-            try:
-                telemetry = subscriber.messages.get(timeout=1.0)
-            except Empty:
-                continue
-            try:
-                result = receiver.process_telemetry(telemetry)
-                logging.info("Processing result=%s", result.status.value)
-                # result.output is returned to callers; no MQTT send yet.
-            finally:
-                subscriber.messages.task_done()
+        process_pending_messages(subscriber, receiver)
     except KeyboardInterrupt:
         logging.info("Stopping edge ingestion")
     finally:

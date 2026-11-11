@@ -35,6 +35,7 @@ class EdgeIngress:
         results = []
         while True:
             try:
+                # The subscriber only queues checked messages; processing happens here.
                 item = subscriber.messages.get_nowait()
             except Empty:
                 return results

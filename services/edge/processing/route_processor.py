@@ -12,6 +12,7 @@ class RouteProcessor:
             if key in self.routes:
                 raise ValueError("Duplicate directional route")
             self.routes[key] = route
+            # Build the stop lookup once instead of searching the route every time.
             self.positions[key] = {stop: i for i, stop in enumerate(route.stops)}
 
     def process(self, telemetry: dict, city: str, region: str) -> dict:
@@ -29,6 +30,7 @@ class RouteProcessor:
         if current is not None and following is not None:
             if positions[following] != positions[current] + 1:
                 raise ValueError("Current and next stop must be adjacent in travel order")
+        # GPS proximity does not prove arrival. Use the reported current stop only.
         progress = None
         if current is not None and len(route.stops) > 1:
             progress = positions[current] / (len(route.stops) - 1) * 100

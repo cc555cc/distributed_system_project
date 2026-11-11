@@ -26,6 +26,7 @@ class BusStateCache:
     def __init__(self) -> None:
         self.lock = RLock()
         self._entries: dict[CacheKey, CacheEntry] = {}
+        # Remember the newest sequence even after an expired state is removed.
         self._sequence_floors: dict[CacheKey, int] = {}
 
     def snapshot(self) -> dict[CacheKey, CacheEntry]:
@@ -50,6 +51,7 @@ class BusStateCache:
             now: float, expiry: float) -> None:
         """Commit only after validation/calculations have succeeded, under lock."""
         if key not in self._entries and len(self._entries) >= maximum:
+            # Never remove a bus that is still inside its expiry timeout.
             expired = next(k for k, v in self._entries.items()
                            if now - v.accepted_at >= expiry)
             del self._entries[expired]

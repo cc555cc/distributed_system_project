@@ -19,7 +19,7 @@ project/
 |   |   |-- main.py             # runtime entry point
 |   |   |-- config.py           # network configuration and cache policy
 |   |   |-- edge_server.py      # accepted-message queue adapter
-|   |   |-- communication/      # existing mqtt_subscriber.py
+|   |   |-- communication/      # mqtt_subscriber.py and edge_to_central.py
 |   |   |-- validation/         # validator.py and bus_registry.py
 |   |   |-- cache/              # bus_state_cache.py
 |   |   |-- processing/         # coordinator, route, occupancy, aggregation
@@ -66,7 +66,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 ingress is preserved and reorganized by responsibility. EDGE-02 consumes its existing validated queue; it does not introduce another subscriber. The two test files contain 87 passing offline checks. Broker interruption/reconnection over a real network remains unverified.
+EDGE-01 ingress is preserved and reorganized by responsibility. EDGE-02 consumes its existing validated queue; it does not introduce another subscriber. The three test files contain 100 passing offline checks, including outgoing-contract checks against Carson's actual model. Broker interruption/reconnection over a real network remains unverified.
 
 ### Run and configure
 
@@ -98,7 +98,23 @@ The cache key is `(city_id, region_id, bus_id)`. A local lock covers sequence ch
 
 Output `schema_version: "edge-state-proposal-v1"` contains `city_id`, `region_id`, `edge_id`, a `buses` array and `statistics`. Each bus includes its identifiers, coordinates, speed, counts/capacity, stop/direction/progress fields, occupancy/crowding, sequence, source/processing timestamps and snapshot freshness. Statistics explicitly use `scope: "edge_assigned_buses"`, with active/crowded bus counts, average occupancy, occupancy sample count and active buses per route. Stale and offline buses are excluded from active totals. Faulty/offline sensor occupancy is unavailable and excluded from occupancy averages; raw readings remain identifiable rather than becoming invented estimates.
 
-This output is a proposal, not Carson's agreed ingestion format. City mappings, directional stop semantics, faulty-sensor interpretation, occupancy thresholds and the final output envelope need TEAM-02 agreement. No shared central API or MQTT format was silently replaced. EDGE-03 forwarding, monitoring, replication, failover, scaling, ETA, journey planning and scheduling remain outside this implementation.
+This output is a proposal, not Carson's agreed ingestion format. City mappings, directional stop semantics, faulty-sensor interpretation, occupancy thresholds and the final output envelope need TEAM-02 agreement. No shared central API or MQTT format was silently replaced. Automatic EDGE-03 forwarding, monitoring, replication, failover, scaling, ETA, journey planning and scheduling remain outside this implementation.
+
+### How to read the edge code
+
+Follow the files in this order:
+
+1. `main.py` loads configuration, creates the subscriber, then runs the queue-processing loop.
+2. `communication/mqtt_subscriber.py` receives MQTT bytes, decodes JSON, calls validation and queues accepted readings.
+3. `validation/validator.py` checks the measurements; `bus_registry.py` checks registered city/region/route assignments.
+4. `edge_server.py` passes a queued reading to `processing/processor.py`.
+5. The processor checks ownership and sequence, checks capacity, calculates route/occupancy data, then saves the new state under one lock. Rejected readings stop before the save.
+6. `regional_aggregator.py` calculates local statistics; `transformation/output_builder.py` returns the proposed JSON snapshot.
+7. `communication/edge_to_central.py` is the separate outgoing boundary. Its `validate_payload()` checks ownership and validates an explicitly mapped central payload against a supplied central Pydantic model; `connect()`, `send()` and `close()` manage MQTT. It rejects unsupported fields instead of silently dropping them. The edge does not import central database configuration at startup or maintain a second copy of Carson's model.
+
+The sender expects Carson's current per-bus fields (`lat`, `lon`, `speed`, `direction_id`, `next_stop_id`, `bus_status`, `occupancy`, `sequence_number`, `lamport`) and topic `transit/<region_id>/bus/<bus_id>/state`. It does not invent status, convert crowding to central occupancy, or fabricate a Lamport clock. The caller must supply agreed values from a current accepted update. Model validation checks the recipient's field requirements; it cannot prove every value is semantically correct or guarantee database acceptance.
+
+This sender is not connected to the automatic processing loop. The mapping of status, occupancy and clock fields, plus how city metadata reaches central, still needs agreement before full EDGE-03 integration. Broker receipts only confirm MQTT delivery to the broker, not a central database write. Live network integration remains unverified.
 
 ## Branch workflow
 
@@ -177,7 +193,7 @@ Each region initially has two active edge servers that divide processing respons
 | --- | --- | --- | --- |
 | `EDGE-01` | **P0** | Build regional MQTT subscribers that receive bus telemetry. Validate JSON structure, GPS, speed, capacity, timestamps, registered bus IDs and region assignments. Prevent invalid messages from entering the edge processing system. Validate that each bus belongs to the declared city and region.<br><br>**Done when:** Valid messages enter the processing queue. Invalid messages are rejected and logged safely. Tests 01–12 pass, including verification that invalid data does not reach edge processing. A bus claiming the wrong city or region is rejected before processing. | ✅ Done (`ali`; local tests) |
 | `EDGE-02` | **P0** | Create a regional cache storing the latest valid state of each bus. Track location, speed, current route, next stop and occupancy. Calculate occupancy percentage and crowding level. Check sequence numbers before updating cached information. Keep bus caches and regional calculations separated by city and region.<br><br>**Done when:** Each bus has an accurate latest state. Duplicate or older messages do not overwrite newer data. Occupancy calculations and stop information are correct. Expired information is marked stale. Updates and calculations for one city/region do not overwrite or mix with another. | ✅ Done (`ali`; local tests) |
-| `EDGE-03` | **P0** | Process and forward regional bus information to Carson. Send validated positions, speeds, occupancy, stop information, timestamps and regional summaries through the agreed MQTT topic. Include `city_id` and `region_id` in the JSON sent to Carson.<br><br>**Done when:** Carson receives correctly formatted regional information for multiple buses. Invalid or outdated data is not forwarded as current information, and Carson has enough data to calculate ETAs. Forwarded messages preserve the validated city and region identifiers. | ⬜ Pending |
+| `EDGE-03` | **P0** | Process and forward regional bus information to Carson. Send validated positions, speeds, occupancy, stop information, timestamps and regional summaries through the agreed MQTT topic. Include `city_id` and `region_id` in the JSON sent to Carson.<br><br>**Done when:** Carson receives correctly formatted regional information for multiple buses. Invalid or outdated data is not forwarded as current information, and Carson has enough data to calculate ETAs. Forwarded messages preserve the validated city and region identifiers. | 🟨 Partial (`ali`; outgoing boundary only) |
 | `EDGE-04` | **P1** | Implement heartbeat monitoring for all regional edge servers. Detect when one server stops responding and report whether it is healthy, unavailable or recovering.<br><br>**Done when:** Stopping an edge server triggers failure detection within a configured timeout. The failure status is reported to the monitoring system. | ⬜ Pending |
 | `EDGE-05` | **P1** | Run two active edge servers per region. Divide bus workloads between them and replicate the latest required state. If one server fails, transfer its workload to the surviving server.<br><br>**Done when:** Both servers process assigned buses during normal operation. After one fails, the survivor processes the region's buses using synchronized state without conflicting updates. | ⬜ Pending |
 | `EDGE-06` | **P1** | Test regional processing, validation, caching, duplicate messages, server failures, backup takeover and recovery. Include normal and failure scenarios.<br><br>**Done when:** Tests confirm that valid information is processed correctly, invalid information is rejected, and edge processing continues after a supported single-server failure. | ⬜ Pending |
