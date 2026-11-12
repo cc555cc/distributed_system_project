@@ -1,0 +1,519 @@
+{
+  "schema_version": "transit-network-v1",
+  "cities": [
+    {
+      "city_id": "CITY-A",
+      "name": "City A"
+    },
+    {
+      "city_id": "CITY-B",
+      "name": "City B"
+    }
+  ],
+  "regions": [
+    {
+      "region_id": "A-north",
+      "city_id": "CITY-A",
+      "name": "A north",
+      "primary_edge": "edge-A-north-1",
+      "backup_edge": "edge-A-north-2"
+    },
+    {
+      "region_id": "A-south",
+      "city_id": "CITY-A",
+      "name": "A south",
+      "primary_edge": "edge-A-south-1",
+      "backup_edge": "edge-A-south-2"
+    },
+    {
+      "region_id": "B-north",
+      "city_id": "CITY-B",
+      "name": "B north",
+      "primary_edge": "edge-B-north-1",
+      "backup_edge": "edge-B-north-2"
+    },
+    {
+      "region_id": "B-south",
+      "city_id": "CITY-B",
+      "name": "B south",
+      "primary_edge": "edge-B-south-1",
+      "backup_edge": "edge-B-south-2"
+    }
+  ],
+  "stops": [
+    {
+      "stop_id": "A-HOME",
+      "city_id": "CITY-A",
+      "name": "Home",
+      "lat": 43.9,
+      "lon": -78.9
+    },
+    {
+      "stop_id": "A-N1",
+      "city_id": "CITY-A",
+      "name": "Neighborhood 1",
+      "lat": 43.9,
+      "lon": -78.899
+    },
+    {
+      "stop_id": "A-N2",
+      "city_id": "CITY-A",
+      "name": "Neighborhood 2",
+      "lat": 43.9,
+      "lon": -78.898
+    },
+    {
+      "stop_id": "A-N3",
+      "city_id": "CITY-A",
+      "name": "Neighborhood 3",
+      "lat": 43.9,
+      "lon": -78.897
+    },
+    {
+      "stop_id": "A-SCHOOL",
+      "city_id": "CITY-A",
+      "name": "School",
+      "lat": 43.901,
+      "lon": -78.9
+    },
+    {
+      "stop_id": "A-PARK",
+      "city_id": "CITY-A",
+      "name": "Park",
+      "lat": 43.901,
+      "lon": -78.899
+    },
+    {
+      "stop_id": "A-MALL",
+      "city_id": "CITY-A",
+      "name": "Mall",
+      "lat": 43.901,
+      "lon": -78.898
+    },
+    {
+      "stop_id": "A-STATION",
+      "city_id": "CITY-A",
+      "name": "Station",
+      "lat": 43.901,
+      "lon": -78.897
+    },
+    {
+      "stop_id": "A-UNIVERSITY",
+      "city_id": "CITY-A",
+      "name": "University",
+      "lat": 43.902,
+      "lon": -78.9
+    },
+    {
+      "stop_id": "A-CASINO",
+      "city_id": "CITY-A",
+      "name": "Casino",
+      "lat": 43.902,
+      "lon": -78.899
+    },
+    {
+      "stop_id": "A-AMUSEMENT",
+      "city_id": "CITY-A",
+      "name": "Amusement Park",
+      "lat": 43.902,
+      "lon": -78.898
+    },
+    {
+      "stop_id": "A-RESTAURANT",
+      "city_id": "CITY-A",
+      "name": "Restaurant",
+      "lat": 43.902,
+      "lon": -78.897
+    },
+    {
+      "stop_id": "B-HOME",
+      "city_id": "CITY-B",
+      "name": "Home",
+      "lat": 43.92,
+      "lon": -78.86
+    },
+    {
+      "stop_id": "B-N1",
+      "city_id": "CITY-B",
+      "name": "Neighborhood 1",
+      "lat": 43.92,
+      "lon": -78.859
+    },
+    {
+      "stop_id": "B-N2",
+      "city_id": "CITY-B",
+      "name": "Neighborhood 2",
+      "lat": 43.92,
+      "lon": -78.858
+    },
+    {
+      "stop_id": "B-N3",
+      "city_id": "CITY-B",
+      "name": "Neighborhood 3",
+      "lat": 43.92,
+      "lon": -78.857
+    },
+    {
+      "stop_id": "B-SCHOOL",
+      "city_id": "CITY-B",
+      "name": "School",
+      "lat": 43.921,
+      "lon": -78.86
+    },
+    {
+      "stop_id": "B-PARK",
+      "city_id": "CITY-B",
+      "name": "Park",
+      "lat": 43.921,
+      "lon": -78.859
+    },
+    {
+      "stop_id": "B-MALL",
+      "city_id": "CITY-B",
+      "name": "Mall",
+      "lat": 43.921,
+      "lon": -78.858
+    },
+    {
+      "stop_id": "B-STATION",
+      "city_id": "CITY-B",
+      "name": "Station",
+      "lat": 43.921,
+      "lon": -78.857
+    },
+    {
+      "stop_id": "B-UNIVERSITY",
+      "city_id": "CITY-B",
+      "name": "University",
+      "lat": 43.922,
+      "lon": -78.86
+    },
+    {
+      "stop_id": "B-CASINO",
+      "city_id": "CITY-B",
+      "name": "Casino",
+      "lat": 43.922,
+      "lon": -78.859
+    },
+    {
+      "stop_id": "B-AMUSEMENT",
+      "city_id": "CITY-B",
+      "name": "Amusement Park",
+      "lat": 43.922,
+      "lon": -78.858
+    },
+    {
+      "stop_id": "B-RESTAURANT",
+      "city_id": "CITY-B",
+      "name": "Restaurant",
+      "lat": 43.922,
+      "lon": -78.857
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "A-R1",
+      "name": "City A route 1",
+      "city_id": "CITY-A",
+      "region_id": "A-north",
+      "served_city_ids": [
+        "CITY-A"
+      ],
+      "intercity": false,
+      "stops": [
+        "A-HOME",
+        "A-N1",
+        "A-SCHOOL",
+        "A-MALL",
+        "A-STATION"
+      ]
+    },
+    {
+      "route_id": "A-R2",
+      "name": "City A route 2",
+      "city_id": "CITY-A",
+      "region_id": "A-south",
+      "served_city_ids": [
+        "CITY-A"
+      ],
+      "intercity": false,
+      "stops": [
+        "A-N2",
+        "A-PARK",
+        "A-UNIVERSITY",
+        "A-RESTAURANT",
+        "A-STATION"
+      ]
+    },
+    {
+      "route_id": "A-R3",
+      "name": "City A route 3",
+      "city_id": "CITY-A",
+      "region_id": "A-north",
+      "served_city_ids": [
+        "CITY-A"
+      ],
+      "intercity": false,
+      "stops": [
+        "A-N3",
+        "A-SCHOOL",
+        "A-PARK",
+        "A-MALL",
+        "A-STATION"
+      ]
+    },
+    {
+      "route_id": "A-R4",
+      "name": "City A route 4",
+      "city_id": "CITY-A",
+      "region_id": "A-south",
+      "served_city_ids": [
+        "CITY-A"
+      ],
+      "intercity": false,
+      "stops": [
+        "A-HOME",
+        "A-N2",
+        "A-UNIVERSITY",
+        "A-CASINO",
+        "A-STATION"
+      ]
+    },
+    {
+      "route_id": "A-R5",
+      "name": "City A route 5",
+      "city_id": "CITY-A",
+      "region_id": "A-south",
+      "served_city_ids": [
+        "CITY-A"
+      ],
+      "intercity": false,
+      "stops": [
+        "A-N3",
+        "A-MALL",
+        "A-AMUSEMENT",
+        "A-RESTAURANT",
+        "A-STATION"
+      ]
+    },
+    {
+      "route_id": "B-R1",
+      "name": "City B route 1",
+      "city_id": "CITY-B",
+      "region_id": "B-north",
+      "served_city_ids": [
+        "CITY-B"
+      ],
+      "intercity": false,
+      "stops": [
+        "B-HOME",
+        "B-N1",
+        "B-SCHOOL",
+        "B-MALL",
+        "B-STATION"
+      ]
+    },
+    {
+      "route_id": "B-R2",
+      "name": "City B route 2",
+      "city_id": "CITY-B",
+      "region_id": "B-south",
+      "served_city_ids": [
+        "CITY-B"
+      ],
+      "intercity": false,
+      "stops": [
+        "B-N2",
+        "B-PARK",
+        "B-UNIVERSITY",
+        "B-RESTAURANT",
+        "B-STATION"
+      ]
+    },
+    {
+      "route_id": "B-R3",
+      "name": "City B route 3",
+      "city_id": "CITY-B",
+      "region_id": "B-north",
+      "served_city_ids": [
+        "CITY-B"
+      ],
+      "intercity": false,
+      "stops": [
+        "B-N3",
+        "B-SCHOOL",
+        "B-PARK",
+        "B-MALL",
+        "B-STATION"
+      ]
+    },
+    {
+      "route_id": "B-R4",
+      "name": "City B route 4",
+      "city_id": "CITY-B",
+      "region_id": "B-south",
+      "served_city_ids": [
+        "CITY-B"
+      ],
+      "intercity": false,
+      "stops": [
+        "B-HOME",
+        "B-N2",
+        "B-UNIVERSITY",
+        "B-CASINO",
+        "B-STATION"
+      ]
+    },
+    {
+      "route_id": "B-R5",
+      "name": "City B route 5",
+      "city_id": "CITY-B",
+      "region_id": "B-south",
+      "served_city_ids": [
+        "CITY-B"
+      ],
+      "intercity": false,
+      "stops": [
+        "B-N3",
+        "B-MALL",
+        "B-AMUSEMENT",
+        "B-RESTAURANT",
+        "B-STATION"
+      ]
+    },
+    {
+      "route_id": "AB-R6",
+      "name": "Shared city connection",
+      "city_id": "CITY-A",
+      "region_id": "A-north",
+      "served_city_ids": [
+        "CITY-A",
+        "CITY-B"
+      ],
+      "intercity": true,
+      "stops": [
+        "A-STATION",
+        "A-PARK",
+        "B-PARK",
+        "B-MALL",
+        "B-STATION"
+      ]
+    }
+  ],
+  "buses": [
+    {
+      "bus_id": "A-R1-BUS-01",
+      "city_id": "CITY-A",
+      "region_id": "A-north",
+      "route_id": "A-R1",
+      "edge_id": "edge-A-north-1",
+      "capacity": 50,
+      "direction_id": 0,
+      "scenario": {
+        "demand": "peak",
+        "traffic_factor": 1.0,
+        "sensor_failure_rate": 0.0
+      }
+    },
+    {
+      "bus_id": "A-R2-BUS-01",
+      "city_id": "CITY-A",
+      "region_id": "A-south",
+      "route_id": "A-R2",
+      "edge_id": "edge-A-south-1",
+      "capacity": 50,
+      "direction_id": 0,
+      "scenario": {
+        "demand": "off_peak",
+        "traffic_factor": 0.5,
+        "sensor_failure_rate": 0.0
+      }
+    },
+    {
+      "bus_id": "A-R3-BUS-01",
+      "city_id": "CITY-A",
+      "region_id": "A-north",
+      "route_id": "A-R3",
+      "edge_id": "edge-A-north-2",
+      "capacity": 50,
+      "direction_id": 0,
+      "scenario": {
+        "demand": "peak",
+        "traffic_factor": 1.0,
+        "sensor_failure_rate": 0.2
+      }
+    },
+    {
+      "bus_id": "A-R4-BUS-01",
+      "city_id": "CITY-A",
+      "region_id": "A-south",
+      "route_id": "A-R4",
+      "edge_id": "edge-A-south-2",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "A-R5-BUS-01",
+      "city_id": "CITY-A",
+      "region_id": "A-south",
+      "route_id": "A-R5",
+      "edge_id": "edge-A-south-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "B-R1-BUS-01",
+      "city_id": "CITY-B",
+      "region_id": "B-north",
+      "route_id": "B-R1",
+      "edge_id": "edge-B-north-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "B-R2-BUS-01",
+      "city_id": "CITY-B",
+      "region_id": "B-south",
+      "route_id": "B-R2",
+      "edge_id": "edge-B-south-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "B-R3-BUS-01",
+      "city_id": "CITY-B",
+      "region_id": "B-north",
+      "route_id": "B-R3",
+      "edge_id": "edge-B-north-2",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "B-R4-BUS-01",
+      "city_id": "CITY-B",
+      "region_id": "B-south",
+      "route_id": "B-R4",
+      "edge_id": "edge-B-south-2",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "B-R5-BUS-01",
+      "city_id": "CITY-B",
+      "region_id": "B-south",
+      "route_id": "B-R5",
+      "edge_id": "edge-B-south-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "AB-R6-BUS-01",
+      "city_id": "CITY-A",
+      "region_id": "A-north",
+      "route_id": "AB-R6",
+      "edge_id": "edge-A-north-1",
+      "capacity": 50,
+      "direction_id": 0
+    }
+  ]
+}

@@ -262,3 +262,69 @@ def test_outgoing_metadata_must_match_registered_ownership(pipeline, field):
     payload["edge_metadata"][field] = "wrong"
     with pytest.raises(ValueError, match="ownership"):
         pipeline.forwarder.sender.validate_payload("A1", payload)
+
+
+# ==================== ZACH'S ACTUAL CONFIGURED MESSAGES -> CENTRAL DATABASE/API ====================
+def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch):
+    from services.data_simulation.export_routes import seed_sql
+    from services.data_simulation.generate_data import generate_messages
+    from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused/offline")
+    from services.central.routers import bus_states
+    from services.central.main import app
+    from services.messaging import mqtt_client
+
+    database = tmp_path / "configured-network.sqlite"
+    network = load_network()
+    with sqlite3.connect(database) as connection:
+        connection.executescript("""
+            CREATE TABLE regions(region_id TEXT, name TEXT, primary_edge TEXT, backup_edge TEXT);
+            CREATE TABLE routes(route_id TEXT PRIMARY KEY, name TEXT, region_id TEXT);
+            CREATE TABLE stops(stop_id TEXT PRIMARY KEY, name TEXT, lat REAL, lon REAL);
+            CREATE TABLE buses(bus_id TEXT PRIMARY KEY, route_id TEXT);
+            CREATE TABLE route_stops(route_id TEXT, direction_id INTEGER, position INTEGER, stop_id TEXT);
+            CREATE TABLE bus_states(bus_id TEXT PRIMARY KEY, lat REAL, lon REAL, speed REAL,
+                direction_id INTEGER, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
+                sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
+        """)
+        connection.executescript(seed_sql(network))
+    monkeypatch.setattr(bus_states.psycopg, "connect", lambda url, **kwargs: TestDatabase(database, **kwargs))
+    edge_network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
+    api = TestClient(app)
+    processors = {}
+    for bus in network["buses"]:
+        owner = (bus["city_id"], bus["region_id"], bus["edge_id"])
+        if owner not in processors:
+            processors[owner] = EdgeIngress(EdgeProcessor(EdgeConfig(*owner), edge_network))
+        receiver = processors[owner]
+        sender = EdgeToCentral(receiver.processor.config, edge_network.registry, BusStateUpdate)
+        transport = LocalTransport(mqtt_client.on_message)
+        sender._client = transport
+        forwarder = CentralForwarder(receiver, sender, "passengers")
+        subscriber = TelemetrySubscriber(bus["region_id"], bus["edge_id"], city_id=bus["city_id"], registry=edge_network.registry)
+        readings = list(generate_messages(bus["route_id"], 0, bus["bus_id"], max_updates=3, update_seconds=0))
+        if bus["route_id"] == "AB-R6":
+            journey = list(generate_messages(bus["route_id"], 0, bus["bus_id"], max_updates=3000, update_seconds=0))
+            readings.append(next(source for source in journey if source["current_stop_id"] == "A-PARK"))
+            readings.append(next(source for source in journey if source["current_stop_id"] == "B-PARK"))
+        for source in readings:
+            topic = f"transit/buses/{bus['region_id']}/{bus['bus_id']}/telemetry"
+            assert subscriber.handle_raw_message(topic, json.dumps(source).encode())
+            queued = subscriber.messages.get_nowait()
+            try:
+                assert forwarder.process(queued).status == ProcessingStatus.ACCEPTED
+                assert forwarder.flush_one()
+            finally:
+                subscriber.messages.task_done()
+            response = api.get(f"/bus_states/{bus['bus_id']}")
+            assert response.status_code == 200
+            stored = response.json()
+            assert stored["sequence_number"] == source["sequence_number"]
+            assert stored["occupancy"] == source["passengers"]
+            assert stored["lat"] == source["latitude"]
+            assert stored["edge_metadata"]["city_id"] == bus["city_id"]
+            assert stored["edge_metadata"]["current_stop_city_id"] == source["current_stop_city_id"]
+        if bus["route_id"] == "AB-R6":
+            assert stored["edge_metadata"]["served_city_ids"] == ["CITY-A", "CITY-B"]
+            assert stored["edge_metadata"]["current_stop_city_id"] == "CITY-B"

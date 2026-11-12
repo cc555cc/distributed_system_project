@@ -24,6 +24,9 @@ class BusTelemetry(TypedDict):
     capacity: int
     sequence_number: int
     timestamp: str
+    schema_version: NotRequired[str]
+    current_stop_city_id: NotRequired[str]
+    next_stop_city_id: NotRequired[str]
     bus_status: NotRequired[str]
     city_id: NotRequired[str]
     direction_id: NotRequired[int]
@@ -162,7 +165,9 @@ def parse_telemetry(
         payload["heading_degrees"], 0, 359.999999
     ):
         errors.append("heading_degrees must be between 0 and less than 360")
-    for key in ("current_stop_id", "next_stop_id"):
+    if "schema_version" in payload and payload["schema_version"] != "bus-telemetry-v1":
+        errors.append("Unsupported telemetry schema version")
+    for key in ("current_stop_id", "next_stop_id", "current_stop_city_id", "next_stop_city_id"):
         if key in payload and (
             not isinstance(payload[key], str) or not payload[key].strip()
         ):

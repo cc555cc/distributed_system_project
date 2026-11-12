@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from shared.schema.network import NETWORK_VERSION, validate_network
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 
 
@@ -47,6 +48,8 @@ class RouteDefinition:
     route_id: str
     stops: tuple[str, ...]
     direction_id: int = 0
+    served_city_ids: tuple[str, ...] = ()
+    stop_city_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not all(isinstance(x, str) and x.strip() for x in
@@ -54,6 +57,10 @@ class RouteDefinition:
             raise ValueError("Route identifiers and stop IDs must be nonempty strings")
         if not self.stops or len(set(self.stops)) != len(self.stops):
             raise ValueError("A directional route needs distinct ordered stop IDs")
+        if self.stop_city_ids and len(self.stop_city_ids) != len(self.stops):
+            raise ValueError("Each route stop needs a matching city ID")
+        if self.stop_city_ids and not set(self.stop_city_ids) <= set(self.served_city_ids or (self.city_id,)):
+            raise ValueError("Stop city is outside the declared route coverage")
         if isinstance(self.direction_id, bool) or not isinstance(self.direction_id, int) or self.direction_id < 0:
             raise ValueError("direction_id must be a nonnegative integer")
 
@@ -69,6 +76,22 @@ class NetworkConfig:
     def load(cls, path: str | Path) -> "NetworkConfig":
         """Load proposal version 1; reject ambiguous assignments before startup."""
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if data.get("schema_version") == NETWORK_VERSION:
+            # Use the same network as Zach. A connector keeps one processing
+            # owner, but its stop list explicitly allows both served cities.
+            validate_network(data)
+            stops = {stop["stop_id"]: stop for stop in data["stops"]}
+            routes = []
+            for route in data["routes"]:
+                for direction in (0, 1):
+                    ordered = route["stops"] if direction == 0 else list(reversed(route["stops"]))
+                    routes.append(dict(city_id=route["city_id"], region_id=route["region_id"],
+                                       route_id=route["route_id"], direction_id=direction,
+                                       stops=tuple(ordered), served_city_ids=tuple(route["served_city_ids"]),
+                                       stop_city_ids=tuple(stops[stop]["city_id"] for stop in ordered)))
+            fields = ("bus_id", "city_id", "region_id", "route_id", "edge_id")
+            data = dict(schema_version="edge-network-proposal-v1", routes=routes,
+                        buses=[{field: bus[field] for field in fields} for bus in data["buses"]])
         if data.get("schema_version") != "edge-network-proposal-v1":
             raise ValueError("Unsupported edge network schema")
         routes = tuple(RouteDefinition(**{**r, "stops": tuple(r["stops"])})

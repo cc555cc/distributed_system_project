@@ -85,7 +85,13 @@ class _RouteProcessor:
         progress = None
         if current is not None and len(route.stops) > 1:
             progress = positions[current] / (len(route.stops) - 1) * 100
-        return {"direction_id": direction, "current_stop_id": current,
+        cities = dict(zip(route.stops, route.stop_city_ids or (route.city_id,) * len(route.stops)))
+        for field, stop in (("current_stop_city_id", current), ("next_stop_city_id", following)):
+            if field in telemetry and telemetry[field] != cities.get(stop):
+                raise ValueError("Reported stop city does not match the configured route")
+        return {"served_city_ids": list(route.served_city_ids or (route.city_id,)),
+                "current_stop_city_id": cities.get(current), "next_stop_city_id": cities.get(following),
+                "direction_id": direction, "current_stop_id": current,
                 "next_stop_id": following, "route_progress_percent": progress,
                 "progress_basis": "reported_current_stop" if progress is not None else "unavailable"}
 

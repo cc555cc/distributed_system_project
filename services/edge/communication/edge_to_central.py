@@ -1,29 +1,46 @@
-"""Check outgoing bus information and manage its MQTT connection to central.
+"""Validate and send processed bus data from the edge server to the central server through MQTT.
 
-CentralForwarder connects accepted processing to this sending boundary.
-Both edge and central use the model in shared/schema/bus_state.py; no database
-configuration needs to be imported by the edge service.
+CentralForwarder coordinates local processing, converts data into the central server's expected format, 
+and manages pending messages.
+
+EdgeToCentral validates outgoing data and handles MQTT communication.
+
+Both edge and central servers use the shared bus_state.py data format, so the edge server does not 
+need direct database access.
 """
 
+# Import standard libraries for data handling, logging, and type annotations
 from collections import OrderedDict
 import json
 import logging
 from typing import Any
-
 from pydantic import BaseModel
 
+
+# Import the EdgeConfig, BusRegistry, EdgeIngress, ProcessingResult, ProcessingStatus,
+# OccupancyUnit, and map_bus_update classes from their respective modules
+
+# So import the Edge Server Config
 from services.edge.config import EdgeConfig
+
+# Import the Registry Information for the Buses
 from services.edge.validation.bus_registry import BusRegistry
+
+# Import the Edge Processing and Ingress Classes For Incombing Data
 from services.edge.edge_server import EdgeIngress
+
+# Processing Result and Status for the Edge Processing
 from services.edge.processing.processor import ProcessingResult, ProcessingStatus
+
+# Import the Central Mapper for Occupancy Unit and Mapping Bus Updates
 from services.edge.transformation.central_mapper import OccupancyUnit, map_bus_update
 
 
 class EdgeToCentral:
     """Own the connection and check every payload again before publishing it."""
 
-    def __init__(self, config: EdgeConfig, registry: BusRegistry,
-                 contract: type[BaseModel]) -> None:
+    # Initalize EdgeToCentral with configuration, registry, and contract for outgoing data validation
+    def __init__(self, config: EdgeConfig, registry: BusRegistry, contract: type[BaseModel]) -> None:
         self.config = config
         self.registry = registry
         self.contract = contract

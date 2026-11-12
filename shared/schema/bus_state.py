@@ -35,6 +35,10 @@ class EdgeMetadata(BaseModel):
     region_id: str = Field(min_length=1)
     edge_id: str = Field(min_length=1)
     route_id: str = Field(min_length=1)
+    served_city_ids: list[str] = Field(default_factory=list)
+    current_stop_city_id: str | None = None
+    next_stop_city_id: str | None = None
+    telemetry_schema_version: str | None = None
     capacity: int = Field(gt=0)
     passengers: int = Field(ge=0)
     occupancy_unit: Literal["passengers", "percent"]

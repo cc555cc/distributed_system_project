@@ -28,6 +28,10 @@ def map_bus_update(output: dict, bus_id: str, occupancy_unit: OccupancyUnit) -> 
     metadata = {
         "city_id": output["city_id"], "region_id": output["region_id"],
         "edge_id": output["edge_id"], "route_id": bus["route_id"],
+        "served_city_ids": bus.get("served_city_ids", [output["city_id"]]),
+        "current_stop_city_id": bus.get("current_stop_city_id"),
+        "next_stop_city_id": bus.get("next_stop_city_id"),
+        "telemetry_schema_version": bus.get("schema_version"),
         "capacity": bus["capacity"], "passengers": bus["passengers"],
         "occupancy_unit": occupancy_unit, "current_stop_id": bus["current_stop_id"],
         "occupancy_percent": percent, "crowding_status": bus["crowding_status"],
