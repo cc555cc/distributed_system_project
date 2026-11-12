@@ -1,0 +1,168 @@
+"""Validate and send processed bus data from the edge server to the central server through MQTT.
+
+CentralForwarder coordinates local processing, converts data into the central server's expected format, 
+and manages pending messages.
+
+EdgeToCentral validates outgoing data and handles MQTT communication.
+
+Both edge and central servers use the shared bus_state.py data format, so the edge server does not 
+need direct database access.
+"""
+
+# Import standard libraries for data handling, logging, and type annotations
+from collections import OrderedDict
+import json
+import logging
+from typing import Any
+from pydantic import BaseModel
+
+
+# Import the EdgeConfig, BusRegistry, EdgeIngress, ProcessingResult, ProcessingStatus,
+# OccupancyUnit, and map_bus_update classes from their respective modules
+
+# So import the Edge Server Config
+from services.edge.config import EdgeConfig
+
+# Import the Registry Information for the Buses
+from services.edge.validation.bus_registry import BusRegistry
+
+# Import the Edge Processing and Ingress Classes For Incombing Data
+from services.edge.edge_server import EdgeIngress
+
+# Processing Result and Status for the Edge Processing
+from services.edge.processing.processor import ProcessingResult, ProcessingStatus
+
+# Import the Central Mapper for Occupancy Unit and Mapping Bus Updates
+from services.edge.transformation.central_mapper import OccupancyUnit, map_bus_update
+
+
+class EdgeToCentral:
+    """Own the connection and check every payload again before publishing it."""
+
+    # Initalize EdgeToCentral with configuration, registry, and contract for outgoing data validation
+    def __init__(self, config: EdgeConfig, registry: BusRegistry, contract: type[BaseModel]) -> None:
+        self.config = config
+        self.registry = registry
+        self.contract = contract
+        self._client: Any | None = None
+
+    def validate_payload(self, bus_id: str, payload: dict) -> str:
+        """Return JSON only when the bus is ours and Carson's model accepts it.
+
+        The caller supplies agreed central field names/values. This does not
+        guess bus status, Lamport values or what central means by occupancy.
+        """
+        assignment = self.registry.get(bus_id)
+        cfg = self.config
+        if assignment is None or (assignment.city_id, assignment.region_id, assignment.edge_id) != (
+                cfg.city_id, cfg.region_id, cfg.edge_id):
+            raise ValueError("Cannot send a bus assigned to another edge")
+
+        # Reject misspelled/unsupported fields instead of silently dropping them.
+        if not isinstance(payload, dict) or payload.keys() - self.contract.model_fields.keys():
+            raise ValueError("Payload contains unsupported central fields")
+
+        # Use the recipient's actual model, with no automatic string-to-number fixes.
+        checked = self.contract.model_validate(payload, strict=True)
+        metadata = getattr(checked, "edge_metadata", None)
+        if metadata is not None:
+            expected = (cfg.city_id, cfg.region_id, cfg.edge_id, assignment.route_id)
+            supplied = (metadata.city_id, metadata.region_id, metadata.edge_id, metadata.route_id)
+            if supplied != expected:
+                raise ValueError("Outgoing metadata differs from registered ownership")
+        # NaN and infinity are not valid JSON measurements.
+        return json.dumps(checked.model_dump(mode="json", exclude_none=True), allow_nan=False)
+
+    def connect(self, host: str, port: int = 1883) -> None:
+        """Open the outgoing MQTT connection when the caller explicitly asks."""
+        if self._client is not None:
+            raise RuntimeError("Central connection already started")
+        import paho.mqtt.client as mqtt
+
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            client_id=f"{self.config.edge_id}-to-central",
+        )
+        client.reconnect_delay_set(min_delay=1, max_delay=10)
+        try:
+            client.connect(host, port, keepalive=60)
+            client.loop_start()
+        except Exception:
+            client.disconnect()
+            raise
+        self._client = client
+
+    def send(self, bus_id: str, payload: dict, *, timeout: float = 5.0) -> None:
+        """Validate first, publish one bus state and wait for the broker receipt.
+
+        A broker receipt does not prove Carson stored the update in his database.
+        The caller must supply a current accepted update; the EDGE-02 snapshot
+        cannot be sent directly because it is a different proposed format.
+        """
+        encoded = self.validate_payload(bus_id, payload)
+        if self._client is None or not self._client.is_connected():
+            raise ConnectionError("Central MQTT connection is not ready")
+
+        # This is the topic Carson's existing subscriber listens to.
+        topic = f"transit/{self.config.region_id}/bus/{bus_id}/state"
+        receipt = self._client.publish(topic, encoded, qos=1, retain=False)
+        if receipt.rc != 0:
+            raise ConnectionError("MQTT broker did not accept the publish request")
+        receipt.wait_for_publish(timeout=timeout)
+        if not receipt.is_published():
+            raise TimeoutError("MQTT broker receipt timed out")
+
+    def close(self) -> None:
+        """Release the connection when this edge process stops."""
+        if self._client is not None:
+            try:
+                self._client.disconnect()
+            finally:
+                self._client.loop_stop()
+                self._client = None
+
+
+class CentralForwarder:
+    """Connect accepted local processing to sending; retry only the latest bus state."""
+
+    def __init__(self, receiver: EdgeIngress, sender: EdgeToCentral,
+                 occupancy_unit: OccupancyUnit) -> None:
+        if occupancy_unit not in ("passengers", "percent"):
+            raise ValueError("Set CENTRAL_OCCUPANCY_UNIT to passengers or percent")
+        self.receiver = receiver
+        self.sender = sender
+        self.occupancy_unit = occupancy_unit
+        self.pending: OrderedDict[str, tuple[dict, float]] = OrderedDict()
+
+    def process(self, telemetry: dict) -> ProcessingResult:
+        # Fail visibly rather than fill required central values with guesses.
+        if not telemetry.get("bus_status") or "lamport_clock" not in telemetry:
+            raise ValueError("Forwarding needs supplied bus_status and lamport_clock")
+        result = self.receiver.process_telemetry(telemetry)
+        if result.status == ProcessingStatus.ACCEPTED:
+            bus_id = telemetry["bus_id"]
+            # The new accepted reading replaces any pending older one, even if
+            # the new reading cannot be forwarded (for example a faulty sensor).
+            self.pending.pop(bus_id, None)
+            payload = map_bus_update(result.output, bus_id, self.occupancy_unit)
+            self.sender.validate_payload(bus_id, payload)
+            self.pending[bus_id] = (payload, self.receiver.processor.clock())
+        return result
+
+    def flush_one(self) -> bool:
+        """Try one current update per loop; a broker problem must not stop ingestion."""
+        if not self.pending:
+            return False
+        bus_id, (payload, accepted_at) = self.pending.popitem(last=False)
+        processor = self.receiver.processor
+        if processor.clock() - accepted_at >= processor.config.freshness_seconds:
+            logging.warning("Discarded expired outgoing update for bus=%s", bus_id)
+            return False
+        try:
+            self.sender.send(bus_id, payload)
+        except (ConnectionError, TimeoutError, RuntimeError, OSError):
+            # One slot per owned registered bus bounds memory. No event history.
+            self.pending[bus_id] = (payload, accepted_at)
+            logging.warning("Central delivery pending for bus=%s", bus_id)
+            return False
+        return True

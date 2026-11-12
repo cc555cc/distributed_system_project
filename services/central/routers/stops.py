@@ -6,10 +6,10 @@ from fastapi import APIRouter, HTTPException
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
-#get all stops 
+#get all stops
 @router.get("/stops")
 def get_all_stops():
-    with psycopg.connect(db_url) as connection:
+    with psycopg.connect(db_url, row_factory=dict_row) as connection:
         row = connection.execute("SELECT stop_id, name, lat, lon FROM stops ORDER BY stop_id").fetchall()
     return row
 
@@ -23,4 +23,3 @@ def get_stop_loc(stop_id: str):
     if row is None:
         raise HTTPException(status_code=404, detail="Stop not found")
     return row
-
