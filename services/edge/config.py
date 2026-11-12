@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from shared.schema.network import NETWORK_VERSION, validate_network
+from shared.schema.network import NETWORK_VERSION, validate_network, direction_stop_ids
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 
 
@@ -84,7 +84,7 @@ class NetworkConfig:
             routes = []
             for route in data["routes"]:
                 for direction in (0, 1):
-                    ordered = route["stops"] if direction == 0 else list(reversed(route["stops"]))
+                    ordered = direction_stop_ids(route, direction)
                     routes.append(dict(city_id=route["city_id"], region_id=route["region_id"],
                                        route_id=route["route_id"], direction_id=direction,
                                        stops=tuple(ordered), served_city_ids=tuple(route["served_city_ids"]),

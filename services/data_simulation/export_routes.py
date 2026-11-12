@@ -20,7 +20,7 @@ def seed_sql(network: dict) -> str:
         if isinstance(value, (int, float)):
             return str(value)
         return "'" + str(value).replace("'", "''") + "'"
-    statements = ["-- Generated from shared/routes.json; synthetic coordinates, not real transit data.",
+    statements = ["-- Derived from shared/routes.json; preserve the configured directional stop orders.",
                   "-- Use this with a dedicated fresh development database."]
     def insert(table, fields, rows):
         values = ["  (" + ", ".join(literal(row[field]) for field in fields) + ")" for row in rows]

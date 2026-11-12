@@ -24,20 +24,17 @@ def messages(bus, **settings):
         utc_now=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc), **settings))
 
 
-# ==================== TWO CITIES / FIVE STOPS / SIX ROUTES PER CITY ====================
+# ==================== CARSON'S DURHAM MAP AND REGISTERED BUSES ====================
 def test_network_topology():
     network = load_network()
-    assert len(network["cities"]) == 2
-    assert len(network["stops"]) == 24
-    assert len(network["routes"]) == 11
-    assert sum(route["intercity"] for route in network["routes"]) == 1
-    for city in network["cities"]:
-        city_id = city["city_id"]
-        stops = [stop for stop in network["stops"] if stop["city_id"] == city_id]
-        assert len(stops) == 12
-        assert "Neighborhood 1" in {stop["name"] for stop in stops}
-        assert sum(city_id in route["served_city_ids"] for route in network["routes"]) == 6
-    assert all(len(route["stops"]) == 5 for route in network["routes"])
+    assert {city["city_id"] for city in network["cities"]} == {"DURHAM"}
+    assert len(network["stops"]) == 373
+    assert {region["region_id"] for region in network["regions"]} == {"west", "east"}
+    assert {route["route_id"] for route in network["routes"]} == {"302", "407", "409", "900", "901"}
+    assert len(network["buses"]) == 10
+    assert not any(route["intercity"] for route in network["routes"])
+    assert all(len(route_stops(network, route["route_id"], direction)) >= 2
+               for route in network["routes"] for direction in (0, 1))
     assert len({bus["bus_id"] for bus in network["buses"]}) == len(network["buses"])
 
 
@@ -67,42 +64,32 @@ def test_simulator_to_edge_to_central_contract(bus_id):
     assert [source["sequence_number"] for source in readings] == [1, 2, 3]
 
 
-# ==================== INTERCITY COVERAGE IS EXPLICIT, NOT ACCIDENTAL CITY MIXING ====================
-def test_intercity_stop_coverage_and_processing_owner():
+# ==================== REGIONAL SEPARATION AND REAL DIRECTIONAL PATTERNS ====================
+def test_bus_cannot_claim_another_region():
     network = load_network()
-    bus = next(bus for bus in network["buses"] if bus["route_id"] == "AB-R6")
-    readings = list(generate_data.generate_messages("AB-R6", 0, bus["bus_id"],
-                                                   max_updates=3000, update_seconds=0))
-    across = next(source for source in readings if source["current_stop_city_id"] == "CITY-B")
-    assert across["city_id"] == "CITY-A"  # Registered owner remains fixed for this ticket.
+    bus = network["buses"][0]
     edge_network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
-    processor = EdgeProcessor(EdgeConfig(bus["city_id"], bus["region_id"], bus["edge_id"]), edge_network)
-    valid, errors = parse_telemetry(across, expected_region=bus["region_id"], expected_bus=bus["bus_id"], registry=edge_network.registry)
-    assert not errors
-    result = processor.process(valid)
-    assert result.status == ProcessingStatus.ACCEPTED
-    metadata = map_bus_update(result.output, bus["bus_id"], "passengers")["edge_metadata"]
-    assert metadata["current_stop_city_id"] == "CITY-B"
-    assert metadata["served_city_ids"] == ["CITY-A", "CITY-B"]
-    invalid = deepcopy(across)
-    invalid["sequence_number"] += 1
-    invalid["current_stop_city_id"] = "CITY-A"
-    assert processor.process(invalid).status == ProcessingStatus.INVALID_ROUTE
+    source = messages(bus)[0]
+    source["region_id"] = "east" if bus["region_id"] == "west" else "west"
+    valid, errors = parse_telemetry(source, expected_region=source["region_id"],
+                                    expected_bus=bus["bus_id"], registry=edge_network.registry)
+    assert valid is None and errors
 
 
 def test_local_route_cannot_silently_cross_cities():
     network = load_network()
-    network["routes"][0]["stops"][0] = "B-HOME"
+    network["cities"].append(dict(city_id="OTHER", name="Other"))
+    network["stops"][0]["city_id"] = "OTHER"
     with pytest.raises(ValueError):
         validate_network(network)
 
 
-def test_direction_uses_same_five_stops_in_reverse_order():
+def test_return_direction_uses_carsons_distinct_pattern():
     network = load_network()
-    forward = route_stops(network, "A-R1", 0)
-    reverse = route_stops(network, "A-R1", 1)
-    assert [stop["stop_id"] for stop in reverse] == list(reversed([stop["stop_id"] for stop in forward]))
-    assert len(reverse) == 5
+    forward = route_stops(network, "302", 0)
+    reverse = route_stops(network, "302", 1)
+    assert len(forward) == 50 and len(reverse) == 53
+    assert [stop["stop_id"] for stop in reverse] != list(reversed([stop["stop_id"] for stop in forward]))
 
 
 # ==================== ZACH'S SCENARIOS STILL CHANGE REAL READINGS ====================
@@ -127,8 +114,19 @@ def test_repeatable_measurements_except_report_time():
 
 
 def test_sql_seed_is_generated_from_the_same_network():
+    import sqlite3
     seed = DEFAULT_NETWORK_PATH.parent / "schema/seed.sql"
-    assert seed.read_text(encoding="utf-8") == export_routes.seed_sql(load_network())
+    def records(script):
+        with sqlite3.connect(":memory:") as connection:
+            connection.executescript("""CREATE TABLE regions(region_id TEXT,name TEXT,primary_edge TEXT,backup_edge TEXT);
+                CREATE TABLE routes(route_id TEXT,name TEXT,region_id TEXT);
+                CREATE TABLE stops(stop_id TEXT,name TEXT,lat REAL,lon REAL);
+                CREATE TABLE route_stops(route_id TEXT,direction_id INTEGER,position INTEGER,stop_id TEXT);
+                CREATE TABLE buses(bus_id TEXT,route_id TEXT);""")
+            connection.executescript(script)
+            return {table: sorted(connection.execute("SELECT * FROM " + table).fetchall())
+                    for table in ("regions", "routes", "stops", "route_stops", "buses")}
+    assert records(seed.read_text(encoding="utf-8")) == records(export_routes.seed_sql(load_network()))
 
 
 @pytest.mark.parametrize("change", ["duplicate_bus", "unknown_stop", "wrong_region", "wrong_edge"])
@@ -139,7 +137,7 @@ def test_invalid_assignments_are_rejected(change):
     elif change == "unknown_stop":
         network["routes"][0]["stops"][0] = "missing"
     elif change == "wrong_region":
-        network["buses"][0]["region_id"] = "B-north"
+        network["buses"][0]["region_id"] = "east"
     else:
         network["buses"][0]["edge_id"] = "not-registered"
     with pytest.raises(ValueError):
@@ -148,4 +146,4 @@ def test_invalid_assignments_are_rejected(change):
 
 def test_unknown_bus_cannot_generate_telemetry():
     with pytest.raises(ValueError, match="not registered"):
-        list(generate_data.generate_messages("A-R1", 0, "unknown", update_seconds=0))
+        list(generate_data.generate_messages("302", 0, "unknown", update_seconds=0))

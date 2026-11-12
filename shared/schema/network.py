@@ -37,12 +37,18 @@ def validate_network(data: dict) -> dict:
         owner = regions.get(route["region_id"])
         if owner is None or owner["city_id"] != route["city_id"]:
             raise ValueError("Route processing owner does not match its city/region")
-        if len(route["stops"]) != 5 or len(set(route["stops"])) != 5:
-            raise ValueError("Each route needs exactly five distinct ordered stops")
-        if any(stop not in stops for stop in route["stops"]):
-            raise ValueError("Route contains an unknown stop")
+        directions = route.get("directions", {"0": route["stops"], "1": list(reversed(route["stops"]))})
+        if set(directions) != {"0", "1"} or route["stops"] != directions["0"]:
+            raise ValueError("Provide both travel directions with stops matching direction 0")
+        all_stops = []
+        for ordered in directions.values():
+            if len(ordered) < 2 or len(set(ordered)) != len(ordered):
+                raise ValueError("Each directional route needs distinct ordered stops")
+            if any(stop not in stops for stop in ordered):
+                raise ValueError("Route contains an unknown stop")
+            all_stops.extend(ordered)
         served = set(route["served_city_ids"])
-        actual = {stops[stop]["city_id"] for stop in route["stops"]}
+        actual = {stops[stop]["city_id"] for stop in all_stops}
         if served != actual or not served <= cities or route["city_id"] not in served:
             raise ValueError("Route served cities do not match its stops")
         if len(served) > 1 and not route.get("intercity", False):
@@ -71,6 +77,15 @@ def load_network(path: str | Path = DEFAULT_NETWORK_PATH) -> dict:
     return validate_network(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
+def direction_stop_ids(route: dict, direction: int) -> list[str]:
+    """Use the supplied stop pattern; real return trips need not be a reversal."""
+    if direction not in (0, 1):
+        raise ValueError("Direction must be 0 or 1")
+    if "directions" in route:
+        return list(route["directions"][str(direction)])
+    return list(route["stops"] if direction == 0 else reversed(route["stops"]))
+
+
 def route_stops(network: dict, route_id: str, direction: int = 0) -> list[dict]:
     """Return the configured stop order, including explicit intercity stops."""
     if direction not in (0, 1):
@@ -79,6 +94,6 @@ def route_stops(network: dict, route_id: str, direction: int = 0) -> list[dict]:
     if route is None:
         raise ValueError("Unknown route ID")
     stops = {stop["stop_id"]: stop for stop in network["stops"]}
-    ids = route["stops"] if direction == 0 else list(reversed(route["stops"]))
+    ids = direction_stop_ids(route, direction)
     return [dict(stops[stop], direction_id=direction, position=position)
             for position, stop in enumerate(ids)]

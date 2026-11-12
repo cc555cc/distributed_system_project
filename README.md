@@ -39,7 +39,7 @@ project/
 |-- frontend/                   # Danial: passenger/operator UI
 |-- shared/
 |   |-- examples/               # example telemetry and edge network proposal
-|   |-- routes.json             # canonical two-city network
+|   |-- routes.json             # active Durham route snapshot
 |   `-- schema/
 |       |-- bus_state.py        # shared central input and edge metadata model
 |       |-- network.py          # shared network loading and assignment checks
@@ -72,7 +72,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **156 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **155 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
@@ -112,9 +112,9 @@ python -m pip install -r requirements.txt
 python -m pip install pytest
 python -m pytest services/data_simulation/tests services/edge/tests services/central/tests -q
 $env:EDGE_NETWORK_CONFIG = "shared/routes.json"
-$env:CITY_ID = "CITY-A"
-$env:REGION_ID = "A-north"
-$env:EDGE_ID = "edge-A-north-1"
+$env:CITY_ID = "DURHAM"
+$env:REGION_ID = "west"
+$env:EDGE_ID = "edge-west-1"
 $env:CENTRAL_OCCUPANCY_UNIT = "passengers"
 python -m services.edge.communication.data_to_edge
 ```
@@ -129,39 +129,37 @@ ALTER TABLE bus_states ADD COLUMN IF NOT EXISTS edge_metadata JSONB;
 
 The fresh-development `schema.sql` already includes this column. Do not rerun its table-dropping setup just to add a column. No live database migration has been executed by this change.
 
-### Shared BUS-01/BUS-02 network and simulator
+### Carson's map with the standardized simulator and edge pipeline
 
-`shared/routes.json` is the canonical `transit-network-v1` definition used by the simulator, edge configuration adapter and central seed generator. It contains two cities, 12 distinct stops in each, and 11 unique routes. Each city has five local routes plus the one shared intercity route, so six routes serve each city. Every route has exactly five stops, with both travel directions supported. Coordinates are synthetic simulation points, not claims about real transit locations.
+The active `shared/routes.json` now mirrors Carson's Durham SQL seed: **373 stops, five routes, west/east regions and ten registered buses**. Routes 302 and 900 belong to west; routes 407, 409 and 901 belong to east. Stop IDs, coordinates, names, bus assignments and both directional stop patterns match his seed. The fictional two-city/five-stop map is no longer active.
 
-| Route in each city | Forward stop order |
-| --- | --- |
-| R1 | Home → Neighborhood 1 → School → Mall → Station |
-| R2 | Neighborhood 2 → Park → University → Restaurant → Station |
-| R3 | Neighborhood 3 → School → Park → Mall → Station |
-| R4 | Home → Neighborhood 2 → University → Casino → Station |
-| R5 | Neighborhood 3 → Mall → Amusement Park → Restaurant → Station |
-| Shared AB-R6 | City A Station → City A Park → City B Park → City B Mall → City B Station |
+| Region | Routes | Edge IDs |
+| --- | --- | --- |
+| west | 302, 900 | `edge-west-1`, `edge-west-2` |
+| east | 407, 409, 901 | `edge-east-1`, `edge-east-2` |
 
-All stop, route and bus IDs are globally unique. `served_city_ids` explicitly declares cross-city coverage. The intercity bus retains its registered City A / A-north processing assignment, while `current_stop_city_id` and `next_stop_city_id` record which city's stops it is travelling between. These physical stop-city fields and the served-city list reach central metadata. This does not implement dynamic ownership transfer or cross-region failover.
+`city_id: "DURHAM"` labels this dataset; west/east are processing regions, not invented cities. This data does not currently meet a separate two-city requirement. The model remains configurable for additional cities, but no synthetic intercity link is added to Carson's map.
 
-The 11 configured buses each have a capacity, route, region and edge owner. The existing two edge IDs per region divide initial assignments; load balancing and takeover still belong to later tickets. Direction 1 reverses a route's same five stops. The legacy Durham example remains supported for regression tests, but it is not the preferred configuration and no longer matches the new seed dataset.
+The shared network loader supports explicit `directions` stop lists. A return trip is not assumed to be the forward trip reversed: route 302, for example, has 50 stops in direction 0 and 53 in direction 1. The original five-stop restriction was removed. Simulator interpolation, validation and edge route-progress checks all use the same directional patterns. Each route has two registered buses, initially assigned to its region's two configured edge IDs and opposite travel directions. This is configuration, not implemented replication or failover.
 
-Zach's three simulator files were imported from his `54d5302` revision, not by merging his central code into `ali`. Movement interpolation, separate seeded random sources, configurable traffic and sensor-drop behaviour are retained. Route/stop loading now uses the common local network instead of requiring a central HTTP server just to start the simulator. Sample peak/off-peak, slowdown and fault settings live in bus configuration, not hardcoded bus IDs.
+Carson's new `GET /routes/{route_id}/stops?direction=0` or `direction=1` endpoint is merged into the routes router. The duplicate route-stop endpoint was removed from the stops router. Omitting direction returns both ordered patterns; an invalid direction receives HTTP 422. Existing dictionary-shaped stop responses are retained.
+
+Zach's standardized simulator remains in `services/data_simulation/`. His movement calculation, separate seeded random sources, configurable traffic and sensor-drop behaviour are kept. The common local network allows the simulator and edge to start without querying central for every reading. Their messages still use the shared BUS-01 field format and the existing central mapper/metadata model. Your communication-file comment edits were preserved unchanged during this merge.
 
 ```powershell
-# Print standard JSON from all 11 buses without requiring a broker.
+# Print standard JSON from all ten configured Durham buses.
 python -m services.data_simulation.run_buses --updates 100 --interval 1
-# Or publish the identical messages to Julian's MQTT broker.
+# Publish the identical messages to Julian's MQTT broker.
 python -m services.data_simulation.run_buses --mqtt --host 127.0.0.1 --port 1883
-# Select a particular registered bus for a short check.
-python -m services.data_simulation.run_buses --bus A-R1-BUS-01 --updates 3 --interval 0
+# Run one of Carson's registered buses for a short check.
+python -m services.data_simulation.run_buses --bus bus-302-1 --updates 3 --interval 0
 ```
 
-Start the appropriate edge workers and updated central receiver before live publishing. `--interval 0` skips real waiting for tests; movement still uses the normal simulation step. Each process keeps independent counters/random state and emits finite streams bounded by the update setting and route end; repeating routes and session restart ordering are not implemented here.
+Start matching west/east edge workers and the updated central receiver before live publishing. `--interval 0` skips real waiting for tests; movement still uses the normal simulation step. Each process keeps independent counters/random state and emits finite streams bounded by its update limit and route end. Session restart ordering and continuous route repetition remain outside this change.
 
-Messages use `schema_version: "bus-telemetry-v1"`: `bus_id`, `city_id`, `region_id`, `route_id`, `latitude`, `longitude`, `speed_kmh`, `passengers`, `capacity`, `direction_id`, `current_stop_id`, optional `next_stop_id`, physical stop-city IDs, `timestamp`, `sequence_number`, `lamport_clock`, `bus_status` and `sensor_status`. UTC source times are generated at the simulator. Its logical clock increments for each local reading event; Julian still owns receive/command clock synchronization. Sensor failures keep Zach's existing behaviour: report the fault to stderr, skip the invalid reading and continue movement.
+Messages retain `schema_version: "bus-telemetry-v1"`, registered bus/city/region/route IDs, latitude/longitude, speed in km/h, passenger count and capacity, direction and stop IDs, UTC timestamp, sequence number, logical-clock value, bus status and sensor status. Julian still owns receive/command clock synchronization. A failed sensor reports to stderr and skips its reading rather than publishing invented data.
 
-`export_routes.seed_sql(load_network())` generates `shared/schema/seed.sql` from the same routes, directions, stops and registered buses. No live database was reseeded. Use a fresh dedicated development database for this dataset; the old Durham data is not automatically migrated. If the network changes, regenerate the seed and run the seed-consistency test.
+`shared/schema/seed.sql` is restored byte-for-byte from the merged Carson revision. `shared/routes.json` is its startup snapshot for the simulator/edge. The seed-consistency test compares all region, route, stop, route-stop and bus records against `export_routes.seed_sql(load_network())`, so formatting/comments can differ without data drifting. If Carson changes the seed, refresh the snapshot and rerun this check. No live database was reseeded or migrated; the previous synthetic data remains recoverable in the local pre-merge checkpoint.
 
 ### Delivery and freshness
 
@@ -173,13 +171,13 @@ Freshness uses a monotonic clock. Cache entries expire only under the configured
 
 Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for 104 passing edge tests.
 
-Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (24 tests). Run `python -m pytest services/central/tests -q` for 28 passing tests and one skipped live test. These tests are preserved for central integration, not counted as completion of Carson's tickets.
+Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (23 tests). Run `python -m pytest services/central/tests -q` for 28 passing tests and one skipped live test. These tests are preserved for central integration, not counted as completion of Carson's tickets.
 
 Production roles remain separate: `central_mapper.py` maps fields, `edge_to_central.py` sends, and `shared/schema/bus_state.py` is the common model. Carson's existing MQTT callback and ingestion functions receive the messages; the edge does not duplicate those central operations.
 
 ### End-to-end verification
 
-Offline tests now include real messages generated by Zach's simulator for every configured bus and the intercity crossing. They execute the full code path: input decoding/validation, queue, processing, mapping, outgoing validation, central MQTT callback, real central SQL statements via a SQLite adapter, and API readback. They compare coordinates, speed, counts, clocks, timestamps, city/region/route context, crowding and summaries. They also check invalid types/identifiers, stale and duplicate messages, conflicts, broker-failure retries and the actual runtime forwarding loop. SQLite and the in-memory transport do not substitute for a live PostgreSQL/MQTT run.
+Offline tests now include real messages generated by Zach's simulator for every configured Durham bus, both real route directions and Carson's route-stop API. They execute the full code path: input decoding/validation, queue, processing, mapping, outgoing validation, central MQTT callback, real central SQL statements via a SQLite adapter, and API readback. They compare coordinates, speed, counts, clocks, timestamps, city/region/route context, crowding and summaries. They also check invalid types/identifiers, stale and duplicate messages, conflicts, broker-failure retries and the actual runtime forwarding loop. SQLite and the in-memory transport do not substitute for a live PostgreSQL/MQTT run.
 
 An opt-in test is provided for dedicated test services:
 
@@ -224,7 +222,7 @@ Generate simulated bus movement, sensor telemetry and configurable scenarios usi
 | Ticket | Priority | Description and completion criteria | Status |
 | --- | --- | --- | --- |
 | `BUS-01` | **P0** | Create a standard JSON format for bus telemetry. Include bus ID, region ID, route ID, GPS coordinates, speed, passenger count, capacity, current/next stop, timestamp, sequence number and sensor status. Agree on logical-clock metadata with Julian.<br><br>**Done when:** Example messages contain the required fields, use correct data types, and pass validation. Julian and Ali can use the format without modifying field names. | 🟨 Partial (standard implemented; team/live review pending) |
-| `BUS-02` | **P0** | Define at least two simulated regions with multiple routes, stops, GPS coordinates and bus assignments. Each route must contain stops in the correct travel order. Define routes, stops and bus assignments for both cities, with city identifiers.<br><br>**Done when:** Every bus belongs to a valid region and route. Stops have unique IDs and coordinates. The simulator can load route data without hardcoded routes in its logic. Both cities load valid routes, stops and buses without mixing assignments. | ✅ Done (shared configuration verified) |
+| `BUS-02` | **P0** | Define at least two simulated regions with multiple routes, stops, GPS coordinates and bus assignments. Each route must contain stops in the correct travel order. Define routes, stops and bus assignments for both cities, with city identifiers.<br><br>**Done when:** Every bus belongs to a valid region and route. Stops have unique IDs and coordinates. The simulator can load route data without hardcoded routes in its logic. Both cities load valid routes, stops and buses without mixing assignments. | 🟨 Partial (Durham map verified; two-city requirement pending) |
 | `BUS-03` | **P0** | Build a Python simulator that generates continuous bus movement and sensor data. Each bus should update its location, speed, stop status and passenger count at configurable intervals.<br><br>**Done when:** At least three buses move between stops and continuously generate valid telemetry. Buses can run simultaneously without interfering with one another. | 🟨 Partial (multi-bus generation verified; live integration pending) |
 | `BUS-04` | **P1** | Simulate normal traffic, traffic congestion, peak/off-peak passenger demand and sensor failures. Traffic should affect bus speed and journey duration, while demand affects passenger occupancy.<br><br>**Done when:** Each scenario creates measurable changes. For example, a traffic delay increases travel time, while peak demand increases passenger counts without exceeding the simulated capacity rules. | ⬜ Pending |
 | `BUS-05` | **P1** | Add controls to start, pause, resume and stop simulations. Allow supported commands to change traffic, demand or sensor conditions while the simulator is running.<br><br>**Done when:** Valid commands change the requested scenario. Invalid commands or nonexistent bus/route IDs are rejected without crashing the simulator. | ⬜ Pending |

@@ -37,7 +37,7 @@ class TestDatabase:
 
     def execute(self, sql, parameters=()):
         params = tuple(json.dumps(p.obj) if isinstance(p, Jsonb) else p for p in parameters)
-        cursor = self.connection.execute(sql.replace("%s", "?").replace("now()", "CURRENT_TIMESTAMP"), params)
+        cursor = self.connection.execute(sql.replace("%s", "?").replace("::integer", "").replace("now()", "CURRENT_TIMESTAMP"), params)
         dictionary_rows = self.dictionary_rows
 
         class Cursor:
@@ -53,7 +53,11 @@ class TestDatabase:
                 return result
 
             def fetchall(self):
-                return cursor.fetchall()
+                rows = cursor.fetchall()
+                if not dictionary_rows:
+                    return rows
+                names = [column[0] for column in cursor.description]
+                return [dict(zip(names, row)) for row in rows]
 
         return Cursor()
 
@@ -304,10 +308,6 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
         forwarder = CentralForwarder(receiver, sender, "passengers")
         subscriber = TelemetrySubscriber(bus["region_id"], bus["edge_id"], city_id=bus["city_id"], registry=edge_network.registry)
         readings = list(generate_messages(bus["route_id"], 0, bus["bus_id"], max_updates=3, update_seconds=0))
-        if bus["route_id"] == "AB-R6":
-            journey = list(generate_messages(bus["route_id"], 0, bus["bus_id"], max_updates=3000, update_seconds=0))
-            readings.append(next(source for source in journey if source["current_stop_id"] == "A-PARK"))
-            readings.append(next(source for source in journey if source["current_stop_id"] == "B-PARK"))
         for source in readings:
             topic = f"transit/buses/{bus['region_id']}/{bus['bus_id']}/telemetry"
             assert subscriber.handle_raw_message(topic, json.dumps(source).encode())
@@ -325,6 +325,16 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
             assert stored["lat"] == source["latitude"]
             assert stored["edge_metadata"]["city_id"] == bus["city_id"]
             assert stored["edge_metadata"]["current_stop_city_id"] == source["current_stop_city_id"]
-        if bus["route_id"] == "AB-R6":
-            assert stored["edge_metadata"]["served_city_ids"] == ["CITY-A", "CITY-B"]
-            assert stored["edge_metadata"]["current_stop_city_id"] == "CITY-B"
+
+    # Carson's direction filter must return the actual stop patterns, not an
+    # assumed reverse order or duplicate endpoints registered by two routers.
+    from shared.schema.network import route_stops
+    for route in network["routes"]:
+        for direction in (0, 1):
+            response = api.get(f"/routes/{route['route_id']}/stops", params={"direction": direction})
+            assert response.status_code == 200
+            actual = response.json()
+            expected = route_stops(network, route["route_id"], direction)
+            assert [stop["stop_id"] for stop in actual] == [stop["stop_id"] for stop in expected]
+            assert all(stop["direction_id"] == direction for stop in actual)
+    assert api.get("/routes/302/stops", params={"direction": 2}).status_code == 422
