@@ -7,12 +7,19 @@ if __package__:
 else:
     import generate_data
 
-
+# ID, route, direction
 BUSES = [
     ("bus-1", "302", 0),
     ("bus-2", "407", 0),
     ("bus-3", "409", 1),
 ]
+
+
+SCENARIOS = {
+    "bus-1": {"demand": "peak", "traffic_factor": 1.0, "sensor_failure_rate": 0.0},
+    "bus-2": {"demand": "off_peak", "traffic_factor": 0.5, "sensor_failure_rate": 0.0},
+    "bus-3": {"demand": "peak", "traffic_factor": 1.0, "sensor_failure_rate": 0.2},
+}
 
 
 def main():
@@ -22,6 +29,7 @@ def main():
             process = Process(
                 target=generate_data.main,
                 args=(route_id, direction, bus_id),
+                kwargs=SCENARIOS.get(bus_id, {}),
                 name=bus_id,
             )
             process.start()
