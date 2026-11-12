@@ -10,10 +10,10 @@ def check_updates(conn, bus_id: str, region_id: str, state) -> str:
     row = conn.execute(
         "SELECT b.route_id, s.next_stop_id FROM buses b  LEFT JOIN bus_STATES s ON s.bus_id = b.bus_id WHERE b.bus_id = %s",
         (bus_id,),
-    )
+    ).fetchone()
     route_id, stored_next_stop = row
 
-    if state.next_step_id is not None and stored_next_stop is not None:
+    if state.next_stop_id is not None and stored_next_stop is not None:
         if not next_stop_check(conn, route_id, stored_next_stop, state.next_stop_id, state.direction_id):
             return f"next stop {state.next_stop_id} invalide after {stored_next_stop}"
 
@@ -30,8 +30,10 @@ def bus_assignment_check(conn, request_bus_id: str, request_route_id: str) -> bo
     return row is not None
 
 #when bus propose its next stop, ensure it is in the route that it is assigned
-def next_stop_check(conn, bus_id: str, route_id: str, current_stop: str, next_stop:str, direction: int) -> bool:
-
+def next_stop_check(conn, route_id: str, current_stop: str, next_stop:str, direction: int) -> bool:
+    if current_stop == next_stop: #bus is on its way to the next stop
+        return True
+    
     rows = conn.execute(
         "SELECT stop_id FROM route_stops WHERE route_id = %s AND direction_id = %s ORDER BY position",
         (route_id, direction)
