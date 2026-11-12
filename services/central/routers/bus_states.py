@@ -18,7 +18,8 @@ class BusStateUpdate(BaseModel):
     bus_status: str
     occupancy: int
     sequence_number: int
-    lamport: int = 0 #until mqtt is ready and bus data generation message include lamport clock value
+    lamport: int = 0  # until MQTT-03 / simulator sends lamport
+
 
 def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> tuple[bool, str | None]:
     with psycopg.connect(db_url) as connection:
