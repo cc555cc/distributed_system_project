@@ -19,6 +19,7 @@ project/
 |   |   `-- tests/
 |   |-- messaging/              # Julian: MQTT and synchronization
 |   |   |-- mqtt_client.py      # existing central subscriber
+|   |   |-- topics.py           # agreed MQTT topic names
 |   |   `-- tests/
 |   |-- edge/                   # Ali: local ingress and processing
 |   |   |-- config.py           # network configuration and cache policy
@@ -46,6 +47,10 @@ project/
 |       |-- schema.sql          # database tables and constraints
 |       `-- seed.sql            # sample routes and stops
 |-- infrastructure/             # broker/deployment configuration
+|   |-- README.md               # broker startup, connection settings and topics
+|   |-- compose.yaml            # runs Mosquitto with Podman or Docker
+|   `-- mosquitto/
+|       `-- mosquitto.conf
 |-- tests/                      # end-to-end integration tests
 |-- docs/                       # diagrams and report evidence
 |-- legacy/                     # archived local remnants; no active source
