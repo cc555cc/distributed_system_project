@@ -6,7 +6,7 @@ DEFAULT_SPEED = 30 #fallback for when bus is stopped
 
 #get the location of a bus in a route, use its lat and lon to estimate the eta of the rest of the 
 #stops in that direction
-def eta_route(conn, bus_id) -> dict[str, list[dict]]:
+def eta_bus(conn, bus_id) -> list[dict] | None:
     stops_eta = []
     bus = conn.execute(
         "SELECT lat, lon, current_stop_id, route_id, direction, speed FROM bus_states WHERE bus_id = %s",
