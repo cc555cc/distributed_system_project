@@ -3,7 +3,7 @@ import psycopg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from psycopg.rows import dict_row
-from services.central.ingestion_check import check_update #ingestion check function
+from services.central.ingestion_check import check_updates #ingestion check function
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
@@ -23,7 +23,7 @@ class BusStateUpdate(BaseModel):
 def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> bool:
     with psycopg.connect(db_url) as connection:
         #use ingestion check first before pushing update to the database
-        reason = check_update(connection, bus_id: str, region_id: str, state, BusStateUpdate) -> tuple[bool, str | None]:
+        reason = check_updates(connection, bus_id: str, region_id: str, state, BusStateUpdate) -> tuple[bool, str | None]:
         if reason is not None:
             return False, reason
         
