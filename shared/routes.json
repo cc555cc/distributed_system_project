@@ -1,0 +1,3428 @@
+{
+  "schema_version": "transit-network-v1",
+  "cities": [
+    {
+      "city_id": "DURHAM",
+      "name": "Durham Region"
+    }
+  ],
+  "regions": [
+    {
+      "region_id": "west",
+      "name": "Whitby / Ajax / Pickering",
+      "primary_edge": "edge-west-1",
+      "backup_edge": "edge-west-2",
+      "city_id": "DURHAM"
+    },
+    {
+      "region_id": "east",
+      "name": "Oshawa",
+      "primary_edge": "edge-east-1",
+      "backup_edge": "edge-east-2",
+      "city_id": "DURHAM"
+    }
+  ],
+  "stops": [
+    {
+      "stop_id": "166",
+      "name": "Brock Street Northbound @ Arthur",
+      "lat": 43.869007,
+      "lon": -78.937411,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "167",
+      "name": "Brock Street Northbound @ St Peter",
+      "lat": 43.871084,
+      "lon": -78.93832,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "168",
+      "name": "Brock Street Northbound @ Burns",
+      "lat": 43.872514,
+      "lon": -78.938948,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "169",
+      "name": "Brock Street Northbound @ Trent",
+      "lat": 43.873574,
+      "lon": -78.939405,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "170",
+      "name": "Brock Street Northbound @ Gilbert",
+      "lat": 43.876644,
+      "lon": -78.940811,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "171",
+      "name": "Brock Street Northbound @ Dundas",
+      "lat": 43.879703,
+      "lon": -78.942101,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "172",
+      "name": "Brock Street Northbound @ John",
+      "lat": 43.882531,
+      "lon": -78.943093,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "173",
+      "name": "Brock Street Northbound @ Walnut",
+      "lat": 43.884079,
+      "lon": -78.943797,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "174",
+      "name": "Brock Street Northbound @ Chestnut",
+      "lat": 43.88521,
+      "lon": -78.944286,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "175",
+      "name": "Brock Street Northbound @ Maple",
+      "lat": 43.886266,
+      "lon": -78.944746,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "176",
+      "name": "Northbound @ 807 Brock Street",
+      "lat": 43.89055,
+      "lon": -78.94666,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "177",
+      "name": "Brock Street Northbound @ Manning",
+      "lat": 43.89226,
+      "lon": -78.94736,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "179",
+      "name": "Brock Street Northbound @ Wallace",
+      "lat": 43.894659,
+      "lon": -78.948347,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "180",
+      "name": "Brock Street Northbound @ Rossland",
+      "lat": 43.897866,
+      "lon": -78.949814,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "181",
+      "name": "Brock Street Northbound @ Kenneth Hobbs",
+      "lat": 43.900964,
+      "lon": -78.951274,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "182",
+      "name": "Brock Street Northbound @ Dryden",
+      "lat": 43.903606,
+      "lon": -78.952433,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "183",
+      "name": "Northbound @ 3603 Brock Street",
+      "lat": 43.906668,
+      "lon": -78.953906,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "184",
+      "name": "Brock Street Northbound @ Woodlands",
+      "lat": 43.909196,
+      "lon": -78.954864,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "185",
+      "name": "Brock Street Northbound @ Joy Thompson",
+      "lat": 43.912774,
+      "lon": -78.956403,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "186",
+      "name": "Brock Street Northbound @ Taunton",
+      "lat": 43.914943,
+      "lon": -78.957317,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "187",
+      "name": "Baldwin Northbound @ Broadleaf",
+      "lat": 43.918266,
+      "lon": -78.958405,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "188",
+      "name": "Baldwin Northbound @ Robert Attersley",
+      "lat": 43.922073,
+      "lon": -78.960088,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "189",
+      "name": "Baldwin Northbound @ Sleepy Hollow",
+      "lat": 43.92549,
+      "lon": -78.961574,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "190",
+      "name": "Baldwin Northbound @ Robmar",
+      "lat": 43.935355,
+      "lon": -78.961073,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "191",
+      "name": "Baldwin Southbound @ Robmar",
+      "lat": 43.935439,
+      "lon": -78.96117,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "192",
+      "name": "Baldwin Southbound @ Sonley",
+      "lat": 43.925998,
+      "lon": -78.962027,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "193",
+      "name": "Baldwin Southbound @ Robert Attersley (North side stop)",
+      "lat": 43.922437,
+      "lon": -78.96051,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "195",
+      "name": "Baldwin Southbound @ Broadleaf",
+      "lat": 43.918627,
+      "lon": -78.958862,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "196",
+      "name": "Baldwin Southbound @ Taunton",
+      "lat": 43.916115,
+      "lon": -78.957927,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "197",
+      "name": "Southbound @ 3800 Brock Street",
+      "lat": 43.913297,
+      "lon": -78.957001,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "198",
+      "name": "Brock Street Southbound @ Whitburn",
+      "lat": 43.908585,
+      "lon": -78.955006,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "199",
+      "name": "Southbound @ 3626 Brock Street",
+      "lat": 43.907209,
+      "lon": -78.954297,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "200",
+      "name": "Brock Street Southbound @ James Rowe",
+      "lat": 43.9027,
+      "lon": -78.952421,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "201",
+      "name": "Brock Street Southbound @ McCartney",
+      "lat": 43.899846,
+      "lon": -78.95121,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "202",
+      "name": "Brock Street Southbound @ Rossland",
+      "lat": 43.897776,
+      "lon": -78.950113,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "203",
+      "name": "Brock Street Southbound @ Palmerston",
+      "lat": 43.89499,
+      "lon": -78.94865,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "204",
+      "name": "Brock Street Southbound @ Starr (North side stop)",
+      "lat": 43.89251,
+      "lon": -78.94755,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "206",
+      "name": "Southbound @ 814 Brock Street",
+      "lat": 43.890416,
+      "lon": -78.946719,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "207",
+      "name": "Brock Street Southbound @ Maple",
+      "lat": 43.886977,
+      "lon": -78.945274,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "208",
+      "name": "Brock Street Southbound @ Chestnut",
+      "lat": 43.884855,
+      "lon": -78.944315,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "209",
+      "name": "Brock Street Southbound @ Walnut",
+      "lat": 43.883763,
+      "lon": -78.943838,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "210",
+      "name": "Brock Street Southbound @ Mary",
+      "lat": 43.882233,
+      "lon": -78.94316,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "211",
+      "name": "Brock Street Southbound @ Dundas",
+      "lat": 43.879952,
+      "lon": -78.942282,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "212",
+      "name": "Brock Street Southbound @ Gilbert",
+      "lat": 43.876878,
+      "lon": -78.941093,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "213",
+      "name": "Brock Street Southbound @ Ontario",
+      "lat": 43.875829,
+      "lon": -78.940579,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "214",
+      "name": "Brock Street Southbound @ Trent",
+      "lat": 43.873776,
+      "lon": -78.939683,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "215",
+      "name": "Southbound @ 786 Brock Street",
+      "lat": 43.872757,
+      "lon": -78.939236,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "216",
+      "name": "Brock Street Southbound @ Burns",
+      "lat": 43.871232,
+      "lon": -78.938597,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "217",
+      "name": "Brock Street Southbound @ Arthur",
+      "lat": 43.86918,
+      "lon": -78.93768,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "293",
+      "name": "Garrard Southbound @ Griffen",
+      "lat": 43.923205,
+      "lon": -78.917972,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "294",
+      "name": "Garrard Southbound @ Shore",
+      "lat": 43.921498,
+      "lon": -78.917227,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "295",
+      "name": "Garrard Southbound @ Dryden",
+      "lat": 43.917352,
+      "lon": -78.915388,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "296",
+      "name": "Garrard Southbound @ Rolling Acres",
+      "lat": 43.914403,
+      "lon": -78.914092,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "297",
+      "name": "Garrard Southbound @ Donald Wilson",
+      "lat": 43.912138,
+      "lon": -78.913092,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "298",
+      "name": "Garrard Southbound @ Fencerow",
+      "lat": 43.910044,
+      "lon": -78.912156,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "300",
+      "name": "Garrard Southbound @ Rossland",
+      "lat": 43.905952,
+      "lon": -78.910619,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "302",
+      "name": "Garrard Southbound @ Parkview",
+      "lat": 43.902809,
+      "lon": -78.90922,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "303",
+      "name": "Garrard Southbound @ Gadsby",
+      "lat": 43.899855,
+      "lon": -78.907942,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "304",
+      "name": "Garrard Southbound @ Manning",
+      "lat": 43.897606,
+      "lon": -78.906976,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "343",
+      "name": "Kendalwood Northbound @ Sawdon",
+      "lat": 43.880102,
+      "lon": -78.899068,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "344",
+      "name": "Kendalwood Northbound @ Broadview",
+      "lat": 43.881819,
+      "lon": -78.899856,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "345",
+      "name": "Kendalwood Northbound @ Northview",
+      "lat": 43.885187,
+      "lon": -78.901409,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "346",
+      "name": "Garrard Northbound @ Burnage",
+      "lat": 43.892441,
+      "lon": -78.904566,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "348",
+      "name": "Garrard Northbound @ Manning",
+      "lat": 43.896954,
+      "lon": -78.906543,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "349",
+      "name": "Garrard Northbound @ Forest",
+      "lat": 43.899542,
+      "lon": -78.907678,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "350",
+      "name": "Garrard Northbound @ Westwood",
+      "lat": 43.901785,
+      "lon": -78.908666,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "352",
+      "name": "Garrard Northbound @ Rossland",
+      "lat": 43.906128,
+      "lon": -78.910552,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "353",
+      "name": "Garrard Northbound @ Pogson",
+      "lat": 43.909057,
+      "lon": -78.911592,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "354",
+      "name": "Garrard Northbound @ Donald Wilson",
+      "lat": 43.91124,
+      "lon": -78.912559,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "355",
+      "name": "Garrard Northbound @ Weldon",
+      "lat": 43.913729,
+      "lon": -78.913659,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "356",
+      "name": "Garrard Northbound @ Dryden",
+      "lat": 43.916354,
+      "lon": -78.914815,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "386",
+      "name": "Dundas Westbound @ Garrard",
+      "lat": 43.888886,
+      "lon": -78.902539,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "387",
+      "name": "Dundas Westbound @ Kathleen",
+      "lat": 43.887427,
+      "lon": -78.90901,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "388",
+      "name": "Dundas Westbound @ Thickson",
+      "lat": 43.886286,
+      "lon": -78.914145,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "389",
+      "name": "Dundas Westbound @ Bowman",
+      "lat": 43.885641,
+      "lon": -78.917045,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "391",
+      "name": "Dundas Westbound @ Anderson",
+      "lat": 43.884522,
+      "lon": -78.922001,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "393",
+      "name": "Dundas Westbound @ Craydon",
+      "lat": 43.882884,
+      "lon": -78.929034,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "394",
+      "name": "Dundas Westbound @ Garden",
+      "lat": 43.882244,
+      "lon": -78.931932,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "396",
+      "name": "Dundas Westbound @ Pine",
+      "lat": 43.881084,
+      "lon": -78.936954,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "398",
+      "name": "Dundas Westbound @ Brock Street",
+      "lat": 43.879998,
+      "lon": -78.941772,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "400",
+      "name": "Dundas Westbound @ Euclid",
+      "lat": 43.878878,
+      "lon": -78.946685,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "401",
+      "name": "Dundas Westbound @ Cochrane",
+      "lat": 43.877863,
+      "lon": -78.95152,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "404",
+      "name": "Dundas Westbound @ Wellington",
+      "lat": 43.876782,
+      "lon": -78.956258,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "405",
+      "name": "Dundas Westbound @ McQuay",
+      "lat": 43.875597,
+      "lon": -78.961433,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "406",
+      "name": "Dundas Westbound @ White Oaks",
+      "lat": 43.875049,
+      "lon": -78.963955,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "410",
+      "name": "Dundas Westbound @ Halls",
+      "lat": 43.87132,
+      "lon": -78.98098,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "411",
+      "name": "Kingston Westbound @ Lake Ridge",
+      "lat": 43.869986,
+      "lon": -78.987092,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "412",
+      "name": "Kingston Eastbound @ Lake Ridge",
+      "lat": 43.869794,
+      "lon": -78.98701,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "413",
+      "name": "Dundas Eastbound @ Halls",
+      "lat": 43.87107,
+      "lon": -78.98135,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "417",
+      "name": "Dundas Eastbound @ White Oaks",
+      "lat": 43.87498,
+      "lon": -78.963535,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "418",
+      "name": "Dundas Eastbound @ Jeffery",
+      "lat": 43.87532,
+      "lon": -78.961921,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "419",
+      "name": "Dundas Eastbound @ Wellington",
+      "lat": 43.876609,
+      "lon": -78.956299,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "422",
+      "name": "Dundas Eastbound @ Annes",
+      "lat": 43.877818,
+      "lon": -78.950632,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "424",
+      "name": "Dundas Eastbound @ King",
+      "lat": 43.87885,
+      "lon": -78.946098,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "425",
+      "name": "Dundas Eastbound @ Brock Street",
+      "lat": 43.879725,
+      "lon": -78.94241,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "427",
+      "name": "Dundas Eastbound @ Hickory",
+      "lat": 43.880664,
+      "lon": -78.938157,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "431",
+      "name": "Dundas Eastbound @ Lupin",
+      "lat": 43.88225,
+      "lon": -78.931069,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "432",
+      "name": "Dundas Eastbound @ Craydon",
+      "lat": 43.882846,
+      "lon": -78.928486,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "434",
+      "name": "Dundas Eastbound @ Hopkins",
+      "lat": 43.884171,
+      "lon": -78.922742,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "439",
+      "name": "Kendalwood Southbound @ Northview",
+      "lat": 43.885347,
+      "lon": -78.901627,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "441",
+      "name": "Kendalwood Southbound @ Sawdon",
+      "lat": 43.880648,
+      "lon": -78.899482,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "442",
+      "name": "Kendalwood Southbound @ Burns",
+      "lat": 43.87938,
+      "lon": -78.898906,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "450",
+      "name": "Dundas Eastbound @ Glen Hill",
+      "lat": 43.885523,
+      "lon": -78.916718,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "451",
+      "name": "Dundas Eastbound @ Thickson",
+      "lat": 43.886613,
+      "lon": -78.911815,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "452",
+      "name": "Dundas Eastbound @ Kathleen",
+      "lat": 43.887178,
+      "lon": -78.909422,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "453",
+      "name": "Dundas Eastbound @ Kendalwood",
+      "lat": 43.888373,
+      "lon": -78.903884,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "490",
+      "name": "Baldwin Northbound @ Roybrook",
+      "lat": 43.951339,
+      "lon": -78.961822,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "491",
+      "name": "Baldwin Northbound @ Winchester",
+      "lat": 43.953127,
+      "lon": -78.962199,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "492",
+      "name": "Baldwin Northbound @ Cassels",
+      "lat": 43.955803,
+      "lon": -78.961218,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "505",
+      "name": "Carnwith Westbound @ Thickson",
+      "lat": 43.968094,
+      "lon": -78.948934,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "506",
+      "name": "Carnwith Westbound @ Croxall",
+      "lat": 43.967351,
+      "lon": -78.95289,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "507",
+      "name": "Carnwith Westbound @ Downey",
+      "lat": 43.967171,
+      "lon": -78.956391,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "511",
+      "name": "Campbell Eastbound @ Baldwin",
+      "lat": 43.957031,
+      "lon": -78.961206,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "512",
+      "name": "Vipond Eastbound @ Montgomery",
+      "lat": 43.956974,
+      "lon": -78.965332,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "513",
+      "name": "Vipond Eastbound @ Ferguson",
+      "lat": 43.956024,
+      "lon": -78.969467,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "514",
+      "name": "Vipond Eastbound @ Sabrina",
+      "lat": 43.955097,
+      "lon": -78.973587,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "533",
+      "name": "Thickson Southbound @ Blackfriar",
+      "lat": 43.96218,
+      "lon": -78.945648,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "535",
+      "name": "Baldwin Southbound @ Roybrook",
+      "lat": 43.950765,
+      "lon": -78.961834,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "536",
+      "name": "Gibb Eastbound @ Tipperary",
+      "lat": 43.883049,
+      "lon": -78.892157,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "537",
+      "name": "Gibb Westbound @ Tipperary",
+      "lat": 43.8833,
+      "lon": -78.891938,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "605",
+      "name": "Simcoe Northbound @ Rossland",
+      "lat": 43.915536,
+      "lon": -78.871221,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "650",
+      "name": "Simcoe Southbound @ Rossland",
+      "lat": 43.914802,
+      "lon": -78.871282,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "652",
+      "name": "Simcoe Southbound @ Buckingham",
+      "lat": 43.910445,
+      "lon": -78.869478,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "654",
+      "name": "Simcoe Southbound @ Parkwood (Lakeridge Health Oshawa)",
+      "lat": 43.905541,
+      "lon": -78.86736,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "655",
+      "name": "Simcoe Southbound @ Adelaide",
+      "lat": 43.903,
+      "lon": -78.866169,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "657",
+      "name": "Centre Southbound @ William",
+      "lat": 43.900029,
+      "lon": -78.867222,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "659",
+      "name": "Centre Southbound @ King",
+      "lat": 43.897281,
+      "lon": -78.865958,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "661",
+      "name": "Centre Southbound @ John",
+      "lat": 43.893237,
+      "lon": -78.863867,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "663",
+      "name": "Centre Southbound @ Gibb",
+      "lat": 43.890561,
+      "lon": -78.862638,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "672",
+      "name": "Simcoe Northbound @ Elm St",
+      "lat": 43.890377,
+      "lon": -78.860193,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "674",
+      "name": "Simcoe Northbound @ John",
+      "lat": 43.894039,
+      "lon": -78.86186,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "677",
+      "name": "Simcoe Northbound @ Bond",
+      "lat": 43.898769,
+      "lon": -78.86413,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "678",
+      "name": "Simcoe Northbound @ Colborne",
+      "lat": 43.900886,
+      "lon": -78.865075,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "679",
+      "name": "Simcoe Northbound @ Adelaide",
+      "lat": 43.903302,
+      "lon": -78.866139,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "680",
+      "name": "Simcoe Northbound @ Parkwood (Lakeridge Health Oshawa)",
+      "lat": 43.905794,
+      "lon": -78.867149,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "682",
+      "name": "Simcoe Northbound @ Hillcroft",
+      "lat": 43.9108,
+      "lon": -78.869386,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "685",
+      "name": "Simcoe Northbound @ Switzer",
+      "lat": 43.921189,
+      "lon": -78.873688,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "687",
+      "name": "Simcoe Northbound @ Beatrice",
+      "lat": 43.925811,
+      "lon": -78.875722,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "689",
+      "name": "Simcoe Northbound @ Orchard View",
+      "lat": 43.929188,
+      "lon": -78.877303,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "691",
+      "name": "Simcoe Northbound @ Taunton (North side stop)",
+      "lat": 43.934262,
+      "lon": -78.879351,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "693",
+      "name": "Simcoe Northbound @ Glovers",
+      "lat": 43.936894,
+      "lon": -78.880577,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "695",
+      "name": "Simcoe Northbound @ Selleck",
+      "lat": 43.940302,
+      "lon": -78.884992,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "698",
+      "name": "Ontario Tech / Durham College North Campus",
+      "lat": 43.943641,
+      "lon": -78.895505,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "705",
+      "name": "Simcoe Northbound @ Northern Dancer",
+      "lat": 43.953567,
+      "lon": -78.898503,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "706",
+      "name": "Simcoe Southbound @ Niagara (North stop)",
+      "lat": 43.943084,
+      "lon": -78.889191,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "707",
+      "name": "Simcoe Southbound @ Niagara (South stop)",
+      "lat": 43.940972,
+      "lon": -78.886225,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "710",
+      "name": "Simcoe Southbound @ Cayuga",
+      "lat": 43.935495,
+      "lon": -78.880108,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "711",
+      "name": "Simcoe Southbound @ Taunton (south side stop)",
+      "lat": 43.932369,
+      "lon": -78.878998,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "713",
+      "name": "Simcoe Southbound @ Orchard View",
+      "lat": 43.929238,
+      "lon": -78.877548,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "714",
+      "name": "Simcoe Southbound @ Beatrice",
+      "lat": 43.92579,
+      "lon": -78.87601,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "716",
+      "name": "Simcoe Southbound @ Switzer",
+      "lat": 43.920723,
+      "lon": -78.873714,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "817",
+      "name": "Delpark Homes Centre",
+      "lat": 43.947501,
+      "lon": -78.850743,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "859",
+      "name": "Ritson Southbound @ Ormond",
+      "lat": 43.937122,
+      "lon": -78.869981,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "861",
+      "name": "Ritson Southbound @ Taunton",
+      "lat": 43.934373,
+      "lon": -78.868973,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "862",
+      "name": "Ritson Southbound @ Pentland",
+      "lat": 43.932714,
+      "lon": -78.868262,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "863",
+      "name": "Ritson Southbound @ Beatrice",
+      "lat": 43.929724,
+      "lon": -78.866915,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "864",
+      "name": "Ritson Southbound @ Oshawa Boulevard (North stop)",
+      "lat": 43.927268,
+      "lon": -78.865798,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "865",
+      "name": "Ritson Southbound @ Highgate",
+      "lat": 43.925036,
+      "lon": -78.864766,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "866",
+      "name": "Ritson Southbound @ Wildflower",
+      "lat": 43.923364,
+      "lon": -78.864075,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "867",
+      "name": "Ritson Southbound @ Darcy",
+      "lat": 43.921281,
+      "lon": -78.863175,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "868",
+      "name": "Ritson Southbound @ Rossland",
+      "lat": 43.917545,
+      "lon": -78.861715,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "869",
+      "name": "Ritson Southbound @ Oshawa Boulevard (South stop)",
+      "lat": 43.915083,
+      "lon": -78.860639,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "870",
+      "name": "Ritson Southbound @ Hillcroft",
+      "lat": 43.913394,
+      "lon": -78.859886,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "872",
+      "name": "Ritson Southbound @ Adelaide",
+      "lat": 43.906697,
+      "lon": -78.856969,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "879",
+      "name": "Ritson Northbound @ Adelaide",
+      "lat": 43.906068,
+      "lon": -78.856466,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "881",
+      "name": "Ritson Northbound @ Hillcroft",
+      "lat": 43.913421,
+      "lon": -78.859726,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "882",
+      "name": "Ritson Northbound @ Oshawa Boulevard (South stop)",
+      "lat": 43.915191,
+      "lon": -78.860494,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "883",
+      "name": "Ritson Northbound @ Rossland",
+      "lat": 43.917753,
+      "lon": -78.861499,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "884",
+      "name": "Ritson Northbound @ Tulip",
+      "lat": 43.919499,
+      "lon": -78.862175,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "885",
+      "name": "Ritson Northbound @ Darcy",
+      "lat": 43.921262,
+      "lon": -78.862948,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "886",
+      "name": "Northbound @ 881 Ritson",
+      "lat": 43.923146,
+      "lon": -78.863791,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "887",
+      "name": "Ritson Northbound @ Highgate",
+      "lat": 43.925002,
+      "lon": -78.864607,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "888",
+      "name": "Ritson Northbound @ Oshawa Boulevard (North stop)",
+      "lat": 43.927335,
+      "lon": -78.865643,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "889",
+      "name": "Ritson Northbound @ Beatrice (South stop)",
+      "lat": 43.928913,
+      "lon": -78.866347,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "892",
+      "name": "Ritson Northbound @ Ormond",
+      "lat": 43.937679,
+      "lon": -78.870106,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "896",
+      "name": "Conlin Westbound @ Ritson",
+      "lat": 43.951877,
+      "lon": -78.878549,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "897",
+      "name": "Conlin Westbound @ Manor",
+      "lat": 43.951264,
+      "lon": -78.881159,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "898",
+      "name": "Conlin Westbound @ Avalon",
+      "lat": 43.95035,
+      "lon": -78.88532,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "910",
+      "name": "Coldstream Westbound @ Northfield",
+      "lat": 43.945257,
+      "lon": -78.868727,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1163",
+      "name": "Bond Westbound @ Ritson",
+      "lat": 43.900548,
+      "lon": -78.855176,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1164",
+      "name": "Bond Westbound @ Mary",
+      "lat": 43.899252,
+      "lon": -78.86069,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1165",
+      "name": "Bond Westbound @ Simcoe",
+      "lat": 43.898576,
+      "lon": -78.863823,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1166",
+      "name": "Bond Westbound @ Centre",
+      "lat": 43.898043,
+      "lon": -78.865993,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1167",
+      "name": "Bond Westbound @ Arena",
+      "lat": 43.897181,
+      "lon": -78.870023,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1169",
+      "name": "Bond Westbound @ Park",
+      "lat": 43.896215,
+      "lon": -78.874631,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1171",
+      "name": "Bond Westbound @ Gibbons",
+      "lat": 43.895268,
+      "lon": -78.878156,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1172",
+      "name": "Bond Westbound @ Stevenson",
+      "lat": 43.893883,
+      "lon": -78.884232,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1173",
+      "name": "King Westbound @ Waverly",
+      "lat": 43.892156,
+      "lon": -78.888154,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1174",
+      "name": "King Westbound @ Thornton",
+      "lat": 43.890669,
+      "lon": -78.894721,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1175",
+      "name": "King Eastbound @ Thornton",
+      "lat": 43.891088,
+      "lon": -78.892077,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1176",
+      "name": "King Eastbound @ Waverly",
+      "lat": 43.891958,
+      "lon": -78.888111,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1177",
+      "name": "King Eastbound @ Stevenson",
+      "lat": 43.893348,
+      "lon": -78.88199,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1178",
+      "name": "King Eastbound @ Gibbons",
+      "lat": 43.894062,
+      "lon": -78.878727,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1181",
+      "name": "King Eastbound @ Warren",
+      "lat": 43.895479,
+      "lon": -78.872558,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1183",
+      "name": "King Eastbound @ Midtown",
+      "lat": 43.896359,
+      "lon": -78.868644,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1185",
+      "name": "King Eastbound @ Mary",
+      "lat": 43.898339,
+      "lon": -78.860061,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1186",
+      "name": "King Eastbound @ Drew",
+      "lat": 43.899141,
+      "lon": -78.856595,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1242",
+      "name": "King Eastbound @ Simcoe",
+      "lat": 43.897623,
+      "lon": -78.863176,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1276",
+      "name": "Gibb Westbound @ Montrave",
+      "lat": 43.888129,
+      "lon": -78.871182,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1277",
+      "name": "Gibb Westbound @ Grenfell",
+      "lat": 43.887291,
+      "lon": -78.874471,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1278",
+      "name": "Westbound @ 450 Gibb",
+      "lat": 43.886802,
+      "lon": -78.87697,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1280",
+      "name": "Gibb Westbound @ Stevenson (West side stop)",
+      "lat": 43.885952,
+      "lon": -78.880912,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1281",
+      "name": "Gibb Westbound @ Waverly",
+      "lat": 43.885118,
+      "lon": -78.884574,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1282",
+      "name": "Gibb Westbound @ Vancouver",
+      "lat": 43.884493,
+      "lon": -78.887244,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1283",
+      "name": "Gibb Eastbound @ Vancouver",
+      "lat": 43.884355,
+      "lon": -78.887447,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1284",
+      "name": "Gibb Eastbound @ Waverly",
+      "lat": 43.885076,
+      "lon": -78.884308,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1285",
+      "name": "Gibb Eastbound @ Stevenson (West side stop)",
+      "lat": 43.885932,
+      "lon": -78.880513,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1286",
+      "name": "Gibb Eastbound @ Stevenson (East side stop)",
+      "lat": 43.886259,
+      "lon": -78.878706,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1287",
+      "name": "Eastbound @ 431 Gibb",
+      "lat": 43.886764,
+      "lon": -78.876312,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1288",
+      "name": "Gibb Eastbound @ Grenfell",
+      "lat": 43.887267,
+      "lon": -78.874165,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1289",
+      "name": "Gibb Eastbound @ Montrave",
+      "lat": 43.887759,
+      "lon": -78.872047,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1587",
+      "name": "Kingston Westbound @ Audley",
+      "lat": 43.868228,
+      "lon": -78.995249,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1588",
+      "name": "Kingston Westbound @ Alexanders Crossing",
+      "lat": 43.86702,
+      "lon": -79.00077,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1590",
+      "name": "Kingston Westbound @ Wicks",
+      "lat": 43.864355,
+      "lon": -79.012554,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1591",
+      "name": "Kingston Westbound @ Salem",
+      "lat": 43.863408,
+      "lon": -79.016841,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1593",
+      "name": "Westbound @ 84 Kingston",
+      "lat": 43.862111,
+      "lon": -79.022563,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1594",
+      "name": "Kingston Westbound @ Harwood",
+      "lat": 43.861171,
+      "lon": -79.026742,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1595",
+      "name": "Westbound @ 132 Kingston",
+      "lat": 43.859995,
+      "lon": -79.031718,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1596",
+      "name": "Kingston Westbound @ Chapman",
+      "lat": 43.859254,
+      "lon": -79.035043,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1598",
+      "name": "Kingston Westbound @ Westney",
+      "lat": 43.85744,
+      "lon": -79.043041,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1599",
+      "name": "Kingston Westbound @ Mill",
+      "lat": 43.856298,
+      "lon": -79.047905,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1600",
+      "name": "Kingston Westbound @ Church",
+      "lat": 43.854657,
+      "lon": -79.05529,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1601",
+      "name": "Kingston Westbound @ Elizabeth",
+      "lat": 43.853329,
+      "lon": -79.060678,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1602",
+      "name": "Kingston Westbound @ Notion",
+      "lat": 43.852381,
+      "lon": -79.064752,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1603",
+      "name": "Kingston Westbound @ Bainbridge",
+      "lat": 43.850148,
+      "lon": -79.071003,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1604",
+      "name": "Kingston Westbound @ Brock Road",
+      "lat": 43.84772,
+      "lon": -79.074525,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1607",
+      "name": "Kingston Westbound @ Valley Farm",
+      "lat": 43.841728,
+      "lon": -79.083084,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1608",
+      "name": "Kingston Westbound @ Glenanna",
+      "lat": 43.83815,
+      "lon": -79.08748,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1609",
+      "name": "Kingston Westbound @ Liverpool",
+      "lat": 43.83548,
+      "lon": -79.09104,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1610",
+      "name": "Kingston Westbound @ Walnut",
+      "lat": 43.83097,
+      "lon": -79.096728,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1611",
+      "name": "Kingston Westbound @ Dixie",
+      "lat": 43.82906,
+      "lon": -79.098675,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1612",
+      "name": "Kingston Westbound @ Fairport",
+      "lat": 43.823716,
+      "lon": -79.106421,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1613",
+      "name": "Westbound @ 804 Kingston",
+      "lat": 43.821703,
+      "lon": -79.111949,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1615",
+      "name": "Kingston Westbound @ Steeple Hill",
+      "lat": 43.817215,
+      "lon": -79.118076,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1616",
+      "name": "Kingston Westbound @ Rosebank",
+      "lat": 43.81332,
+      "lon": -79.123324,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1617",
+      "name": "Kingston Westbound @ Rougemount",
+      "lat": 43.809718,
+      "lon": -79.129028,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1742",
+      "name": "Kingston Westbound @ Whites",
+      "lat": 43.818764,
+      "lon": -79.115943,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1776",
+      "name": "Kingston Eastbound @ Rougemount",
+      "lat": 43.809116,
+      "lon": -79.129988,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1777",
+      "name": "Kingston Eastbound @ Rosebank",
+      "lat": 43.812717,
+      "lon": -79.123765,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1778",
+      "name": "Kingston Eastbound @ Steeple Hill",
+      "lat": 43.816824,
+      "lon": -79.11822,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1779",
+      "name": "Kingston Eastbound @ Whites",
+      "lat": 43.819366,
+      "lon": -79.114699,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1780",
+      "name": "Eastbound @ 817 Kingston",
+      "lat": 43.822422,
+      "lon": -79.110401,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1781",
+      "name": "Kingston Eastbound @ Fairport",
+      "lat": 43.823526,
+      "lon": -79.1066,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1782",
+      "name": "Kingston Eastbound @ Dixie",
+      "lat": 43.828459,
+      "lon": -79.098733,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1783",
+      "name": "Kingston Eastbound @ Walnut",
+      "lat": 43.830837,
+      "lon": -79.096536,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1786",
+      "name": "Kingston Eastbound @ Glenanna",
+      "lat": 43.838707,
+      "lon": -79.086373,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1787",
+      "name": "Kingston Eastbound @ Valley Farm",
+      "lat": 43.842456,
+      "lon": -79.081877,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1789",
+      "name": "Kingston Eastbound @ Brock Road",
+      "lat": 43.84806,
+      "lon": -79.073447,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "1790",
+      "name": "Kingston Eastbound @ Bainbridge",
+      "lat": 43.850408,
+      "lon": -79.070079,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2218",
+      "name": "Kingston Eastbound @ Wicks",
+      "lat": 43.864829,
+      "lon": -79.00946,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2220",
+      "name": "Kingston Eastbound @ Alexanders Crossing",
+      "lat": 43.866897,
+      "lon": -79.000205,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2221",
+      "name": "Kingston Eastbound @ Audley",
+      "lat": 43.867763,
+      "lon": -78.996374,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2233",
+      "name": "Kingston Eastbound @ Elizabeth",
+      "lat": 43.85324,
+      "lon": -79.060413,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2234",
+      "name": "Eastbound @ 625 Kingston",
+      "lat": 43.85417,
+      "lon": -79.056628,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2235",
+      "name": "Kingston Eastbound @ Mill",
+      "lat": 43.856039,
+      "lon": -79.048411,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2236",
+      "name": "Kingston Eastbound @ Westney",
+      "lat": 43.857699,
+      "lon": -79.040965,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2238",
+      "name": "Kingston Eastbound @ Ritchie",
+      "lat": 43.858841,
+      "lon": -79.035728,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2240",
+      "name": "Eastbound @ 113 Kingston",
+      "lat": 43.860433,
+      "lon": -79.028621,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2241",
+      "name": "Kingston Eastbound @ Harwood",
+      "lat": 43.861263,
+      "lon": -79.025056,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2242",
+      "name": "Eastbound @ 69 Kingston",
+      "lat": 43.862037,
+      "lon": -79.021604,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2576",
+      "name": "Whitby Station",
+      "lat": 43.865496,
+      "lon": -78.93794,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2595",
+      "name": "Oshawa Centre Terminal",
+      "lat": 43.889169,
+      "lon": -78.877279,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2603",
+      "name": "King Eastbound @ Centre",
+      "lat": 43.89714,
+      "lon": -78.865282,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "2712",
+      "name": "Simcoe Northbound @ Conlin",
+      "lat": 43.947746,
+      "lon": -78.895601,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3109",
+      "name": "Ritson Southbound @ Bloor",
+      "lat": 43.883063,
+      "lon": -78.84632,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3110",
+      "name": "Ritson Southbound @ Conant",
+      "lat": 43.87956,
+      "lon": -78.844802,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3114",
+      "name": "Farewell Northbound @ Raleigh",
+      "lat": 43.882796,
+      "lon": -78.82968,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3115",
+      "name": "Southbound @ 206 Ritson",
+      "lat": 43.903941,
+      "lon": -78.855791,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3116",
+      "name": "Northbound @ 205 Ritson",
+      "lat": 43.904205,
+      "lon": -78.855635,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3117",
+      "name": "Ritson Southbound @ Bond",
+      "lat": 43.901042,
+      "lon": -78.854433,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3118",
+      "name": "Ritson Northbound @ Richmond",
+      "lat": 43.901499,
+      "lon": -78.854417,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3227",
+      "name": "Gibb Westbound @ Nassau",
+      "lat": 43.889102,
+      "lon": -78.866981,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3228",
+      "name": "Gibb Eastbound @ Nassau",
+      "lat": 43.889194,
+      "lon": -78.866103,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3262",
+      "name": "Dean Westbound @ Wilson",
+      "lat": 43.887869,
+      "lon": -78.838006,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3263",
+      "name": "Dean Northbound @ Sedan",
+      "lat": 43.888306,
+      "lon": -78.841289,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3269",
+      "name": "Ritson Northbound @ Beatrice (North stop)",
+      "lat": 43.930147,
+      "lon": -78.866844,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3270",
+      "name": "Ritson Northbound @ Pentland",
+      "lat": 43.93206,
+      "lon": -78.867734,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3271",
+      "name": "Ritson Northbound @ Taunton",
+      "lat": 43.934727,
+      "lon": -78.868826,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3416",
+      "name": "Garrard Northbound @ Dundas",
+      "lat": 43.889152,
+      "lon": -78.903084,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3417",
+      "name": "Garrard Southbound @ Dundas",
+      "lat": 43.889014,
+      "lon": -78.903248,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3419",
+      "name": "Garrard Southbound @ Burnage",
+      "lat": 43.89232,
+      "lon": -78.90464,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3517",
+      "name": "Harmony Northbound @ Greenhill",
+      "lat": 43.951841,
+      "lon": -78.854544,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3542",
+      "name": "Simcoe Southbound @ Conlin",
+      "lat": 43.94919,
+      "lon": -78.896877,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3543",
+      "name": "Carnwith Westbound @ Bayern",
+      "lat": 43.96223,
+      "lon": -78.9725,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3544",
+      "name": "Carnwith Westbound @ Darius Harns",
+      "lat": 43.96165,
+      "lon": -78.97506,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3545",
+      "name": "Carnwith Westbound @ Montgomery",
+      "lat": 43.9624,
+      "lon": -78.96784,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3548",
+      "name": "Carnwith Westbound @ Baldwin",
+      "lat": 43.9668,
+      "lon": -78.95911,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3549",
+      "name": "Baldwin Southbound @ Winchester",
+      "lat": 43.95347,
+      "lon": -78.9624,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3551",
+      "name": "Ritson Southbound @ Luple",
+      "lat": 43.94279,
+      "lon": -78.87257,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3556",
+      "name": "Simcoe Southbound @ Britannia",
+      "lat": 43.955642,
+      "lon": -78.899754,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3557",
+      "name": "Simcoe Northbound @ Britannia",
+      "lat": 43.95583,
+      "lon": -78.89949,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3564",
+      "name": "Wentworth Eastbound @ Nelson",
+      "lat": 43.876379,
+      "lon": -78.838196,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3566",
+      "name": "Wentworth Eastbound @ Ritson",
+      "lat": 43.87551,
+      "lon": -78.841977,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3589",
+      "name": "Centennial Circle",
+      "lat": 43.787494,
+      "lon": -79.190831,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3590",
+      "name": "Kingston Westbound @ Delta",
+      "lat": 43.820127,
+      "lon": -79.114142,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3603",
+      "name": "Windfields Farm Westbound @ Thoroughbred",
+      "lat": 43.963141,
+      "lon": -78.904278,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3608",
+      "name": "Simcoe Northbound @ Founders",
+      "lat": 43.946668,
+      "lon": -78.894075,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3617",
+      "name": "Thickson Northbound @ Winchester",
+      "lat": 43.958227,
+      "lon": -78.943705,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3618",
+      "name": "Thickson Northbound @ Blackfriar",
+      "lat": 43.961855,
+      "lon": -78.945277,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3627",
+      "name": "Baldwin Southbound @ Cassels",
+      "lat": 43.955959,
+      "lon": -78.961368,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "3633",
+      "name": "Simcoe Northbound @ Windfields Farm",
+      "lat": 43.963742,
+      "lon": -78.902926,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "7698",
+      "name": "Ellesmere Eastbound @ Military Trail",
+      "lat": 43.786796,
+      "lon": -79.187196,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "9473",
+      "name": "Ellesmere Westbound @ Military Trail",
+      "lat": 43.786684,
+      "lon": -79.188152,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90041",
+      "name": "Coldstream Westbound @ Harmony (West side stop)",
+      "lat": 43.944355,
+      "lon": -78.852735,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90042",
+      "name": "Coldstream Westbound @ Pennel",
+      "lat": 43.9448,
+      "lon": -78.856145,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90043",
+      "name": "Coldstream Westbound @ Clearbrook",
+      "lat": 43.945576,
+      "lon": -78.857899,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90044",
+      "name": "Coldstream Westbound @ Wilson",
+      "lat": 43.946166,
+      "lon": -78.862296,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90050",
+      "name": "Coldstream Westbound @ Ritson",
+      "lat": 43.944435,
+      "lon": -78.872409,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90051",
+      "name": "Coldstream Eastbound @ Whitestone",
+      "lat": 43.945173,
+      "lon": -78.868674,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90052",
+      "name": "Coldstream Westbound @ Ormond",
+      "lat": 43.94571,
+      "lon": -78.866106,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90053",
+      "name": "Coldstream Eastbound @ Ormond",
+      "lat": 43.945539,
+      "lon": -78.865092,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "90076",
+      "name": "Simcoe Southbound @ Founders",
+      "lat": 43.946343,
+      "lon": -78.894148,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "92072",
+      "name": "Eastbound @ 257 Kingston Road East",
+      "lat": 43.863958,
+      "lon": -79.013105,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93026",
+      "name": "Simcoe Southbound @ Windfields Farm",
+      "lat": 43.963159,
+      "lon": -78.90308,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93036",
+      "name": "Harmony Northbound @ Coldstream",
+      "lat": 43.945287,
+      "lon": -78.851775,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93040",
+      "name": "Baldwin Southbound @ Canary",
+      "lat": 43.929993,
+      "lon": -78.962969,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93041",
+      "name": "Baldwin Northbound @ Canary",
+      "lat": 43.93034,
+      "lon": -78.962752,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93048",
+      "name": "Kingston Eastbound @ Notion",
+      "lat": 43.852215,
+      "lon": -79.064698,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93060",
+      "name": "Kingston Westbound @ Altona",
+      "lat": 43.808712,
+      "lon": -79.131154,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93061",
+      "name": "Kingston Eastbound @ Altona",
+      "lat": 43.807572,
+      "lon": -79.132422,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93064",
+      "name": "Conlin Westbound @ Bridle",
+      "lat": 43.949117,
+      "lon": -78.891024,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93178",
+      "name": "Simcoe Northbound @ Athol",
+      "lat": 43.89651,
+      "lon": -78.86306,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93183",
+      "name": "Dean Westbound @ Normandy",
+      "lat": 43.88834,
+      "lon": -78.844227,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93227",
+      "name": "Kingston Eastbound @ Port Union",
+      "lat": 43.799156,
+      "lon": -79.14547,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93240",
+      "name": "Kingston Westbound @ Sheppard",
+      "lat": 43.799508,
+      "lon": -79.145701,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93254",
+      "name": "Kingston Eastbound @ Salem",
+      "lat": 43.863458,
+      "lon": -79.015198,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93255",
+      "name": "Ellesmere Eastbound @ Meadowvale",
+      "lat": 43.7923,
+      "lon": -79.1639,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93259",
+      "name": "Ellesmere Westbound @ Meadowvale",
+      "lat": 43.792626,
+      "lon": -79.163294,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93353",
+      "name": "Conlin Westbound @ Riverton",
+      "lat": 43.955816,
+      "lon": -78.86148,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93424",
+      "name": "Coldstream Eastbound @ Clearbrook",
+      "lat": 43.944974,
+      "lon": -78.85634,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93426",
+      "name": "Coldstream Eastbound @ Ritson",
+      "lat": 43.944385,
+      "lon": -78.872175,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93482",
+      "name": "Carnwith Eastbound @ Baldwin",
+      "lat": 43.966895,
+      "lon": -78.957833,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93484",
+      "name": "Carnwith Eastbound @ Watford",
+      "lat": 43.967258,
+      "lon": -78.951755,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93485",
+      "name": "Carnwith Eastbound @ Thickson",
+      "lat": 43.967909,
+      "lon": -78.948888,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93493",
+      "name": "Coldstream Eastbound @ Wilson",
+      "lat": 43.945803,
+      "lon": -78.863295,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93542",
+      "name": "Kingston Eastbound @ Liverpool",
+      "lat": 43.835851,
+      "lon": -79.09007,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93553",
+      "name": "Winchester Westbound @ Cachet",
+      "lat": 43.959003,
+      "lon": -78.936407,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93700",
+      "name": "Ritson Northbound @ Bond",
+      "lat": 43.900361,
+      "lon": -78.853953,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93710",
+      "name": "Ritson Northbound @ Athol",
+      "lat": 43.898724,
+      "lon": -78.853139,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93711",
+      "name": "Ritson Northbound @ Eulalie",
+      "lat": 43.895036,
+      "lon": -78.851457,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93712",
+      "name": "Ritson Northbound @ Olive",
+      "lat": 43.890786,
+      "lon": -78.849532,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93713",
+      "name": "Ritson Southbound @ Athol",
+      "lat": 43.898959,
+      "lon": -78.853486,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93714",
+      "name": "Ritson Southbound @ Eulalie",
+      "lat": 43.895256,
+      "lon": -78.85178,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93715",
+      "name": "Ritson Southbound @ Olive",
+      "lat": 43.891023,
+      "lon": -78.849841,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93718",
+      "name": "Ritson Southbound @ William",
+      "lat": 43.902586,
+      "lon": -78.855132,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93735",
+      "name": "Garrard Northbound @ Griffen",
+      "lat": 43.923381,
+      "lon": -78.917892,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93736",
+      "name": "Garrard Northbound @ Gagnon",
+      "lat": 43.919757,
+      "lon": -78.916322,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93747",
+      "name": "Dundas Eastbound @ Des Newman",
+      "lat": 43.873089,
+      "lon": -78.971771,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93749",
+      "name": "Dundas Westbound @ Des Newman",
+      "lat": 43.873682,
+      "lon": -78.970969,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93765",
+      "name": "Dean Westbound @ Ritson",
+      "lat": 43.886499,
+      "lon": -78.847469,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "93937",
+      "name": "Simcoe Southbound @ Northern Dancer",
+      "lat": 43.952281,
+      "lon": -78.898253,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94049",
+      "name": "Conlin Westbound @ Ritson (East side stop)",
+      "lat": 43.952552,
+      "lon": -78.87615,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94070",
+      "name": "Ritson Southbound @ McNaughton",
+      "lat": 43.88665,
+      "lon": -78.8479,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94093",
+      "name": "Winchester Eastbound @ Cachet",
+      "lat": 43.958574,
+      "lon": -78.937482,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94094",
+      "name": "Winchester Eastbound @ Thickson",
+      "lat": 43.957557,
+      "lon": -78.942081,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94105",
+      "name": "Baldwin-Highway 407 Park and Ride",
+      "lat": 43.94436,
+      "lon": -78.95963,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94107",
+      "name": "Vipond Westbound @ Montgomery",
+      "lat": 43.957026,
+      "lon": -78.965508,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94108",
+      "name": "Vipond Westbound @ Ferguson",
+      "lat": 43.956074,
+      "lon": -78.969778,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94109",
+      "name": "Vipond Westbound @ Darrius Harns",
+      "lat": 43.955498,
+      "lon": -78.972343,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94110",
+      "name": "Ashburn Northbound @ Carnwith",
+      "lat": 43.9609,
+      "lon": -78.97733,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94111",
+      "name": "Carnwith Eastbound @ Bayern",
+      "lat": 43.962107,
+      "lon": -78.972338,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94112",
+      "name": "Carnwith Eastbound @ Montgomery",
+      "lat": 43.962238,
+      "lon": -78.967677,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94151",
+      "name": "Gibb Street Eastbound @ Centre Street",
+      "lat": 43.88991,
+      "lon": -78.86271,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94188",
+      "name": "Simcoe Northbound @ Taunton (South Side Stop)",
+      "lat": 43.932763,
+      "lon": -78.878746,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94189",
+      "name": "Simcoe Southbound @ Commencement",
+      "lat": 43.945083,
+      "lon": -78.892198,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94198",
+      "name": "Conlin Westbound @ Founders",
+      "lat": 43.94732,
+      "lon": -78.8995,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94199",
+      "name": "Conlin Eastbound @ Founders",
+      "lat": 43.94703,
+      "lon": -78.900019,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94211",
+      "name": "Conlin Westbound @ Simcoe",
+      "lat": 43.947863,
+      "lon": -78.897454,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94247",
+      "name": "Conlin Eastbound @ Garrard",
+      "lat": 43.941682,
+      "lon": -78.925171,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94248",
+      "name": "Conlin Westbound @ Garrard",
+      "lat": 43.941728,
+      "lon": -78.925415,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94414",
+      "name": "Southbound @ 2660 Simcoe",
+      "lat": 43.965169,
+      "lon": -78.903953,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94415",
+      "name": "Winchester Westbound @ Simcoe",
+      "lat": 43.96657,
+      "lon": -78.905174,
+      "city_id": "DURHAM"
+    },
+    {
+      "stop_id": "94432",
+      "name": "Fieldgate Centre",
+      "lat": 43.943264,
+      "lon": -78.961563,
+      "city_id": "DURHAM"
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "302",
+      "name": "Route 302",
+      "region_id": "west",
+      "city_id": "DURHAM",
+      "served_city_ids": [
+        "DURHAM"
+      ],
+      "intercity": false,
+      "stops": [
+        "2576",
+        "166",
+        "167",
+        "168",
+        "169",
+        "170",
+        "171",
+        "172",
+        "173",
+        "174",
+        "175",
+        "176",
+        "177",
+        "179",
+        "180",
+        "181",
+        "182",
+        "183",
+        "184",
+        "185",
+        "186",
+        "187",
+        "188",
+        "189",
+        "93041",
+        "190",
+        "94432",
+        "94105",
+        "490",
+        "491",
+        "492",
+        "94107",
+        "94108",
+        "94109",
+        "94110",
+        "94111",
+        "94112",
+        "93482",
+        "93484",
+        "93485",
+        "533",
+        "94094",
+        "94093",
+        "94414",
+        "93026",
+        "3556",
+        "93937",
+        "3542",
+        "90076",
+        "698"
+      ],
+      "directions": {
+        "0": [
+          "2576",
+          "166",
+          "167",
+          "168",
+          "169",
+          "170",
+          "171",
+          "172",
+          "173",
+          "174",
+          "175",
+          "176",
+          "177",
+          "179",
+          "180",
+          "181",
+          "182",
+          "183",
+          "184",
+          "185",
+          "186",
+          "187",
+          "188",
+          "189",
+          "93041",
+          "190",
+          "94432",
+          "94105",
+          "490",
+          "491",
+          "492",
+          "94107",
+          "94108",
+          "94109",
+          "94110",
+          "94111",
+          "94112",
+          "93482",
+          "93484",
+          "93485",
+          "533",
+          "94094",
+          "94093",
+          "94414",
+          "93026",
+          "3556",
+          "93937",
+          "3542",
+          "90076",
+          "698"
+        ],
+        "1": [
+          "698",
+          "3608",
+          "2712",
+          "705",
+          "3557",
+          "3633",
+          "94415",
+          "93553",
+          "3617",
+          "3618",
+          "505",
+          "506",
+          "507",
+          "3548",
+          "3545",
+          "3543",
+          "3544",
+          "514",
+          "513",
+          "512",
+          "511",
+          "3627",
+          "3549",
+          "535",
+          "94432",
+          "94105",
+          "191",
+          "93040",
+          "192",
+          "193",
+          "195",
+          "196",
+          "197",
+          "198",
+          "199",
+          "200",
+          "201",
+          "202",
+          "203",
+          "204",
+          "206",
+          "207",
+          "208",
+          "209",
+          "210",
+          "211",
+          "212",
+          "213",
+          "214",
+          "215",
+          "216",
+          "217",
+          "2576"
+        ]
+      }
+    },
+    {
+      "route_id": "407",
+      "name": "Route 407",
+      "region_id": "east",
+      "city_id": "DURHAM",
+      "served_city_ids": [
+        "DURHAM"
+      ],
+      "intercity": false,
+      "stops": [
+        "3114",
+        "3262",
+        "3263",
+        "93183",
+        "93765",
+        "93712",
+        "93711",
+        "93710",
+        "93700",
+        "3118",
+        "3116",
+        "879",
+        "881",
+        "882",
+        "883",
+        "884",
+        "885",
+        "886",
+        "887",
+        "888",
+        "889",
+        "3269",
+        "3270",
+        "3271",
+        "892",
+        "93426",
+        "90051",
+        "90053",
+        "93493",
+        "93424",
+        "93036",
+        "3517",
+        "93353",
+        "94049",
+        "896",
+        "897",
+        "898",
+        "93064",
+        "90076",
+        "698"
+      ],
+      "directions": {
+        "0": [
+          "3114",
+          "3262",
+          "3263",
+          "93183",
+          "93765",
+          "93712",
+          "93711",
+          "93710",
+          "93700",
+          "3118",
+          "3116",
+          "879",
+          "881",
+          "882",
+          "883",
+          "884",
+          "885",
+          "886",
+          "887",
+          "888",
+          "889",
+          "3269",
+          "3270",
+          "3271",
+          "892",
+          "93426",
+          "90051",
+          "90053",
+          "93493",
+          "93424",
+          "93036",
+          "3517",
+          "93353",
+          "94049",
+          "896",
+          "897",
+          "898",
+          "93064",
+          "90076",
+          "698"
+        ],
+        "1": [
+          "817",
+          "90041",
+          "90042",
+          "90043",
+          "90044",
+          "90052",
+          "910",
+          "90050",
+          "3551",
+          "859",
+          "861",
+          "862",
+          "863",
+          "864",
+          "865",
+          "866",
+          "867",
+          "868",
+          "869",
+          "870",
+          "872",
+          "3115",
+          "93718",
+          "3117",
+          "93713",
+          "93714",
+          "93715",
+          "94070",
+          "3109",
+          "3110",
+          "3566",
+          "3564",
+          "3114"
+        ]
+      }
+    },
+    {
+      "route_id": "409",
+      "name": "Route 409",
+      "region_id": "east",
+      "city_id": "DURHAM",
+      "served_city_ids": [
+        "DURHAM"
+      ],
+      "intercity": false,
+      "stops": [
+        "2595",
+        "1280",
+        "1281",
+        "1282",
+        "537",
+        "343",
+        "344",
+        "345",
+        "3416",
+        "346",
+        "348",
+        "349",
+        "350",
+        "352",
+        "353",
+        "354",
+        "355",
+        "356",
+        "93736",
+        "93735",
+        "94247",
+        "94199",
+        "705",
+        "3557",
+        "3603"
+      ],
+      "directions": {
+        "0": [
+          "2595",
+          "1280",
+          "1281",
+          "1282",
+          "537",
+          "343",
+          "344",
+          "345",
+          "3416",
+          "346",
+          "348",
+          "349",
+          "350",
+          "352",
+          "353",
+          "354",
+          "355",
+          "356",
+          "93736",
+          "93735",
+          "94247",
+          "94199",
+          "705",
+          "3557",
+          "3603"
+        ],
+        "1": [
+          "93026",
+          "3556",
+          "93937",
+          "3542",
+          "94211",
+          "94198",
+          "94248",
+          "293",
+          "294",
+          "295",
+          "296",
+          "297",
+          "298",
+          "300",
+          "302",
+          "303",
+          "304",
+          "3419",
+          "3417",
+          "439",
+          "441",
+          "442",
+          "536",
+          "1283",
+          "1284",
+          "1285",
+          "1286",
+          "2595"
+        ]
+      }
+    },
+    {
+      "route_id": "900",
+      "name": "PULSE 900",
+      "region_id": "west",
+      "city_id": "DURHAM",
+      "served_city_ids": [
+        "DURHAM"
+      ],
+      "intercity": false,
+      "stops": [
+        "3589",
+        "7698",
+        "93255",
+        "93227",
+        "93061",
+        "1776",
+        "1777",
+        "1778",
+        "1779",
+        "1780",
+        "1781",
+        "1782",
+        "1783",
+        "93542",
+        "1786",
+        "1787",
+        "1789",
+        "1790",
+        "93048",
+        "2233",
+        "2234",
+        "2235",
+        "2236",
+        "2238",
+        "2240",
+        "2241",
+        "2242",
+        "93254",
+        "92072",
+        "2218",
+        "2220",
+        "2221",
+        "412",
+        "413",
+        "93747",
+        "417",
+        "418",
+        "419",
+        "422",
+        "424",
+        "425",
+        "427",
+        "431",
+        "432",
+        "434",
+        "450",
+        "451",
+        "452",
+        "453",
+        "1175",
+        "1176",
+        "1177",
+        "1178",
+        "1181",
+        "1183",
+        "2603",
+        "1242",
+        "1185",
+        "1186",
+        "3118"
+      ],
+      "directions": {
+        "0": [
+          "3589",
+          "7698",
+          "93255",
+          "93227",
+          "93061",
+          "1776",
+          "1777",
+          "1778",
+          "1779",
+          "1780",
+          "1781",
+          "1782",
+          "1783",
+          "93542",
+          "1786",
+          "1787",
+          "1789",
+          "1790",
+          "93048",
+          "2233",
+          "2234",
+          "2235",
+          "2236",
+          "2238",
+          "2240",
+          "2241",
+          "2242",
+          "93254",
+          "92072",
+          "2218",
+          "2220",
+          "2221",
+          "412",
+          "413",
+          "93747",
+          "417",
+          "418",
+          "419",
+          "422",
+          "424",
+          "425",
+          "427",
+          "431",
+          "432",
+          "434",
+          "450",
+          "451",
+          "452",
+          "453",
+          "1175",
+          "1176",
+          "1177",
+          "1178",
+          "1181",
+          "1183",
+          "2603",
+          "1242",
+          "1185",
+          "1186",
+          "3118"
+        ],
+        "1": [
+          "1163",
+          "1164",
+          "1165",
+          "1166",
+          "1167",
+          "1169",
+          "1171",
+          "1172",
+          "1173",
+          "1174",
+          "386",
+          "387",
+          "388",
+          "389",
+          "391",
+          "393",
+          "394",
+          "396",
+          "398",
+          "400",
+          "401",
+          "404",
+          "405",
+          "406",
+          "93749",
+          "410",
+          "411",
+          "1587",
+          "1588",
+          "1590",
+          "1591",
+          "1593",
+          "1594",
+          "1595",
+          "1596",
+          "1598",
+          "1599",
+          "1600",
+          "1601",
+          "1602",
+          "1603",
+          "1604",
+          "1607",
+          "1608",
+          "1609",
+          "1610",
+          "1611",
+          "1612",
+          "1613",
+          "3590",
+          "1742",
+          "1615",
+          "1616",
+          "1617",
+          "93060",
+          "93240",
+          "93259",
+          "9473",
+          "3589"
+        ]
+      }
+    },
+    {
+      "route_id": "901",
+      "name": "PULSE 901",
+      "region_id": "east",
+      "city_id": "DURHAM",
+      "served_city_ids": [
+        "DURHAM"
+      ],
+      "intercity": false,
+      "stops": [
+        "2595",
+        "1287",
+        "1288",
+        "1289",
+        "3228",
+        "94151",
+        "672",
+        "674",
+        "93178",
+        "677",
+        "678",
+        "679",
+        "680",
+        "682",
+        "605",
+        "685",
+        "687",
+        "689",
+        "94188",
+        "691",
+        "693",
+        "695",
+        "698"
+      ],
+      "directions": {
+        "0": [
+          "2595",
+          "1287",
+          "1288",
+          "1289",
+          "3228",
+          "94151",
+          "672",
+          "674",
+          "93178",
+          "677",
+          "678",
+          "679",
+          "680",
+          "682",
+          "605",
+          "685",
+          "687",
+          "689",
+          "94188",
+          "691",
+          "693",
+          "695",
+          "698"
+        ],
+        "1": [
+          "698",
+          "94189",
+          "706",
+          "707",
+          "710",
+          "711",
+          "713",
+          "714",
+          "716",
+          "650",
+          "652",
+          "654",
+          "655",
+          "657",
+          "659",
+          "661",
+          "663",
+          "3227",
+          "1276",
+          "1277",
+          "1278",
+          "2595"
+        ]
+      }
+    }
+  ],
+  "buses": [
+    {
+      "bus_id": "bus-302-1",
+      "route_id": "302",
+      "city_id": "DURHAM",
+      "region_id": "west",
+      "edge_id": "edge-west-1",
+      "capacity": 50,
+      "direction_id": 0,
+      "scenario": {
+        "demand": "peak",
+        "traffic_factor": 1.0,
+        "sensor_failure_rate": 0.0
+      }
+    },
+    {
+      "bus_id": "bus-302-2",
+      "route_id": "302",
+      "city_id": "DURHAM",
+      "region_id": "west",
+      "edge_id": "edge-west-2",
+      "capacity": 50,
+      "direction_id": 1,
+      "scenario": {
+        "demand": "off_peak",
+        "traffic_factor": 0.5,
+        "sensor_failure_rate": 0.0
+      }
+    },
+    {
+      "bus_id": "bus-407-1",
+      "route_id": "407",
+      "city_id": "DURHAM",
+      "region_id": "east",
+      "edge_id": "edge-east-1",
+      "capacity": 50,
+      "direction_id": 0,
+      "scenario": {
+        "demand": "peak",
+        "traffic_factor": 1.0,
+        "sensor_failure_rate": 0.2
+      }
+    },
+    {
+      "bus_id": "bus-407-2",
+      "route_id": "407",
+      "city_id": "DURHAM",
+      "region_id": "east",
+      "edge_id": "edge-east-2",
+      "capacity": 50,
+      "direction_id": 1
+    },
+    {
+      "bus_id": "bus-409-1",
+      "route_id": "409",
+      "city_id": "DURHAM",
+      "region_id": "east",
+      "edge_id": "edge-east-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "bus-409-2",
+      "route_id": "409",
+      "city_id": "DURHAM",
+      "region_id": "east",
+      "edge_id": "edge-east-2",
+      "capacity": 50,
+      "direction_id": 1
+    },
+    {
+      "bus_id": "bus-900-1",
+      "route_id": "900",
+      "city_id": "DURHAM",
+      "region_id": "west",
+      "edge_id": "edge-west-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "bus-900-2",
+      "route_id": "900",
+      "city_id": "DURHAM",
+      "region_id": "west",
+      "edge_id": "edge-west-2",
+      "capacity": 50,
+      "direction_id": 1
+    },
+    {
+      "bus_id": "bus-901-1",
+      "route_id": "901",
+      "city_id": "DURHAM",
+      "region_id": "east",
+      "edge_id": "edge-east-1",
+      "capacity": 50,
+      "direction_id": 0
+    },
+    {
+      "bus_id": "bus-901-2",
+      "route_id": "901",
+      "city_id": "DURHAM",
+      "region_id": "east",
+      "edge_id": "edge-east-2",
+      "capacity": 50,
+      "direction_id": 1
+    }
+  ]
+}

@@ -30,20 +30,24 @@ def on_disconnection(client, userdata, flags, reason_code, properties):
 def on_message(client, userdata, msg):
     try:
         parts = msg.topic.split("/")
-        if len(parts) != 5 or parts[2] != "bus":
+        if len(parts) != 5 or parts[0] != "transit" or parts[2] != "bus" or parts[4] != "state" or not parts[1] or not parts[3]:
             logger.warning("Ignoring unexpected topic %s", msg.topic)
             return
+        region_id = parts[1]
         bus_id = parts[3]
 
         bus_state = BusStateUpdate.model_validate_json(msg.payload)
-        applied_bus_state = apply_bus_state(bus_id, bus_state)
+        applied, reason = apply_bus_state(bus_id, region_id, bus_state)
 
-        if not applied_bus_state: #bus state update was not accepted
-            logger.debug("Stale update for %s (seq %s) ignored", bus_id, bus_state.sequence_number)
+        if not applied: #bus state update was not accepted
+            if reason == "stale update":
+                logger.debug("Stale update for %s (seq %s) ignored", bus_id, bus_state.sequence_number)
+            else:
+                logger.warning("Rejected update for %s on %s: %s",bus_id, msg.topic, reason)
 
     #errpr handling
     except ValidationError as error:
-        logger.warning("Invalid payload on %s,: %s", msg.topic, error)
+        logger.warning("Invalid payload on %s: %d validation errors", msg.topic, error.error_count())
     except Exception:
         logger.exception("Failed to process message on %s", msg.topic)
 

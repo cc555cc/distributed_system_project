@@ -6,3 +6,9 @@ __pycache__/
 .env.*
 !.env.example
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+
+# personal notes
+CENTRAL-02-checklist.md
