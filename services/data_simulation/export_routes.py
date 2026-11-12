@@ -4,10 +4,12 @@ from urllib.parse import quote
 from urllib.request import urlopen
 
 
-def main(route_id: str) -> list[dict]:
+def main(route_id: str, direction: int | None = None) -> list[dict]:
     """Download all stop data for this bus's assigned route."""
     route_id = quote(str(route_id), safe="")
     url = f"http://localhost:8000/routes/{route_id}/stops"
+    if direction is not None:
+        url += f"?direction={int(direction)}"
     with urlopen(url, timeout=10) as response:
         return json.load(response)
 
