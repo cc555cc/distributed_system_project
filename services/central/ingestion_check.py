@@ -22,7 +22,6 @@ def check_update(conn, bus_id: str, region_id: str, state) -> str | None:
     #TODO add edge server check here
     return None
 
-
 #scenario: system assign a new bus to a route -> check if bus route exists
 def bus_assignment_check(conn, request_bus_id: str, request_route_id: str) -> bool:
     row = conn.execute(
@@ -44,9 +43,10 @@ def next_stop_check(conn, route_id: str, current_stop: str | None, next_stop: st
     # A bus can report the same next stop while travelling toward it.
     # Its first reading still needs a stop on the assigned directional route.
     # update: in case of drop message, the checker should accept jumped stop so the bus doesn't get stuck for losing messages in between
+    # it should now accept any valid stop after a direction change"
     if next_stop not in stop_ids: 
         return False
-    if current_stop is None or current_stop == next_stop: #
+    if current_stop is None or current_stop == next_stop: 
         return True
     if current_stop not in stop_ids:
         return True
