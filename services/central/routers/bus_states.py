@@ -20,7 +20,7 @@ def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> tuple
             "SELECT sequence_number FROM bus_states WHERE bus_id = %s FOR UPDATE",
             (bus_id,),
         ).fetchone()
-        if row is not None and row[0] >= state.sequence_number:
+        if row is not None and row[0] >= state.sequence_number: #a late message, drop it
             return False, "stale update"
         
         #use ingestion check first before pushing update to the database

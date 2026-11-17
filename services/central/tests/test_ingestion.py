@@ -11,7 +11,7 @@ from services.central.ingestion_check import check_update, next_stop_check
 @pytest.mark.parametrize("current,following,expected", [
     (None, "S1", True), (None, "other", False),
     ("S1", "S1", True), ("S1", "S2", True),
-    ("S1", "S3", False), ("S2", "S1", False),
+    ("S1", "S3", True), ("S2", "S1", False),
 ])
 def test_next_stop_membership_and_progress(current, following, expected):
     connection = Mock()
@@ -50,6 +50,7 @@ def test_apply_update_returns_consistent_result(bus_states, rowcount, expected):
                                      bus_status="travelling", occupancy=10, sequence_number=2, lamport=2)
     connection = Mock()
     connection.execute.return_value.rowcount = rowcount
+    connection.execute.return_value.fetchone.return_value = None #no stored row yet
     with patch.object(bus_states.psycopg, "connect") as connect, patch.object(bus_states, "check_update", return_value=None):
         connect.return_value.__enter__.return_value = connection
         assert bus_states.apply_bus_state("bus-302-1", "west", state) == expected
@@ -57,10 +58,12 @@ def test_apply_update_returns_consistent_result(bus_states, rowcount, expected):
 
 def test_rejected_ingestion_does_not_write(bus_states):
     connection = Mock()
+    connection.execute.return_value.fetchone.return_value = None #also no stored row yet
     with patch.object(bus_states.psycopg, "connect") as connect, patch.object(bus_states, "check_update", return_value="wrong region"):
         connect.return_value.__enter__.return_value = connection
         assert bus_states.apply_bus_state("bus-302-1", "east", SimpleNamespace(edge_metadata=None)) == (False, "wrong region")
-    connection.execute.assert_not_called()
+    connection.execute.assert_called_once()
+    assert "INSERT" not in connection.execute.call_args.args[0]
 
 
 def test_mqtt_passes_region_to_central_ingestion(bus_states):

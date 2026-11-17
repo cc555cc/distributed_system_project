@@ -37,7 +37,7 @@ class TestDatabase:
 
     def execute(self, sql, parameters=()):
         params = tuple(json.dumps(p.obj) if isinstance(p, Jsonb) else p for p in parameters)
-        cursor = self.connection.execute(sql.replace("%s", "?").replace("::integer", "").replace("now()", "CURRENT_TIMESTAMP"), params)
+        cursor = self.connection.execute(sql.replace("%s", "?").replace("::integer", "").replace("now()", "CURRENT_TIMESTAMP").replace(" FOR UPDATE", ""), params)
         dictionary_rows = self.dictionary_rows
 
         class Cursor:
