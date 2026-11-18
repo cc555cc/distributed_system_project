@@ -21,7 +21,9 @@ project/
 |   |   |-- mqtt_client.py      # existing central subscriber
 |   |   |-- topics.py           # agreed MQTT topic names
 |   |   `-- tests/
-|   |-- edge/                   # Ali: local ingress and processing
+|   |-- edge/                   # Ali: local ingress, processing and monitoring
+|   |   |-- main.py             # launch configured independent edge processes
+|   |   |-- monitoring.py       # sensor deadlines and queue measurements
 |   |   |-- config.py           # network configuration and cache policy
 |   |   |-- edge_server.py      # accepted-message queue adapter
 |   |   |-- communication/      # data_to_edge.py and edge_to_central.py
@@ -31,6 +33,7 @@ project/
 |   |   |-- transformation/     # central_mapper.py: EDGE-03 mapping
 |   |   `-- tests/              # validation, processing and forwarding tests
 |   `-- central/                # Carson: API, ingestion and scheduling
+|       |-- health.py           # central edge-heartbeat receiver and health API
 |       |-- main.py
 |       |-- routers/
 |       |   |-- bus_states.py
@@ -43,6 +46,7 @@ project/
 |   |-- routes.json             # active Durham route snapshot
 |   `-- schema/
 |       |-- bus_state.py        # shared central input and edge metadata model
+|       |-- health.py           # shared heartbeat models and monotonic deadlines
 |       |-- network.py          # shared network loading and assignment checks
 |       |-- schema.sql          # database tables and constraints
 |       `-- seed.sql            # sample routes and stops
@@ -77,11 +81,11 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **155 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **194 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
-There is no separate edge `main.py` or edge HTTP server. `communication/data_to_edge.py` runs the MQTT worker: receive, validate, queue and pass accepted readings through processing and forwarding. `communication/edge_to_central.py` owns outgoing validation and delivery. A running worker is still needed to keep MQTT connections alive; instance orchestration and balancing belong to later tickets.
+`main.py` is now the instance launcher. It creates each configured worker in a separate process, with independent subscriber, queue, processor/cache, sender and monitor objects. It is not an edge HTTP server. `communication/data_to_edge.py` still handles incoming data and the processing loop; its older single-instance command delegates to the launcher for compatibility.
 
 1. `communication/data_to_edge.py` decodes incoming MQTT telemetry, validates it and queues accepted messages.
 2. `edge_server.py` passes the queued reading to `processing/processor.py`. That file keeps the small route, occupancy, statistics and snapshot-building helpers together. `cache/edge_state_cache.py` stores bus states and remembered sequences, scoped by city/region/bus. Cache updates remain locked.
@@ -170,13 +174,41 @@ Messages retain `schema_version: "bus-telemetry-v1"`, registered bus/city/region
 
 Only accepted new updates are staged. Stale, duplicate and conflicting readings do not generate new sends. A broker failure leaves the latest pending payload per owned bus for retry; a newer accepted update replaces that slot. Expired pending updates are dropped rather than advertised as current. This queue and the cache are in memory, so restarts do not preserve unsent updates or sequence history. A broker receipt is not a database-write acknowledgement.
 
-Freshness uses a monotonic clock. Cache entries expire only under the configured safe-capacity policy; sequence floors remain remembered during the process lifetime. Route progress uses reported stops, not GPS proximity. Stale/offline buses stay out of active totals, and unknown occupancy stays out of averages. No replication, failover, balancing, scaling, ETA, journey planning or scheduling was added.
+Freshness uses a monotonic clock. Cache entries expire only under the configured safe-capacity policy; sequence floors remain remembered during the process lifetime. Route progress uses reported stops, not GPS proximity. Stale/offline buses stay out of active totals, and unknown occupancy stays out of averages. No replication, failover, automatic workload migration, instance scaling, ETA, journey planning or scheduling was added. Queue thresholds only produce recommendations.
+
+### Heartbeats, instances and workload thresholds
+
+Carson's branch was merged first at `c29865b`, preserving his demo stack, ingestion fixes and terminal endpoint. The heartbeat additions are based on that version. His ETA draft is not changed or presented as a working ETA endpoint.
+
+`python -m services.edge.main` creates all four configured edge processes. Use `--edge edge-west-1 --edge edge-west-2` to select workers. `--single` uses `EDGE_ID` and checks that `CITY_ID`/`REGION_ID` match the shared map; the compose image uses this mode so each container creates only its own instance. Static assignments are read from configuration. The launcher logs worker exits and stops children on shutdown; it does not claim automatic takeover or recovery synchronization.
+
+A bus heartbeat has separate `gps`, `speed`, `stop_status` and `occupancy` states. These are four logical sensor channels inside the current simulator, not four independent physical devices. Heartbeats run on a separate publisher timer; simulated sensor faults still report `faulty` even when no telemetry reading is emitted. An omitted channel stops refreshing that sensor's receipt deadline. Only its assigned edge processes sensor heartbeats and queues bus telemetry, so a peer's traffic does not falsely inflate this worker's queue.
+
+The edge forwards sensor-health summaries inside its own periodic heartbeat. Central computes edge timeout/recovery independently and exposes `GET /health/edges`. It returns `unknown`, `healthy`, `unavailable` or `recovering`, the latest workload/sensor report, and scoped load recommendations. A live heartbeat does not prove valid sensor data: `reported_state` can be `faulty`, and accepted-telemetry age is tracked separately. Old/duplicate heartbeat sequences and retired sessions do not refresh liveness. Timeouts use local monotonic receipt clocks; UTC source timestamps are for reporting.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `HEARTBEAT_INTERVAL_SECONDS` | 2 | Bus/edge heartbeat period |
+| `SENSOR_HEARTBEAT_TIMEOUT_SECONDS` | 10 | Missing sensor deadline |
+| `EDGE_HEARTBEAT_TIMEOUT_SECONDS` | 10 | Central's missing-edge deadline |
+| `HEARTBEAT_RECOVERY_SECONDS` | 4 | Repeated-pulse recovery window |
+| `EDGE_QUEUE_SIZE` | 1000 | Maximum queued telemetry messages per instance |
+| `EDGE_OVERLOAD_PERCENT` | 80 | Queue utilization threshold |
+| `EDGE_OVERLOAD_SUSTAIN_SECONDS` | 6 | Sustained high-load window before recommendation |
+
+Queue utilization is `queue_size / queue_capacity * 100`, entirely separate from passenger occupancy. The 50/70/75/79/80 bands are labelled notice/prepare/ready/near-capacity/overloaded in health reports. Workload also includes incoming-message rate since startup, average processing latency, active/assigned bus counts and pending outgoing updates. These are local queue measurements, not a measurement of CPU capacity.
+
+After sustained overload, central uses least-queue-utilization selection among healthy peers in the same city/region. It recommends considering migration to the least-loaded peer, or additional capacity when none has room. Every recommendation explicitly says `migration_performed: false`. Nothing starts Edge C, transfers cached state, changes ownership, pauses unrelated work or implements scale-down. EDGE-05/08/09/11/12 still need those mechanisms.
+
+An expired heartbeat means unavailable communication/telemetry, not a confirmed crash or proof that the bus stopped. Central marks sensor reports uncertain when their reporting edge is unavailable. Manual GPS entry and incident prediction are not implemented. Health state and recovery session history are in memory; process restarts reset them. Authentication, broker failure guarantees and real multi-process network verification remain outside the offline test results.
+
+These changes address EDGE-04 (heartbeat monitoring) and EDGE-07 (queue/workload monitoring), with a recommendation-only foundation for EDGE-08/11/12 and a health endpoint contribution to CENTRAL-05. The two new test files use injected clocks and include source-heartbeat → edge → central/API checks. No artificial sleeping or live services are required for these tests; the existing live MQTT/PostgreSQL test remains opt-in.
 
 ### Test ownership
 
-Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for 104 passing edge tests.
+Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for the edge validation, processing, forwarding and heartbeat checks.
 
-Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (23 tests). Run `python -m pytest services/central/tests -q` for 28 passing tests and one skipped live test. These tests are preserved for central integration, not counted as completion of Carson's tickets.
+Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (23 tests). Run `python -m pytest services/central/tests -q` for central ingestion/health checks and the optional live test. These tests are preserved for central integration, not counted as completion of Carson's tickets.
 
 Production roles remain separate: `central_mapper.py` maps fields, `edge_to_central.py` sends, and `shared/schema/bus_state.py` is the common model. Carson's existing MQTT callback and ingestion functions receive the messages; the edge does not duplicate those central operations.
 
@@ -273,10 +305,10 @@ Each region initially has two active edge servers that divide processing respons
 | `EDGE-01` | **P0** | Build regional MQTT subscribers that receive bus telemetry. Validate JSON structure, GPS, speed, capacity, timestamps, registered bus IDs and region assignments. Prevent invalid messages from entering the edge processing system. Validate that each bus belongs to the declared city and region.<br><br>**Done when:** Valid messages enter the processing queue. Invalid messages are rejected and logged safely. Tests 01–12 pass, including verification that invalid data does not reach edge processing. A bus claiming the wrong city or region is rejected before processing. | ✅ Done (`ali`; local tests) |
 | `EDGE-02` | **P0** | Create a regional cache storing the latest valid state of each bus. Track location, speed, current route, next stop and occupancy. Calculate occupancy percentage and crowding level. Check sequence numbers before updating cached information. Keep bus caches and regional calculations separated by city and region.<br><br>**Done when:** Each bus has an accurate latest state. Duplicate or older messages do not overwrite newer data. Occupancy calculations and stop information are correct. Expired information is marked stale. Updates and calculations for one city/region do not overwrite or mix with another. | ✅ Done (`ali`; local tests) |
 | `EDGE-03` | **P0** | Agree the outgoing field mapping with Carson, including field names, data types, units, required/optional values and meanings. Map accepted edge updates to that contract, validate them again in `communication/edge_to_central.py`, then connect automatic MQTT forwarding. Cover per-bus positions, speeds, occupancy, stop information, timestamps, sequence/Lamport metadata, city/region identifiers and scoped summaries through agreed topics or envelopes. Do not silently drop information Carson needs or invent unavailable values.<br><br>**Done when:** The mapping is verified against Carson's expected input. Live end-to-end tests trace multiple buses from telemetry input through edge validation/processing and MQTT to Carson's database and API. Received field names, types, units, identifiers and values match the agreed contract, including city/region separation and every agreed information category. Missing, invalid, duplicate, stale and conflicting updates are handled as agreed without corrupting current state. Rejected edge updates are not forwarded as accepted data. Tests verify database/API results, not just broker receipts, and record reproducible evidence. | 🟨 Partial (`ali`; coded, live verification pending) |
-| `EDGE-04` | **P1** | Implement heartbeat monitoring for all regional edge servers. Detect when one server stops responding and report whether it is healthy, unavailable or recovering.<br><br>**Done when:** Stopping an edge server triggers failure detection within a configured timeout. The failure status is reported to the monitoring system. | ⬜ Pending |
+| `EDGE-04` | **P1** | Implement heartbeat monitoring for all regional edge servers. Detect when one server stops responding and report whether it is healthy, unavailable or recovering.<br><br>**Done when:** Stopping an edge server triggers failure detection within a configured timeout. The failure status is reported to the monitoring system. | 🟨 Partial (coded/offline verified; live failure demo pending) |
 | `EDGE-05` | **P1** | Run two active edge servers per region. Divide bus workloads between them and replicate the latest required state. If one server fails, transfer its workload to the surviving server.<br><br>**Done when:** Both servers process assigned buses during normal operation. After one fails, the survivor processes the region's buses using synchronized state without conflicting updates. | ⬜ Pending |
 | `EDGE-06` | **P1** | Test regional processing, validation, caching, duplicate messages, server failures, backup takeover and recovery. Include normal and failure scenarios.<br><br>**Done when:** Tests confirm that valid information is processed correctly, invalid information is rejected, and edge processing continues after a supported single-server failure. | ⬜ Pending |
-| `EDGE-07` | **P1** | Monitor each edge server's active bus count, assigned workloads, incoming message rate, processing latency and queue backlog. Use these measurements to identify overloaded servers.<br><br>**Done when:** Each server reports measurable workload information. The system can distinguish a lightly loaded server from an overloaded one. | ⬜ Pending |
+| `EDGE-07` | **P1** | Monitor each edge server's active bus count, assigned workloads, incoming message rate, processing latency and queue backlog. Use these measurements to identify overloaded servers.<br><br>**Done when:** Each server reports measurable workload information. The system can distinguish a lightly loaded server from an overloaded one. | 🟨 Partial (queue/workload metrics coded; live load verification pending) |
 | `EDGE-08` | **P1** | Implement workload distribution between the two active servers. Aim for approximately 50/50 bus assignments and move workloads when a server becomes overloaded or unavailable.<br><br>**Done when:** Bus assignments are balanced under normal conditions. Reassignment works without losing the latest required state or allowing two authoritative owners for one bus. | ⬜ Pending |
 | `EDGE-09` | **P1** | Implement safe ownership transfer and recovery. Synchronize returning servers before restoring their workloads. Support a controlled transfer to another healthy region if both local servers fail.<br><br>**Done when:** A recovered server receives current state before resuming work. Tests demonstrate that ownership remains consistent and cross-region takeover works when capacity is available. | ⬜ Pending |
 | `EDGE-10` | **P2** | Measure performance with 5, 10, 25 and 50 simulated buses. Compare processing latency, throughput, workload distribution and failover duration.<br><br>**Done when:** Results demonstrate how performance changes with increasing bus counts and different failure conditions. | ⬜ Pending |

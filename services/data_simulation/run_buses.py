@@ -3,16 +3,59 @@
 import argparse
 import json
 from multiprocessing import Process
-from threading import Event
+from threading import Event, Thread, RLock
+from datetime import datetime, timezone
+from uuid import uuid4
+import logging
 import os
 
 from services.data_simulation import generate_data
+from shared.schema.health import BusHeartbeat, policy_from_environment
+from services.messaging.topics import bus_heartbeat
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
+
+
+class SimulatorHeartbeats:
+    """Four logical sensor channels share the simulated bus's MQTT client."""
+
+    def __init__(self, bus):
+        self.bus = bus
+        self.session_id = str(uuid4())
+        self.sequence = 0
+        self.sensors = {}
+        self.lock = RLock()
+
+    def update(self, sensors):
+        with self.lock:
+            self.sensors = dict(sensors)
+
+    def snapshot(self):
+        with self.lock:
+            self.sequence += 1
+            return BusHeartbeat(city_id=self.bus["city_id"], region_id=self.bus["region_id"],
+                                bus_id=self.bus["bus_id"], session_id=self.session_id,
+                                sequence_number=self.sequence, timestamp=datetime.now(timezone.utc).isoformat(),
+                                sensors=self.sensors)
+
+    def publish_until_stopped(self, client, stop, interval):
+        while not stop.is_set():
+            heartbeat = self.snapshot()
+            try:
+                receipt = client.publish(bus_heartbeat(heartbeat.region_id, heartbeat.bus_id),
+                                         heartbeat.model_dump_json(), qos=1, retain=False)
+                if receipt.rc != 0:
+                    logging.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
+            except (OSError, RuntimeError):
+                logging.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
+            stop.wait(interval)
 
 
 def run_bus(bus, network_path, updates, interval, publish, host, port):
     """Keep each bus's random state, counters and connection independent."""
     client = None
+    heartbeat_source = SimulatorHeartbeats(bus)
+    heartbeat_stop = Event()
+    heartbeat_thread = None
     try:
         if publish:
             import paho.mqtt.client as mqtt
@@ -23,6 +66,9 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             client.loop_start()
             if not ready.wait(10):
                 raise TimeoutError("MQTT publisher connection did not become ready")
+            heartbeat_thread = Thread(target=heartbeat_source.publish_until_stopped,
+                                      args=(client, heartbeat_stop, policy_from_environment().interval_seconds), daemon=True)
+            heartbeat_thread.start()
         def emit(message):
             encoded = json.dumps(message, allow_nan=False)
             if client is not None:
@@ -37,8 +83,11 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
         scenario = bus.get("scenario", {})
         generate_data.main(bus["route_id"], bus.get("direction_id", 0), bus["bus_id"],
                            network_path=network_path, max_updates=updates,
-                           update_seconds=interval, emit=emit, **scenario)
+                           update_seconds=interval, emit=emit, sensor_health=heartbeat_source.update, **scenario)
     finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=3)
         if client is not None:
             client.disconnect()
             client.loop_stop()

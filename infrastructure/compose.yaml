@@ -6,6 +6,16 @@
 #
 # Central API: http://localhost:8000/docs    Postgres: localhost:5433 (transit/transit)
 
+# Shared heartbeat policy; source, edge and central must agree on timeouts.
+x-health: &health-env
+  HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-2}
+  SENSOR_HEARTBEAT_TIMEOUT_SECONDS: ${SENSOR_HEARTBEAT_TIMEOUT_SECONDS:-10}
+  EDGE_HEARTBEAT_TIMEOUT_SECONDS: ${EDGE_HEARTBEAT_TIMEOUT_SECONDS:-10}
+  HEARTBEAT_RECOVERY_SECONDS: ${HEARTBEAT_RECOVERY_SECONDS:-4}
+  EDGE_OVERLOAD_PERCENT: ${EDGE_OVERLOAD_PERCENT:-80}
+  EDGE_OVERLOAD_SUSTAIN_SECONDS: ${EDGE_OVERLOAD_SUSTAIN_SECONDS:-6}
+  EDGE_QUEUE_SIZE: ${EDGE_QUEUE_SIZE:-1000}
+
 # Shared image for central, edges and the bus simulator (see ../Containerfile).
 x-app: &app
   image: transit-app:latest
@@ -19,6 +29,7 @@ x-edge: &edge
   depends_on:
     central: { condition: service_healthy }
   environment: &edge-env
+    <<: *health-env
     CITY_ID: DURHAM
     EDGE_NETWORK_CONFIG: shared/routes.json
     CENTRAL_OCCUPANCY_UNIT: passengers
@@ -65,6 +76,7 @@ services:
       mosquitto: { condition: service_started }
       postgres: { condition: service_healthy }
     environment:
+      <<: *health-env
       DATABASE_URL: postgresql://transit:transit@postgres:5432/transit
       MQTT_HOST: mosquitto
     ports:
@@ -98,6 +110,7 @@ services:
     depends_on:
       mosquitto: { condition: service_started }
     environment:
+      <<: *health-env
       MQTT_HOST: mosquitto
 
 volumes:

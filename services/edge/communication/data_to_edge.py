@@ -10,11 +10,14 @@ from __future__ import annotations
 import json
 import os
 import logging
+import time
 from queue import Empty, Full, Queue
 from typing import Any, Protocol, TYPE_CHECKING
 
 
 from services.edge.config import EdgeConfig, NetworkConfig
+from services.edge.monitoring import EdgeMonitor
+from services.messaging.topics import bus_heartbeat_filter
 
 # So type checkers, now what classes i am refering to and what type of data it those class need
 if TYPE_CHECKING:
@@ -52,6 +55,7 @@ class TelemetrySubscriber:
         registry: BusRegistry = DEFAULT_BUS_REGISTRY,  # Known bus information
         queue_size: int = 1000,  # Maximum messages waiting for processing
         city_id: str | None = None,  # City ID (optional)
+        monitor: EdgeMonitor | None = None,
     ) -> None:  # Constructor does not return a value
 
         # Check that the required identifiers exist
@@ -63,6 +67,7 @@ class TelemetrySubscriber:
             raise ValueError("queue_size must be positive")
 
         # Store configuration inside the subscriber object
+        self.monitor = monitor
         self.city_id = city_id  # City this subscriber belongs to
         self.region_id = region_id  # Region to monitor
         self.edge_id = edge_id  # Edge server identifier
@@ -134,6 +139,11 @@ class TelemetrySubscriber:
             return False
 
 
+        # A regional MQTT topic can reach both workers. Queue only our owned
+        # buses so the partner's work does not fill this instance's queue.
+        if assignment is not None and assignment.edge_id is not None and assignment.edge_id != self.edge_id:
+            return False
+
         try:
             # Attempts to add valdiated data to the queue for future processing.
             self.messages.put_nowait(telemetry)
@@ -143,6 +153,8 @@ class TelemetrySubscriber:
             logger.error("Rejected telemetry: edge ingress queue is full")
             return False
 
+        if self.monitor is not None:
+            self.monitor.record_received()
         logger.info(
             # Records the accepted bus_id, region_id and sequence number of the msg
             "Accepted bus=%s region=%s sequence=%d",
@@ -155,6 +167,9 @@ class TelemetrySubscriber:
     # So basically, when message arrives this is the validation steps it takes on header and payload.
     def on_message(self, client: object, userdata: object, message: MQTTMessageLike) -> None:
         """Paho callback: delegate transport events to the testable handler."""
+        if self.monitor is not None and message.topic.startswith("transit/heartbeats/bus/"):
+            self.monitor.receive(message.topic, message.payload)
+            return
         self.handle_raw_message(message.topic, message.payload)
 
     # So it checks what is openning when MQTT Subscriber is connecting to MQTT Broker.
@@ -173,6 +188,8 @@ class TelemetrySubscriber:
             logger.error("MQTT subscribe request failed: %s", result)
         else:
             logger.info("Subscribed to %s", self.topic_filter)
+        if self.monitor is not None:
+            client.subscribe(bus_heartbeat_filter(self.region_id), qos=1)
 
     # When the MQTT subscriber disconnects from the MQTT broker.
     def on_disconnect(self, client: object, userdata: object, disconnect_flags: object, reason_code: 
@@ -220,11 +237,11 @@ class TelemetrySubscriber:
 
 
 # So Here we are loading the edge server config from env variables.
-def load_edge_config() -> EdgeConfig:
+def load_edge_config(*, city_id=None, region_id=None, edge_id=None) -> EdgeConfig:
     """Read this server's city, region and cache settings from the environment."""
     return EdgeConfig(
-        city_id=os.environ["CITY_ID"], region_id=os.environ["REGION_ID"],
-        edge_id=os.environ["EDGE_ID"],
+        city_id=city_id or os.environ["CITY_ID"], region_id=region_id or os.environ["REGION_ID"],
+        edge_id=edge_id or os.environ["EDGE_ID"],
         max_buses=int(os.getenv("EDGE_MAX_BUSES", "1000")),
         freshness_seconds=float(os.getenv("EDGE_FRESHNESS_SECONDS", "30")),
         expire_seconds=float(os.getenv("EDGE_EXPIRE_SECONDS", "300")),
@@ -233,23 +250,24 @@ def load_edge_config() -> EdgeConfig:
     )
 
 
-def create_subscriber(config: EdgeConfig, network: NetworkConfig) -> TelemetrySubscriber:
+def create_subscriber(config: EdgeConfig, network: NetworkConfig, *, monitor=None) -> TelemetrySubscriber:
     """ This is the function that creates an MQTT SUbscriber object using the provided edge and network configuration. 
         It sets up the subscriber to listen for telemetry messages from buses in the specified region and city, 
         using the provided bus registry for validation. The MQTT broker host and port are also configured based on environment variables, with default values if not specified."""
     return TelemetrySubscriber(
         config.region_id, config.edge_id, city_id=config.city_id,
-        registry=network.registry, broker_host=os.getenv("MQTT_HOST", "127.0.0.1"),
+        registry=network.registry, monitor=monitor, queue_size=int(os.getenv("EDGE_QUEUE_SIZE", "1000")),
+        broker_host=os.getenv("MQTT_HOST", "127.0.0.1"),
         broker_port=int(os.getenv("MQTT_PORT", "1883")),
     )
 
 
 def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngress,
-                             forwarder: CentralForwarder | None = None) -> None:
+                             forwarder: CentralForwarder | None = None, *, stop_event=None) -> None:
     """takes validated messages from the subscriber's queue, sends them through EdgeIngress for processing, 
     and coordinates with CentralForwarder to forward the processed results to the central server.."""
 
-    while True:
+    while stop_event is None or not stop_event.is_set():
         # So basically waits for a second to get a message from the queue
         try:
             telemetry = subscriber.messages.get(timeout=1.0)
@@ -261,11 +279,14 @@ def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngr
             continue
 
         # Try to process the telemetry locally.
+        started = time.monotonic()
         try:    
             # If There is no fowarder, than process it locally. otherwise 
             # send it to the forwarder to process and send to the central server.
             result = (forwarder.process(telemetry) if forwarder is not None
                       else receiver.process_telemetry(telemetry))
+            if subscriber.monitor is not None and result.status.value == "ACCEPTED":
+                subscriber.monitor.mark_valid_data(telemetry["bus_id"])
             logging.info("Processing result=%s", result.status.value)
 
             # # If centeral server exists, then attempt to send one pending message.
@@ -279,63 +300,16 @@ def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngr
         # Mark the message as processed in the queue, regardless of whether it was successfully processed or not.
         finally:
             subscriber.messages.task_done()
+            if subscriber.monitor is not None:
+                subscriber.monitor.mark_processed(time.monotonic() - started)
 
 # Run the pipeline that connects the subscriber, receiver, and forwarder to process telemetry messages 
 # and forward them to the central server.
 
 def run() -> None:
-    """Set up and coordinate the edge server's three main tasks: receiving bus messages, processing data locally, 
-    and sending results to the central server, then safely closing connections when stopped."""
-   
-
-    # IMPORT edge receiver, processor, and central forwarding components
-    from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
-    from services.edge.edge_server import EdgeIngress
-    from services.edge.processing.processor import EdgeProcessor
-    from shared.schema.bus_state import BusStateUpdate
-
-    # Setup Logging For The Pipeline
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-
-    # Load definitions once. Do not fetch routes from the database per message.
-
-    # Setup the Local Transit Route and Bus Registry Configurations
-    network = NetworkConfig.load(os.environ["EDGE_NETWORK_CONFIG"])
-    # Load the Edge Server Configuration from Environment Variables
-    config = load_edge_config()
-
-    # You Define the Subscriber, Receiver, 
-    subscriber = create_subscriber(config, network)
-    receiver = EdgeIngress(EdgeProcessor(config, network))
-    
-    # Create the sender using the edge configuration, bus registry,
-    # and expected data format for the central server.
-    sender = EdgeToCentral(config, network.registry, BusStateUpdate)
-
-    # Create the forwarder to coordinate local edge processing
-    # and forwarding processed results to the central server.
-    forwarder = CentralForwarder(receiver, sender, os.environ["CENTRAL_OCCUPANCY_UNIT"])
-
-    # Attempting Processing and Forwarding Messages, Handling Keyboard Interrupts Gracefully
-    try:
-        # Connect to Central Server's MQTT Broker using environment variables for host and port, 
-        # with defaults if not specified.
-        sender.connect(os.getenv("CENTRAL_MQTT_HOST", os.getenv("MQTT_HOST", "127.0.0.1")),
-                       int(os.getenv("CENTRAL_MQTT_PORT", os.getenv("MQTT_PORT", "1883"))))
-        # Start subscriber connection from the MQTT Broker To Get Data
-        subscriber.start()
-        # Process That Info
-        process_pending_messages(subscriber, receiver, forwarder)
-
-    # Stop 
-    except KeyboardInterrupt:
-        # Ingestion means receiving, validating, and collecting incoming data so it's ready for processing.
-        # So if your user interrupts the process, it will log that the ingestion is stopping
-        # and then clean up by stopping the subscriber and closing the sender connection.
-        logging.info("Stopping edge ingestion")
-    finally:
-        subscriber.stop()
-        sender.close()
+    """Keep the old single-worker command; main.py now creates the instance."""
+    from services.edge.main import run_single_instance
+    run_single_instance()
 
 # If this file is run, it will run the run() function,
 # which sets up the edge server's main tasks and starts processing telemetry messages.

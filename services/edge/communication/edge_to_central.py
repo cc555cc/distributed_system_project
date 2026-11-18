@@ -112,6 +112,19 @@ class EdgeToCentral:
         if not receipt.is_published():
             raise TimeoutError("MQTT broker receipt timed out")
 
+    def publish_heartbeat(self, heartbeat) -> None:
+        """Send health without putting it behind the bus-update retry queue."""
+        from services.messaging.topics import edge_heartbeat
+        if (heartbeat.city_id, heartbeat.region_id, heartbeat.edge_id) != (
+                self.config.city_id, self.config.region_id, self.config.edge_id):
+            raise ValueError("Heartbeat identity does not match this edge")
+        if self._client is None or not self._client.is_connected():
+            raise ConnectionError("Central heartbeat connection is not ready")
+        receipt = self._client.publish(edge_heartbeat(self.config.region_id, self.config.edge_id),
+                                       heartbeat.model_dump_json(), qos=1, retain=False)
+        if receipt.rc != 0:
+            raise ConnectionError("Heartbeat publish was not accepted")
+
     def close(self) -> None:
         """Release the connection when this edge process stops."""
         if self._client is not None:

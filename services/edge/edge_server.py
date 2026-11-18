@@ -43,3 +43,66 @@ class EdgeIngress:
                 results.append(self.process_telemetry(item))
             finally:
                 subscriber.messages.task_done()
+
+
+class EdgeServerInstance:
+    """One running worker owns its queue, cache, sender and heartbeat reports."""
+
+    def __init__(self, config, network, policy, occupancy_unit="passengers"):
+        from services.edge.communication.data_to_edge import create_subscriber
+        from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
+        from services.edge.monitoring import EdgeMonitor
+        from shared.schema.bus_state import BusStateUpdate
+        from uuid import uuid4
+        self.config, self.policy = config, policy
+        self.monitor = EdgeMonitor(config, network.registry, policy)
+        self.subscriber = create_subscriber(config, network, monitor=self.monitor)
+        self.receiver = EdgeIngress(EdgeProcessor(config, network))
+        self.sender = EdgeToCentral(config, network.registry, BusStateUpdate)
+        self.forwarder = CentralForwarder(self.receiver, self.sender, occupancy_unit)
+        self.session_id = str(uuid4())
+        self.heartbeat_sequence = 0
+
+    def heartbeat(self):
+        """Build a checked health snapshot without touching bus ownership."""
+        from datetime import datetime, timezone
+        from shared.schema.health import EdgeHeartbeat
+        self.heartbeat_sequence += 1
+        active = self.receiver.processor.snapshot()["statistics"]["active_buses"]
+        return EdgeHeartbeat(
+            city_id=self.config.city_id, region_id=self.config.region_id, edge_id=self.config.edge_id,
+            session_id=self.session_id, sequence_number=self.heartbeat_sequence,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            workload=self.monitor.workload(self.subscriber.messages, active, len(self.forwarder.pending)),
+            buses=self.monitor.sensor_reports(),
+        )
+
+    def run(self, stop_event):
+        """Keep health reporting independent of an idle or busy telemetry queue."""
+        import logging
+        import os
+        from threading import Event, Thread
+        from services.edge.communication.data_to_edge import process_pending_messages
+        heartbeat_stop = Event()
+        def publish_health():
+            while not heartbeat_stop.is_set() and not stop_event.is_set():
+                try:
+                    self.sender.publish_heartbeat(self.heartbeat())
+                except (ConnectionError, OSError, RuntimeError):
+                    logging.warning("Edge heartbeat pending: edge=%s", self.config.edge_id)
+                heartbeat_stop.wait(self.policy.interval_seconds)
+        thread = Thread(target=publish_health, name=self.config.edge_id + "-heartbeat", daemon=True)
+        try:
+            self.sender.connect(os.getenv("CENTRAL_MQTT_HOST", os.getenv("MQTT_HOST", "127.0.0.1")),
+                                int(os.getenv("CENTRAL_MQTT_PORT", os.getenv("MQTT_PORT", "1883"))))
+            self.subscriber.start()
+            thread.start()
+            process_pending_messages(self.subscriber, self.receiver, self.forwarder, stop_event=stop_event)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            heartbeat_stop.set()
+            if thread.is_alive():
+                thread.join(timeout=self.policy.interval_seconds + 2)
+            self.subscriber.stop()
+            self.sender.close()

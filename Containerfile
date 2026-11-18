@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/ services/
 COPY shared/ shared/
 
-CMD ["python", "-m", "services.edge.communication.data_to_edge"]
+CMD ["python", "-m", "services.edge.main", "--single"]

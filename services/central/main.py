@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from services.central.routers import bus_states, stops, routes
 from contextlib import asynccontextmanager
 from services.messaging import mqtt_client
+from services.central.health import router as health_router
 
 @asynccontextmanager
 async def lifespan(app):
@@ -18,6 +19,7 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(bus_states.router)
 app.include_router(stops.router)
 app.include_router(routes.router)
+app.include_router(health_router)
 
 
 
