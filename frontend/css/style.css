@@ -1,0 +1,166 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f4f6f8;
+  color: #222;
+}
+
+header {
+  background: #12355b;
+  color: white;
+  padding: 10px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+nav a {
+  color: #cfe0f3;
+  text-decoration: none;
+  margin-left: 16px;
+  padding: 6px 0;
+  border-bottom: 2px solid transparent;
+}
+
+nav a.active {
+  color: white;
+  border-bottom-color: white;
+}
+
+.passenger-layout {
+  display: flex;
+  height: calc(100vh - 56px);
+}
+
+.side-panel {
+  width: 300px;
+  padding: 14px;
+  overflow-y: auto;
+  background: white;
+  border-right: 1px solid #ddd;
+}
+
+.side-panel select {
+  width: 100%;
+  padding: 8px;
+  margin-top: 6px;
+}
+
+.side-panel h2 {
+  font-size: 16px;
+  margin: 18px 0 6px;
+}
+
+.side-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.side-panel li {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.side-panel li:hover {
+  background: #eef3f8;
+}
+
+#status {
+  font-size: 13px;
+  color: #555;
+}
+
+.dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+#map {
+  flex: 1;
+}
+
+.bus-icon {
+  width: 36px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  border-radius: 6px;
+  border: 2px solid white;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+.bus-icon.low {
+  background: #2e9e4f;
+}
+
+.bus-icon.medium {
+  background: #e08a00;
+}
+
+.bus-icon.high {
+  background: #d9534f;
+}
+
+.bus-icon.unknown,
+.bus-icon.stale {
+  background: #888;
+}
+
+.page {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 0 16px;
+}
+
+.card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+@media (max-width: 800px) {
+  .passenger-layout {
+    flex-direction: column-reverse;
+    height: auto;
+  }
+
+  .side-panel {
+    width: 100%;
+    border-right: none;
+  }
+
+  #map {
+    height: 60vh;
+    flex: none;
+  }
+
+  nav a {
+    margin: 6px 12px 0 0;
+  }
+}
