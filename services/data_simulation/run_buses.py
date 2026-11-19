@@ -10,6 +10,7 @@ import logging
 import os
 
 from services.data_simulation import generate_data
+from services.edge.auth_edge_server import encode_bus_message, configure_mqtt_client
 from shared.schema.health import BusHeartbeat, policy_from_environment
 from services.messaging.topics import bus_heartbeat
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
@@ -41,8 +42,9 @@ class SimulatorHeartbeats:
         while not stop.is_set():
             heartbeat = self.snapshot()
             try:
-                receipt = client.publish(bus_heartbeat(heartbeat.region_id, heartbeat.bus_id),
-                                         heartbeat.model_dump_json(), qos=1, retain=False)
+                topic = bus_heartbeat(heartbeat.region_id, heartbeat.bus_id)
+                receipt = client.publish(topic, encode_bus_message(topic, heartbeat.model_dump(mode="json"), heartbeat.bus_id),
+                                         qos=1, retain=False)
                 if receipt.rc != 0:
                     logging.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
             except (OSError, RuntimeError):
@@ -62,6 +64,7 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=bus["bus_id"] + "-publisher")
             ready = Event()
             client.on_connect = lambda c, u, f, reason, p: ready.set() if not reason.is_failure else None
+            configure_mqtt_client(client)
             client.connect(host, port, keepalive=60)
             client.loop_start()
             if not ready.wait(10):
@@ -73,7 +76,7 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             encoded = json.dumps(message, allow_nan=False)
             if client is not None:
                 topic = f"transit/buses/{message['region_id']}/{message['bus_id']}/telemetry"
-                receipt = client.publish(topic, encoded, qos=1, retain=False)
+                receipt = client.publish(topic, encode_bus_message(topic, message, bus["bus_id"]), qos=1, retain=False)
                 if receipt.rc != 0:
                     raise ConnectionError("Broker rejected bus telemetry")
                 receipt.wait_for_publish(timeout=5)

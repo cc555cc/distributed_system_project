@@ -16,6 +16,8 @@ from typing import Any, Protocol, TYPE_CHECKING
 
 
 from services.edge.config import EdgeConfig, NetworkConfig
+from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
+from services.edge.data_to_json_converter import convert_to_telemetry, decode_json
 from services.edge.edge_server_health import EdgeMonitor
 from services.messaging.topics import bus_heartbeat_filter
 
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
 # This imports the existing default bus registry object and the BusRegistry class 
 # used to create custom registries for other buses.
 from services.edge.validation.bus_registry import DEFAULT_BUS_REGISTRY, BusRegistry
-from services.edge.validation.validator import BusTelemetry, parse_telemetry
+from services.edge.validation.validator import BusTelemetry
 
 # Log Events Happening Without Stopping Code
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class TelemetrySubscriber:
         queue_size: int = 50,  # Maximum messages waiting for processing
         city_id: str | None = None,  # City ID (optional)
         monitor: EdgeMonitor | None = None,
+        auth: EdgeAuth | None = None,
     ) -> None:  # Constructor does not return a value
 
         # Check that the required identifiers exist
@@ -74,6 +77,7 @@ class TelemetrySubscriber:
         self.broker_host = broker_host  # Broker address
         self.broker_port = broker_port  # Broker port
         self.registry = registry  # Registry used to validate buses
+        self.auth = auth or EdgeAuth.from_environment(edge_id, region_id, registry, city_id)
 
         # Subscribe to telemetry from all buses in this region
         # '+' represents any single bus ID
@@ -108,28 +112,18 @@ class TelemetrySubscriber:
             logger.warning("Rejected message: MQTT payload exceeds 64 KiB")
             return False
 
-        # Attempt to decode the raw payload as UTF-8 and then as JSON so it can be used in future.
+        # First verify who sent it. Then convert a supported external format
+        # into the same telemetry that our existing validator understands.
         try:
-            decoded: object = json.loads(raw_payload.decode("utf-8"))
-
-        # Could not transform into UTF-8 or JSON.
-        except (UnicodeDecodeError, ValueError, RecursionError):
-            logger.warning("Rejected message: malformed UTF-8 or JSON")
-            return False
-
-
-        # Check the decoded to see if it is valid
-        telemetry, errors = parse_telemetry(
-            decoded, # Checks if sensor data is valid
-            expected_region=parts[2], # Checks if expected region matches the topic region
-            expected_bus=parts[3], # Checks if expected bus matches the topic bus
-            registry=self.registry, # Uses the bus registry to validate the bus infromation
-        )
-
-        # If data is invalid, the code logs a warning and tells why it failed to validate data
-        if telemetry is None:
-            # Avoid logging raw, potentially sensitive or malformed payloads.
-            logger.warning("Rejected telemetry: %s", "; ".join(errors))
+            decoded = self.auth.verify(topic, decode_json(raw_payload))
+            if isinstance(decoded, dict) and set(decoded) == {"format", "data"}:
+                source_format, data = decoded["format"], decoded["data"]
+            else:
+                source_format, data = "canonical-v1", decoded
+            telemetry = convert_to_telemetry(data, source_format=source_format,
+                expected_region=parts[2], expected_bus=parts[3], registry=self.registry)
+        except (ValueError, TypeError, PermissionError, UnicodeError, RecursionError):
+            logger.warning("Rejected telemetry: invalid format, identity or permission")
             return False
 
         # Checking whether the bus belongs to the correct city using the bus registry.
@@ -168,7 +162,11 @@ class TelemetrySubscriber:
     def on_message(self, client: object, userdata: object, message: MQTTMessageLike) -> None:
         """Paho callback: delegate transport events to the testable handler."""
         if self.monitor is not None and message.topic.startswith("transit/heartbeats/bus/"):
-            self.monitor.receive(message.topic, message.payload)
+            try:
+                decoded = self.auth.verify(message.topic, decode_json(message.payload))
+                self.monitor.receive(message.topic, json.dumps(decoded, allow_nan=False).encode("utf-8"))
+            except (ValueError, TypeError, PermissionError, UnicodeError, RecursionError):
+                logger.warning("Rejected sensor heartbeat: invalid format, identity or permission")
             return
         self.handle_raw_message(message.topic, message.payload)
 
@@ -181,6 +179,7 @@ class TelemetrySubscriber:
             logger.error("MQTT connection refused: %s", reason_code)
             return
         # Fails then Stop, otherwise subscribe to the topic filter and log the result.
+        self.auth.authorize_subscribe(self.topic_filter)
         result, _mid = client.subscribe(self.topic_filter, qos=1)
 
         # Log What Happened.
@@ -189,6 +188,7 @@ class TelemetrySubscriber:
         else:
             logger.info("Subscribed to %s", self.topic_filter)
         if self.monitor is not None:
+            self.auth.authorize_subscribe(bus_heartbeat_filter(self.region_id))
             client.subscribe(bus_heartbeat_filter(self.region_id), qos=1)
 
     # When the MQTT subscriber disconnects from the MQTT broker.
@@ -220,7 +220,9 @@ class TelemetrySubscriber:
         client.on_disconnect = self.on_disconnect
         client.reconnect_delay_set(min_delay=1, max_delay=10)
 
-        # TODO (Julian, security): broker authentication, ACLs and TLS.
+        # Broker ACLs enforce permissions at MQTT; our signed envelope also
+        # authenticates the publisher before any message enters this queue.
+        configure_mqtt_client(client)
         client.connect(self.broker_host, self.broker_port, keepalive=60)
         client.loop_start()
         self._client = client
