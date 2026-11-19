@@ -52,6 +52,9 @@ def on_message(client, userdata, msg):
             else:
                 logger.warning("Rejected update for %s on %s: %s",bus_id, msg.topic, reason)
 
+        logger.info("Applied %s seq=%s from %s", bus_id, bus_state.sequence_number, msg.topic)
+
+
     #errpr handling
     except ValidationError as error:
         logger.warning("Invalid payload on %s: %d validation errors", msg.topic, error.error_count())

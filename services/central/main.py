@@ -1,5 +1,8 @@
 from pathlib import Path
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
