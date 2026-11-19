@@ -53,7 +53,7 @@ class TelemetrySubscriber:
         broker_host: str = "127.0.0.1",  # MQTT broker IP (localhost by default)
         broker_port: int = 1883,  # MQTT connection port
         registry: BusRegistry = DEFAULT_BUS_REGISTRY,  # Known bus information
-        queue_size: int = 1000,  # Maximum messages waiting for processing
+        queue_size: int = 50,  # Maximum messages waiting for processing
         city_id: str | None = None,  # City ID (optional)
         monitor: EdgeMonitor | None = None,
     ) -> None:  # Constructor does not return a value
@@ -63,8 +63,8 @@ class TelemetrySubscriber:
             raise ValueError("region_id and edge_id don't exist and are required")
 
         # Ensure the queue can hold at least one message
-        if queue_size <= 0:
-            raise ValueError("queue_size must be positive")
+        if isinstance(queue_size, bool) or not isinstance(queue_size, int) or not 1 <= queue_size <= 50:
+            raise ValueError("queue_size must be between 1 and 50")
 
         # Store configuration inside the subscriber object
         self.monitor = monitor
@@ -256,7 +256,7 @@ def create_subscriber(config: EdgeConfig, network: NetworkConfig, *, monitor=Non
         using the provided bus registry for validation. The MQTT broker host and port are also configured based on environment variables, with default values if not specified."""
     return TelemetrySubscriber(
         config.region_id, config.edge_id, city_id=config.city_id,
-        registry=network.registry, monitor=monitor, queue_size=int(os.getenv("EDGE_QUEUE_SIZE", "1000")),
+        registry=network.registry, monitor=monitor, queue_size=int(os.getenv("EDGE_QUEUE_SIZE", "50")),
         broker_host=os.getenv("MQTT_HOST", "127.0.0.1"),
         broker_port=int(os.getenv("MQTT_PORT", "1883")),
     )

@@ -61,10 +61,13 @@ The bus publisher sends `transit/heartbeats/bus/<region_id>/<bus_id>`. Its paylo
 
 Each edge sends `transit/heartbeats/edge/<region_id>/<edge_id>` to central. Central subscribes independently and exposes `GET /health/edges`, including sensor reports, edge liveness, queue measurements and least-loaded-peer recommendations. A missing edge becomes unavailable after its timeout without needing a final message from that edge.
 
-Default heartbeat interval is 2 seconds; sensor and edge timeouts are each 10 seconds. Recovery requires repeated heartbeats over 4 seconds. Set `HEARTBEAT_INTERVAL_SECONDS`, `SENSOR_HEARTBEAT_TIMEOUT_SECONDS`, `EDGE_HEARTBEAT_TIMEOUT_SECONDS`, `HEARTBEAT_RECOVERY_SECONDS`, `EDGE_OVERLOAD_PERCENT` (80), `EDGE_OVERLOAD_SUSTAIN_SECONDS` (6) and `EDGE_QUEUE_SIZE` (1000) before starting compose to customize them.
+Default heartbeat interval is 2 seconds; sensor and edge timeouts are each 10 seconds. Recovery requires repeated heartbeats over 4 seconds. Set `HEARTBEAT_INTERVAL_SECONDS`, `SENSOR_HEARTBEAT_TIMEOUT_SECONDS`, `EDGE_HEARTBEAT_TIMEOUT_SECONDS`, `HEARTBEAT_RECOVERY_SECONDS`, `EDGE_OVERLOAD_PERCENT` (80), `EDGE_OVERLOAD_SUSTAIN_SECONDS` (6) and `EDGE_QUEUE_SIZE` (50, configurable from 1 to 50) before starting compose to customize them.
 
 The queue percentage measures telemetry backlog, not passenger occupancy or CPU utilization. The 50/70/75/79/80 bands are reported through health snapshots. Sustained overload produces a recommendation; no workload migration, replication, takeover or extra instance is automatically performed. Existing static bus assignments remain authoritative.
 
 The image starts `services.edge.main --single` for each of the four configured edge containers. For a host-based launch, `python -m services.edge.main` creates four separate processes from the map configuration. Do not run the host launcher and the same compose edge workers simultaneously: duplicate MQTT client IDs would compete.
 
 Heartbeat state is in memory and resets when central restarts. Session IDs and increasing heartbeat sequences prevent delayed duplicates from refreshing liveness. These endpoints do not establish broker authentication or confirm a crash; those remain separate responsibilities.
+
+
+For UI load experiments, `/health/simulation` provides separate synthetic queues and a virtual clock. Its instance controls never change these Compose workers. See the root README for the request, advance, capacity and third-instance experiment endpoints. Queue capacity defaults to 50 waiting messages in both the live edge and the experiment.

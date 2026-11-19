@@ -110,3 +110,82 @@ monitor = CentralHealthMonitor(load_network(), policy_from_environment())
 @router.get("/edges")
 def get_edge_health():
     return monitor.snapshot()
+
+
+# UI experiments have their own queues and virtual clock. They do not publish
+# telemetry, start OS processes or alter the live ownership registry.
+from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field
+from services.edge.main import EdgeLoadSimulation
+
+simulation = EdgeLoadSimulation()
+
+
+class SimulationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+
+class SimulationRequests(SimulationInput):
+    bus_id: str = Field(min_length=1)
+    count: int = Field(ge=1, le=10000)
+
+
+class SimulationStep(SimulationInput):
+    seconds: float = Field(gt=0, le=60)
+
+
+class SimulationCharacteristics(SimulationInput):
+    capacity: int | None = Field(default=None, ge=1, le=50)
+    processing_ms: float | None = Field(default=None, ge=1, le=60000)
+    active: bool | None = None
+
+
+class SimulationPolicy(SimulationInput):
+    auto_scale: bool
+
+
+@router.get("/simulation")
+def get_simulation():
+    return simulation.snapshot()
+
+
+@router.post("/simulation/requests")
+def submit_simulation_requests(body: SimulationRequests):
+    try:
+        return simulation.submit(body.bus_id, body.count)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/simulation/advance")
+def advance_simulation(body: SimulationStep):
+    return simulation.advance(body.seconds)
+
+
+@router.patch("/simulation/instances/{edge_id}")
+def configure_simulation_instance(edge_id: str, body: SimulationCharacteristics):
+    try:
+        return simulation.configure(edge_id, **body.model_dump(exclude_none=True))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.patch("/simulation/policy")
+def configure_simulation_policy(body: SimulationPolicy):
+    with simulation.lock:
+        simulation.auto_scale = body.auto_scale
+        return simulation.snapshot()
+
+
+@router.post("/simulation/reset")
+def reset_simulation():
+    # Keep one lock for all readers; reinitialize state atomically in place.
+    fresh = EdgeLoadSimulation()
+    with simulation.lock:
+        simulation.time = fresh.time
+        simulation.sequence = simulation.accepted = simulation.rejected = 0
+        simulation.auto_scale = True
+        simulation.overload_since.clear()
+        simulation.events.clear()
+        simulation.workers = fresh.workers
+        return simulation.snapshot()

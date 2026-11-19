@@ -253,3 +253,92 @@ def test_launcher_rejects_unknown_instance_before_starting_process(monkeypatch):
     with pytest.raises(ValueError, match="unregistered"):
         launcher.launch_instances(DEFAULT_NETWORK_PATH, ["unknown-edge"])
     process.assert_not_called()
+
+
+# Bounded synthetic load experiments: queue limits, region isolation and scale-up.
+def test_live_queue_defaults_to_fifty_and_rejects_larger_capacity(setup, monkeypatch):
+    from services.edge.communication.data_to_edge import create_subscriber
+    monkeypatch.delenv("EDGE_QUEUE_SIZE", raising=False)
+    assert create_subscriber(setup.config, setup.network).messages.maxsize == 50
+    with pytest.raises(ValueError, match="between 1 and 50"):
+        TelemetrySubscriber("west", "edge-west-1", queue_size=51)
+
+
+def slow_simulation():
+    from services.edge.main import EdgeLoadSimulation
+    simulation = EdgeLoadSimulation()
+    for edge_id in ("edge-west-1", "edge-west-2"):
+        simulation.configure(edge_id, processing_ms=60000)
+    return simulation
+
+
+def test_full_region_rejects_excess_requests_without_spilling_to_east():
+    simulation = slow_simulation()
+    result = simulation.submit("bus-302-1", 105)
+    assert (result["accepted"], result["rejected"]) == (100, 5)
+    assert all(len(w.queue) <= w.capacity == 50 for w in simulation.workers.values())
+    assert all(not w.queue for w in simulation.workers.values() if w.region_id == "east")
+
+
+def test_sustained_load_starts_third_and_preserves_every_synthetic_request():
+    simulation = slow_simulation()
+    simulation.submit("bus-302-1", 80)
+    before = {job[0] for w in simulation.workers.values() for job in w.queue}
+    simulation.advance(5)
+    assert not simulation.workers["edge-west-3"].active
+    simulation.advance(1)
+    third = simulation.workers["edge-west-3"]
+    assert third.active and third.queue
+    assert not simulation.workers["edge-east-3"].active
+    after = [job[0] for w in simulation.workers.values() for job in w.queue]
+    assert len(after) == len(set(after)) == 80
+    assert set(after) == before
+    assert simulation.snapshot()["live_workers_changed"] is False
+    simulation.advance(1)
+    assert third.completed > 0
+    assert sum(len(w.queue) + w.completed for w in simulation.workers.values()) == 80
+
+
+def test_short_burst_drains_without_starting_third_instance():
+    from services.edge.main import EdgeLoadSimulation
+    simulation = EdgeLoadSimulation()
+    simulation.submit("bus-302-1", 80)
+    report = simulation.advance(1)
+    assert sum(w["completed"] for w in report["workers"]) == 80
+    assert not simulation.workers["edge-west-3"].active
+    assert simulation.workers["edge-west-1"].snapshot()["average_latency_ms"] == pytest.approx(102.5)
+
+
+def test_disabled_autoscale_keeps_third_stopped():
+    simulation = slow_simulation()
+    simulation.auto_scale = False
+    simulation.submit("bus-302-1", 80)
+    simulation.advance(10)
+    assert not simulation.workers["edge-west-3"].active
+
+
+def test_capacity_changes_cannot_discard_queued_requests():
+    simulation = slow_simulation()
+    simulation.submit("bus-302-1", 80)
+    with pytest.raises(ValueError, match="Drain"):
+        simulation.configure("edge-west-1", capacity=10)
+    with pytest.raises(ValueError, match="Drain"):
+        simulation.configure("edge-west-1", active=False)
+    assert len(simulation.workers["edge-west-1"].queue) == 40
+
+
+def test_balancer_accounts_for_processing_speed_within_region():
+    simulation = slow_simulation()
+    simulation.configure("edge-west-1", processing_ms=5)
+    simulation.configure("edge-west-2", processing_ms=50)
+    simulation.submit("bus-900-1", 30)
+    assert len(simulation.workers["edge-west-1"].queue) > len(simulation.workers["edge-west-2"].queue)
+    assert all(not w.queue for w in simulation.workers.values() if w.region_id == "east")
+
+
+@pytest.mark.parametrize("changes", [dict(capacity=51), dict(capacity=0), dict(capacity=True),
+                                    dict(processing_ms=float("nan")), dict(processing_ms=0)])
+def test_simulated_characteristics_reject_invalid_values(changes):
+    simulation = slow_simulation()
+    with pytest.raises(ValueError):
+        simulation.configure("edge-west-1", **changes)

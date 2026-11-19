@@ -106,3 +106,46 @@ class EdgeServerInstance:
                 thread.join(timeout=self.policy.interval_seconds + 2)
             self.subscriber.stop()
             self.sender.close()
+
+
+@dataclass
+class SimulatedEdge:
+    """UI experiment worker. Its synthetic jobs never enter the live bus cache."""
+
+    edge_id: str
+    region_id: str
+    city_id: str
+    capacity: int = 50
+    processing_ms: float = 5.0
+    active: bool = True
+
+    def __post_init__(self):
+        from collections import deque
+        self.queue = deque()
+        self.credit_ms = 0.0
+        self.completed = 0
+        self.latency_seconds = 0.0
+
+    def advance(self, seconds, now):
+        # Virtual time lets the UI repeat a load experiment without sleeping.
+        if not self.active or not self.queue:
+            self.credit_ms = 0.0
+            return
+        available = self.credit_ms + seconds * 1000
+        offset_ms = -self.credit_ms
+        while self.queue and available + 1e-9 >= self.processing_ms:
+            available -= self.processing_ms
+            offset_ms += self.processing_ms
+            _, _, received_at = self.queue.popleft()
+            self.completed += 1
+            self.latency_seconds += max(0.0, now - seconds + offset_ms / 1000 - received_at)
+        self.credit_ms = available if self.queue else 0.0
+
+    def snapshot(self):
+        from shared.schema.health import load_band
+        utilization = len(self.queue) / self.capacity * 100
+        return dict(edge_id=self.edge_id, region_id=self.region_id, city_id=self.city_id,
+                    active=self.active, queue_capacity=self.capacity, queue_size=len(self.queue),
+                    queue_utilization_percent=utilization, load_band=load_band(utilization),
+                    processing_ms=self.processing_ms, completed=self.completed,
+                    average_latency_ms=(self.latency_seconds / self.completed * 1000 if self.completed else None))

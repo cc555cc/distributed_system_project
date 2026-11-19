@@ -81,7 +81,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **197 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **210 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
@@ -192,7 +192,7 @@ The edge forwards sensor-health summaries inside its own periodic heartbeat. Cen
 | `SENSOR_HEARTBEAT_TIMEOUT_SECONDS` | 10 | Missing sensor deadline |
 | `EDGE_HEARTBEAT_TIMEOUT_SECONDS` | 10 | Central's missing-edge deadline |
 | `HEARTBEAT_RECOVERY_SECONDS` | 4 | Repeated-pulse recovery window |
-| `EDGE_QUEUE_SIZE` | 1000 | Maximum queued telemetry messages per instance |
+| `EDGE_QUEUE_SIZE` | 50 | Maximum queued telemetry messages per instance (1-50) |
 | `EDGE_OVERLOAD_PERCENT` | 80 | Queue utilization threshold |
 | `EDGE_OVERLOAD_SUSTAIN_SECONDS` | 6 | Sustained high-load window before recommendation |
 
@@ -404,3 +404,25 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `services/edge/tests/test_edge_server_testing.py` | EDGE-06 instance/launcher and health checks, alongside the existing processing/forwarding tests. Takeover/recovery checks need those mechanisms first. |
 
 The current map uses logical route boundaries: west owns routes 302/900 (two buses per instance), east owns 407/409/901 (three buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. EDGE-08 will handle geographic policy and coordinated balancing; EDGE-05 still requires state replication and takeover before it is complete.
+
+
+### UI-controlled edge load simulation
+
+Each live edge queue now defaults to 50 waiting telemetry messages and accepts a configured capacity from 1 to 50. The message currently processing is separate from waiting capacity. A full live queue rejects the incoming update; live workers do not yet transfer bus ownership automatically.
+
+The central API also provides an isolated, in-memory experiment using the real map's bus-to-region assignments. Four simulated workers start active; a third simulated worker per region starts inactive. These synthetic requests do not run telemetry validation/processing, publish to MQTT or update the central database. The existing live workers, queues and bus ownership are unchanged by simulation controls. Use one central API process for this experiment; state is local to that process and resets when it restarts.
+
+| Method | Path (prefix `/health/simulation`) | JSON body / result |
+|---|---|---|
+| GET | (prefix itself) | Queues, active instances, completed counts, average latency and recent events |
+| PATCH | `/instances/{edge_id}` | Optional `capacity` (1-50), `processing_ms` (1-60000), `active` |
+| POST | `/requests` | `{"bus_id":"bus-302-1","count":80}` creates synthetic requests for that bus's region |
+| POST | `/advance` | `{"seconds":6}` advances virtual time; no background processing or real sleeping |
+| PATCH | `/policy` | `{"auto_scale":true}` enables automatic third-instance activation |
+| POST | `/reset` | Discards this experiment and restores its defaults |
+
+The coordinator assigns each synthetic request to the same-region active worker with the shortest predicted completion time, taking queue length and processing delay into account. Normal processing delay defaults to 5 ms per request; this is a simulation setting, not a measured performance guarantee. If both regional workers remain at least 80% full (40 of 50 waiting messages) for 6 simulated seconds, the third simulated worker activates. Waiting synthetic requests can then move to reduce predicted waiting time. There is no cross-region spillover, automatic scale-down or real bus-state migration in this experiment. Rejected excess requests are counted. Lowering capacity below current occupancy or stopping a nonempty simulated queue is rejected rather than discarding jobs.
+
+Repeatable overload demonstration: reset; set `processing_ms` to 60000 on `edge-west-1` and `edge-west-2` (deliberately slow stress settings); submit 80 requests for `bus-302-1`; advance 5 seconds (third still inactive); advance 1 more second (third activates and receives requests); advance again to process its queue. With the default 5 ms delay, that same short burst drains without requiring a third worker. Use `/docs` to exercise these routes before connecting the UI.
+
+These controls demonstrate balancing/scaling policy for EDGE-08/11/12. Those tickets remain unfinished for live telemetry: replicated state, ownership fencing, ordering during handoff, process registration, recovery and safe scale-down are still required. No UI screen was added in this step. Offline tests cover bounded queues, overflow, latency, regional isolation, short bursts, sustained scale-up, request conservation and API input validation.

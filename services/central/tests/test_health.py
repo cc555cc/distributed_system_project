@@ -185,3 +185,31 @@ def test_incomplete_or_invalid_sensor_summary_is_rejected(monitor, bad_report):
     else:
         value["buses"][0]["sensors"]["gps"]["age_seconds"] = -1.0
     assert not receive(store, value)
+
+
+
+def test_simulation_api_controls_virtual_capacity_and_third_instance(monkeypatch):
+    from services.central import health
+    from services.central.main import app
+    from services.edge.main import EdgeLoadSimulation
+    monkeypatch.setattr(health, "simulation", EdgeLoadSimulation())
+    client = TestClient(app)
+    for edge_id in ("edge-west-1", "edge-west-2"):
+        response = client.patch(f"/health/simulation/instances/{edge_id}", json={"processing_ms": 60000})
+        assert response.status_code == 200
+    response = client.post("/health/simulation/requests", json={"bus_id": "bus-302-1", "count": 80})
+    assert response.json()["accepted"] == 80
+    response = client.post("/health/simulation/advance", json={"seconds": 6})
+    third = next(w for w in response.json()["workers"] if w["edge_id"] == "edge-west-3")
+    assert third["active"] and third["queue_size"] > 0
+    assert response.json()["live_workers_changed"] is False
+    assert client.patch("/health/simulation/instances/edge-west-1", json={"capacity": 51}).status_code == 422
+    assert client.patch("/health/simulation/instances/unknown", json={"active": True}).status_code == 422
+    assert client.post("/health/simulation/requests", json={"bus_id": "unknown", "count": 1}).status_code == 422
+    assert client.post("/health/simulation/requests", json={"bus_id": "bus-302-1", "count": True}).status_code == 422
+    assert client.post("/health/simulation/advance", json={"seconds": -1}).status_code == 422
+    assert client.patch("/health/simulation/policy", json={"auto_scale": False}).json()["auto_scale"] is False
+    reset = client.post("/health/simulation/reset").json()
+    assert reset["accepted"] == 0 and reset["virtual_seconds"] == 0
+    assert all(w["queue_size"] == 0 for w in reset["workers"])
+    assert sum(w["active"] for w in client.get("/health/simulation").json()["workers"]) == 4
