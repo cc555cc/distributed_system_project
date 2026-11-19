@@ -32,7 +32,7 @@ The script connects a publisher and a subscriber as separate clients and sends o
 | --- | --- |
 | Host | `MQTT_HOST`, default `localhost` |
 | Port | `MQTT_PORT`, default `1883` (plain TCP, no TLS) |
-| Authentication | None yet; anonymous clients are allowed until MQTT-07 |
+| Authentication | Shared demo remains anonymous; edge credential/TLS/signature support and tested ACL generation are described in the root README; broker-wide MQTT-07 deployment remains separate |
 | QoS | 1 for every publish and subscribe |
 | Retained messages | Not used |
 | Keepalive | 60 seconds |
