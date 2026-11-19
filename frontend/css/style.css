@@ -164,3 +164,130 @@ nav a.active {
     margin: 6px 12px 0 0;
   }
 }
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  flex: 1;
+  min-width: 140px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.stat .number {
+  font-size: 28px;
+  font-weight: bold;
+  color: #12355b;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+th {
+  background: #f0f3f6;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: white;
+}
+
+.tag.good {
+  background: #2e9e4f;
+}
+
+.tag.warn {
+  background: #e08a00;
+}
+
+.tag.bad {
+  background: #d9534f;
+}
+
+.tag.grey {
+  background: #888;
+}
+
+ul.plain {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+ul.plain li {
+  padding: 6px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+
+.note {
+  color: #555;
+  font-size: 14px;
+}
+
+.control-row {
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.control-row label {
+  display: inline-block;
+  width: 150px;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid #12355b;
+  background: #12355b;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #ccc;
+  border-color: #ccc;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.message {
+  margin: 10px 0;
+  font-size: 14px;
+  color: #2e7d32;
+}
+
+.message.error {
+  color: #c62828;
+}
+
+#updated {
+  font-size: 13px;
+  color: #555;
+}

@@ -17,18 +17,39 @@
   </header>
 
   <main class="page">
-    <div class="card">
-      <h2>Active buses and routes</h2>
-      <p>Coming soon.</p>
-    </div>
-    <div class="card">
-      <h2>Edge server health</h2>
-      <p>Coming soon.</p>
-    </div>
+    <p id="updated">Loading...</p>
+    <div class="stats" id="summary"></div>
+
     <div class="card">
       <h2>Alerts</h2>
-      <p>Coming soon.</p>
+      <div id="alerts"></div>
+    </div>
+
+    <div class="card">
+      <h2>Buses</h2>
+      <div class="table-wrap" id="buses"></div>
+    </div>
+
+    <div class="card">
+      <h2>Routes</h2>
+      <div class="table-wrap" id="routes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Edge servers</h2>
+      <div class="table-wrap" id="edges"></div>
+    </div>
+
+    <div class="card">
+      <h2>Failover events</h2>
+      <div id="events"></div>
     </div>
   </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/mock.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/helpers.js"></script>
+  <script src="js/operator.js"></script>
 </body>
 </html>

@@ -33,3 +33,55 @@ async function getBus(busId) {
   }
   return response.json();
 }
+
+async function sendPost(path) {
+  const response = await fetch(API_URL + path, { method: "POST" });
+  if (!response.ok) {
+    let text = "Request failed: " + response.status;
+    try {
+      const body = await response.json();
+      if (typeof body.detail === "string") {
+        text = body.detail;
+      }
+    } catch (error) {
+      text = "Request failed: " + response.status;
+    }
+    throw new Error(text);
+  }
+  return response.json();
+}
+
+async function getEdgeHealth() {
+  if (USE_MOCK) {
+    return mockHealth();
+  }
+  return getJson("/health/edges");
+}
+
+async function getSimulation() {
+  if (USE_MOCK) {
+    return mockSimulation();
+  }
+  return getJson("/health/simulation");
+}
+
+async function failEdge(edgeId) {
+  if (USE_MOCK) {
+    return mockFail(edgeId);
+  }
+  return sendPost("/health/simulation/instances/" + edgeId + "/fail");
+}
+
+async function recoverEdge(edgeId) {
+  if (USE_MOCK) {
+    return mockRecover(edgeId);
+  }
+  return sendPost("/health/simulation/instances/" + edgeId + "/recover");
+}
+
+async function resetSimulation() {
+  if (USE_MOCK) {
+    return mockReset();
+  }
+  return sendPost("/health/simulation/reset");
+}

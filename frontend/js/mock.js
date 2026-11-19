@@ -90,3 +90,131 @@ function mockBus(busId) {
     last_updated: updated.toISOString()
   };
 }
+
+const mockEdgeList = [
+  { id: "edge-west-1", region: "west", buses: ["bus-302-1"] },
+  { id: "edge-west-2", region: "west", buses: ["bus-302-2"] },
+  { id: "edge-east-1", region: "east", buses: ["bus-901-1"] },
+  { id: "edge-east-2", region: "east", buses: ["bus-901-2"] }
+];
+
+function mockLoad(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) || [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function mockSave(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function mockAddEvent(event) {
+  const events = mockLoad("simEvents");
+  event.time = Math.round(Date.now() / 1000) % 10000;
+  events.push(event);
+  mockSave("simEvents", events);
+}
+
+function mockAssigned(edge) {
+  const failed = mockLoad("failedEdges");
+  if (failed.includes(edge.id)) {
+    return [];
+  }
+  let buses = edge.buses.slice();
+  mockEdgeList.forEach(function (other) {
+    if (other.region === edge.region && other.id !== edge.id && failed.includes(other.id)) {
+      buses = buses.concat(other.buses);
+    }
+  });
+  return buses;
+}
+
+function mockSimulation() {
+  const failed = mockLoad("failedEdges");
+  const workers = mockEdgeList.map(function (edge) {
+    const assigned = mockAssigned(edge);
+    const isFailed = failed.includes(edge.id);
+    const size = isFailed ? 0 : 5 + assigned.length * 12;
+    return {
+      edge_id: edge.id,
+      region_id: edge.region,
+      city_id: "DURHAM",
+      active: !isFailed,
+      state: isFailed ? "failed" : "healthy",
+      queue_capacity: 50,
+      queue_size: size,
+      queue_utilization_percent: size / 50 * 100,
+      assigned_buses: assigned
+    };
+  });
+  return { workers: workers, events: mockLoad("simEvents") };
+}
+
+function mockHealth() {
+  const simulation = mockSimulation();
+  const edges = simulation.workers.map(function (worker) {
+    const failed = worker.state === "failed";
+    let workload = "normal";
+    if (failed) {
+      workload = "unknown";
+    } else if (worker.queue_utilization_percent >= 80) {
+      workload = "overloaded";
+    }
+    let report = null;
+    if (!failed) {
+      report = {
+        workload: {
+          queue_utilization_percent: worker.queue_utilization_percent,
+          assigned_buses: worker.assigned_buses.length
+        }
+      };
+    }
+    return {
+      edge_id: worker.edge_id,
+      region_id: worker.region_id,
+      status: failed ? "unavailable" : "healthy",
+      workload_status: workload,
+      last_report: report
+    };
+  });
+  return { edges: edges, buses: [], recommendations: [] };
+}
+
+function mockFail(edgeId) {
+  const failed = mockLoad("failedEdges");
+  const edge = mockEdgeList.find(function (item) {
+    return item.id === edgeId;
+  });
+  if (!edge || failed.includes(edgeId)) {
+    throw new Error("Unknown instance");
+  }
+  const peer = mockEdgeList.find(function (item) {
+    return item.region === edge.region && item.id !== edgeId && !failed.includes(item.id);
+  });
+  failed.push(edgeId);
+  mockSave("failedEdges", failed);
+  mockAddEvent({ action: "fail_instance", edge_id: edgeId });
+  if (peer) {
+    edge.buses.forEach(function (busId) {
+      mockAddEvent({ action: "transfer_bus", bus_id: busId, source: edgeId, target: peer.id });
+    });
+  }
+}
+
+function mockRecover(edgeId) {
+  const failed = mockLoad("failedEdges");
+  if (!failed.includes(edgeId)) {
+    throw new Error("Only a failed instance can recover");
+  }
+  mockSave("failedEdges", failed.filter(function (id) {
+    return id !== edgeId;
+  }));
+  mockAddEvent({ action: "recovery_complete", edge_id: edgeId });
+}
+
+function mockReset() {
+  mockSave("failedEdges", []);
+  mockSave("simEvents", []);
+}
