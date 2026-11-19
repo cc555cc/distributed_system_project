@@ -16,7 +16,7 @@ from typing import Any, Protocol, TYPE_CHECKING
 
 
 from services.edge.config import EdgeConfig, NetworkConfig
-from services.edge.monitoring import EdgeMonitor
+from services.edge.edge_server_health import EdgeMonitor
 from services.messaging.topics import bus_heartbeat_filter
 
 # So type checkers, now what classes i am refering to and what type of data it those class need

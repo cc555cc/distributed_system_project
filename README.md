@@ -23,7 +23,7 @@ project/
 |   |   `-- tests/
 |   |-- edge/                   # Ali: local ingress, processing and monitoring
 |   |   |-- main.py             # launch configured independent edge processes
-|   |   |-- monitoring.py       # sensor deadlines and queue measurements
+|   |   |-- edge_server_health.py # sensor deadlines and queue measurements
 |   |   |-- config.py           # network configuration and cache policy
 |   |   |-- edge_server.py      # accepted-message queue adapter
 |   |   |-- communication/      # data_to_edge.py and edge_to_central.py
@@ -81,7 +81,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **194 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **197 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
@@ -306,8 +306,8 @@ Each region initially has two active edge servers that divide processing respons
 | `EDGE-02` | **P0** | Create a regional cache storing the latest valid state of each bus. Track location, speed, current route, next stop and occupancy. Calculate occupancy percentage and crowding level. Check sequence numbers before updating cached information. Keep bus caches and regional calculations separated by city and region.<br><br>**Done when:** Each bus has an accurate latest state. Duplicate or older messages do not overwrite newer data. Occupancy calculations and stop information are correct. Expired information is marked stale. Updates and calculations for one city/region do not overwrite or mix with another. | ✅ Done (`ali`; local tests) |
 | `EDGE-03` | **P0** | Agree the outgoing field mapping with Carson, including field names, data types, units, required/optional values and meanings. Map accepted edge updates to that contract, validate them again in `communication/edge_to_central.py`, then connect automatic MQTT forwarding. Cover per-bus positions, speeds, occupancy, stop information, timestamps, sequence/Lamport metadata, city/region identifiers and scoped summaries through agreed topics or envelopes. Do not silently drop information Carson needs or invent unavailable values.<br><br>**Done when:** The mapping is verified against Carson's expected input. Live end-to-end tests trace multiple buses from telemetry input through edge validation/processing and MQTT to Carson's database and API. Received field names, types, units, identifiers and values match the agreed contract, including city/region separation and every agreed information category. Missing, invalid, duplicate, stale and conflicting updates are handled as agreed without corrupting current state. Rejected edge updates are not forwarded as accepted data. Tests verify database/API results, not just broker receipts, and record reproducible evidence. | 🟨 Partial (`ali`; coded, live verification pending) |
 | `EDGE-04` | **P1** | Implement heartbeat monitoring for all regional edge servers. Detect when one server stops responding and report whether it is healthy, unavailable or recovering.<br><br>**Done when:** Stopping an edge server triggers failure detection within a configured timeout. The failure status is reported to the monitoring system. | 🟨 Partial (coded/offline verified; live failure demo pending) |
-| `EDGE-05` | **P1** | Run two active edge servers per region. Divide bus workloads between them and replicate the latest required state. If one server fails, transfer its workload to the surviving server.<br><br>**Done when:** Both servers process assigned buses during normal operation. After one fails, the survivor processes the region's buses using synchronized state without conflicting updates. | ⬜ Pending |
-| `EDGE-06` | **P1** | Test regional processing, validation, caching, duplicate messages, server failures, backup takeover and recovery. Include normal and failure scenarios.<br><br>**Done when:** Tests confirm that valid information is processed correctly, invalid information is rejected, and edge processing continues after a supported single-server failure. | ⬜ Pending |
+| `EDGE-05` | **P1** | Run two active edge servers per region. Divide bus workloads between them and replicate the latest required state. If one server fails, transfer its workload to the surviving server.<br><br>**Done when:** Both servers process assigned buses during normal operation. After one fails, the survivor processes the region's buses using synchronized state without conflicting updates. | Partial (two active instances per region; replication/takeover pending) |
+| `EDGE-06` | **P1** | Test regional processing, validation, caching, duplicate messages, server failures, backup takeover and recovery. Include normal and failure scenarios.<br><br>**Done when:** Tests confirm that valid information is processed correctly, invalid information is rejected, and edge processing continues after a supported single-server failure. | Partial (processing/health/launcher tests; takeover/recovery tests pending) |
 | `EDGE-07` | **P1** | Monitor each edge server's active bus count, assigned workloads, incoming message rate, processing latency and queue backlog. Use these measurements to identify overloaded servers.<br><br>**Done when:** Each server reports measurable workload information. The system can distinguish a lightly loaded server from an overloaded one. | 🟨 Partial (queue/workload metrics coded; live load verification pending) |
 | `EDGE-08` | **P1** | Implement workload distribution between the two active servers. Aim for approximately 50/50 bus assignments and move workloads when a server becomes overloaded or unavailable.<br><br>**Done when:** Bus assignments are balanced under normal conditions. Reassignment works without losing the latest required state or allowing two authoritative owners for one bus. | ⬜ Pending |
 | `EDGE-09` | **P1** | Implement safe ownership transfer and recovery. Synchronize returning servers before restoring their workloads. Support a controlled transfer to another healthy region if both local servers fail.<br><br>**Done when:** A recovered server receives current state before resuming work. Tests demonstrate that ownership remains consistent and cross-region takeover works when capacity is available. | ⬜ Pending |
@@ -391,3 +391,16 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `TEAM-20` | **P2** | Create PowerPoint slides, rehearse the 10-minute presentation and prepare Q&A answers | ⬜ Pending |
 
 </details>
+
+
+### Edge instance file responsibilities
+
+| File | Responsibility / tickets |
+|---|---|
+| `services/edge/main.py` | EDGE-05 launcher: creates two independent instances per configured region; `--plan` displays their fixed route and bus assignments. |
+| `services/edge/edge_server.py` | Defines one edge instance and connects its queue, processing, forwarding and health reporting. |
+| `services/edge/edge_server_health.py` | EDGE-04 sensor heartbeat tracking/reporting and EDGE-07 queue metrics; shared timeout rules are in `shared/schema/health.py`. |
+| `services/central/health.py` | Detects missing edge heartbeats and exposes health to the UI, even when an edge has stopped. |
+| `services/edge/tests/test_edge_server_testing.py` | EDGE-06 instance/launcher and health checks, alongside the existing processing/forwarding tests. Takeover/recovery checks need those mechanisms first. |
+
+The current map uses logical route boundaries: west owns routes 302/900 (two buses per instance), east owns 407/409/901 (three buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. EDGE-08 will handle geographic policy and coordinated balancing; EDGE-05 still requires state replication and takeover before it is complete.

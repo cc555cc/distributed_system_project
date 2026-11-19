@@ -127,7 +127,7 @@ def test_health_callback_and_api_use_the_same_central_monitor(monitor, monkeypat
 
 def test_sensor_publisher_to_edge_to_central_health_api(monitor, monkeypatch):
     from services.data_simulation.run_buses import SimulatorHeartbeats
-    from services.edge.monitoring import EdgeMonitor
+    from services.edge.edge_server_health import EdgeMonitor
     from services.edge.communication.data_to_edge import TelemetrySubscriber
     from services.messaging import mqtt_client
     from services.central import health

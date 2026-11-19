@@ -1,6 +1,7 @@
 """Create configured edge instances; each runs in its own process and keeps its own state."""
 
 import argparse
+import json
 import logging
 from multiprocessing import Event, Process
 import os
@@ -22,6 +23,26 @@ def configured_instances(network_path):
                 raise ValueError("Edge IDs must be globally unique")
             instances[edge_id] = (region["city_id"], region["region_id"], edge_id)
     return instances
+
+
+def deployment_plan(network_path):
+    """EDGE-05: show the map's fixed regional owners before starting workers.
+
+    A region is a configured set of routes, not a GPS polygon. Keep a bus with
+    its assigned owner while it travels; crossing a coordinate must not silently
+    change ownership. EDGE-08 will add coordinated reassignment later.
+    """
+    network = load_network(network_path)
+    instances = configured_instances(network_path)
+    plan = []
+    for edge_id, (city, region, _) in instances.items():
+        buses = [bus for bus in network["buses"] if bus["edge_id"] == edge_id]
+        if any((bus["city_id"], bus["region_id"]) != (city, region) for bus in buses):
+            raise ValueError("Bus owner is outside its configured city/region")
+        plan.append(dict(edge_id=edge_id, city_id=city, region_id=region,
+                         route_ids=sorted({bus["route_id"] for bus in buses}),
+                         bus_ids=sorted(bus["bus_id"] for bus in buses)))
+    return plan
 
 
 def run_instance(network_path, identity, stop_event):
@@ -49,6 +70,7 @@ def run_single_instance(network_path=None):
 
 def launch_instances(network_path, edge_ids=None):
     """Run all configured workers or a selected subset; do not migrate workloads."""
+    deployment_plan(network_path)  # Check regional ownership before spawning any child.
     instances = configured_instances(network_path)
     selected = list(instances) if edge_ids is None else list(dict.fromkeys(edge_ids))
     if any(edge_id not in instances for edge_id in selected):
@@ -84,9 +106,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Launch registered edge workers.")
     parser.add_argument("--network", default=os.getenv("EDGE_NETWORK_CONFIG", str(DEFAULT_NETWORK_PATH)))
     parser.add_argument("--edge", action="append", dest="edge_ids")
+    parser.add_argument("--plan", action="store_true", help="Show fixed route/bus assignments without starting workers")
     parser.add_argument("--single", action="store_true", help="Use EDGE_ID/CITY_ID/REGION_ID for one container")
     args = parser.parse_args()
-    if args.single:
+    if args.plan:
+        print(json.dumps(deployment_plan(args.network), indent=2))
+    elif args.single:
         run_single_instance(args.network)
     else:
         launch_instances(args.network, args.edge_ids)

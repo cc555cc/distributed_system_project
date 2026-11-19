@@ -51,7 +51,7 @@ class EdgeServerInstance:
     def __init__(self, config, network, policy, occupancy_unit="passengers"):
         from services.edge.communication.data_to_edge import create_subscriber
         from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
-        from services.edge.monitoring import EdgeMonitor
+        from services.edge.edge_server_health import EdgeMonitor
         from shared.schema.bus_state import BusStateUpdate
         from uuid import uuid4
         self.config, self.policy = config, policy

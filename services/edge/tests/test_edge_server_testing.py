@@ -1,4 +1,4 @@
-"""EDGE-04 heartbeat and EDGE-07 queue checks; no broker or real waiting."""
+"""EDGE-04/07 health and EDGE-05/06 instance checks; takeover tests await implementation."""
 
 import json
 from queue import Queue
@@ -12,7 +12,7 @@ from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.edge_server import EdgeServerInstance
 from services.edge.main import configured_instances, run_single_instance
-from services.edge.monitoring import EdgeMonitor
+from services.edge.edge_server_health import EdgeMonitor
 from shared.schema.health import BusHeartbeat, HealthPolicy, HeartbeatTracker, SENSORS, load_band
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
@@ -207,3 +207,49 @@ def test_generator_reports_fault_without_inventing_telemetry():
                                   sensor_failure_rate=1.0, sensor_health=health.append)) == []
     assert len(health) == 2
     assert all(set(states) == set(SENSORS) and set(states.values()) == {"faulty"} for states in health)
+
+
+# EDGE-05/06: use the launcher's real configuration and worker construction.
+def test_main_deployment_has_two_disjoint_owners_per_region():
+    from services.edge.main import deployment_plan
+    plan = deployment_plan(DEFAULT_NETWORK_PATH)
+    all_buses = []
+    for region, routes, count in (("west", {"302", "900"}, 2), ("east", {"407", "409", "901"}, 3)):
+        workers = [worker for worker in plan if worker["region_id"] == region]
+        assert len(workers) == 2
+        assert all(set(worker["route_ids"]) == routes for worker in workers)
+        assert all(len(worker["bus_ids"]) == count for worker in workers)
+        assert set(workers[0]["bus_ids"]).isdisjoint(workers[1]["bus_ids"])
+        all_buses.extend(bus for worker in workers for bus in worker["bus_ids"])
+    assert set(all_buses) == {bus["bus_id"] for bus in load_network()["buses"]}
+    assert len(all_buses) == len(set(all_buses))
+
+
+def test_main_constructs_independent_workers(monkeypatch):
+    import services.edge.main as launcher
+    monkeypatch.setenv("CENTRAL_OCCUPANCY_UNIT", "passengers")
+    workers = []
+    real_worker = EdgeServerInstance
+    def capture(*args):
+        worker = real_worker(*args)
+        worker.run = Mock()
+        workers.append(worker)
+        return worker
+    monkeypatch.setattr(launcher, "EdgeServerInstance", capture)
+    stop = Mock()
+    for identity in launcher.configured_instances(DEFAULT_NETWORK_PATH).values():
+        launcher.run_instance(DEFAULT_NETWORK_PATH, identity, stop)
+    assert len(workers) == 4
+    assert len({id(worker.subscriber.messages) for worker in workers}) == 4
+    assert len({id(worker.receiver.processor.cache) for worker in workers}) == 4
+    for worker in workers:
+        worker.run.assert_called_once_with(stop)
+
+
+def test_launcher_rejects_unknown_instance_before_starting_process(monkeypatch):
+    import services.edge.main as launcher
+    process = Mock()
+    monkeypatch.setattr(launcher, "Process", process)
+    with pytest.raises(ValueError, match="unregistered"):
+        launcher.launch_instances(DEFAULT_NETWORK_PATH, ["unknown-edge"])
+    process.assert_not_called()
