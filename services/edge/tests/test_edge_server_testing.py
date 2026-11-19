@@ -1,4 +1,4 @@
-"""EDGE-04/07 health and EDGE-05/06 instance checks; takeover tests await implementation."""
+"""Instance behaviour: health, lifecycle, configuration, capacity and scaling."""
 
 import json
 from queue import Queue
@@ -7,13 +7,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.data_simulation.run_buses import SimulatorHeartbeats
 from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.edge_server import EdgeServerInstance
 from services.edge.main import configured_instances, run_single_instance
 from services.edge.edge_server_health import EdgeMonitor
-from shared.schema.health import BusHeartbeat, HealthPolicy, HeartbeatTracker, SENSORS, load_band
+from shared.schema.health import BusHeartbeat, HealthPolicy, SENSORS, load_band
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 
@@ -43,7 +42,6 @@ def sensor(setup, name="gps"):
     return next(bus for bus in setup.monitor.sensor_reports() if bus["bus_id"] == "bus-302-1")["sensors"][name]
 
 
-# ==================== RECEIPT TIME, TIMEOUT AND RECOVERY ====================
 def test_never_seen_sources_time_out_without_any_new_message(setup):
     assert sensor(setup)["status"] == "unknown"
     setup.now[0] = 5
@@ -102,7 +100,6 @@ def test_unknown_or_other_workers_bus_cannot_refresh_health(setup):
     assert not setup.monitor.receive("transit/heartbeats/bus/west/bus-302-1", b"broken json")
 
 
-# ==================== QUEUE UTILIZATION IS NOT PASSENGER OCCUPANCY ====================
 @pytest.mark.parametrize("percent,expected", [(0,"normal"),(50,"notice"),(70,"prepare"),
                                              (75,"ready"),(79,"near_capacity"),(80,"overloaded")])
 def test_load_bands(percent, expected):
@@ -152,16 +149,6 @@ def test_worker_heartbeat_and_outgoing_health_connection(setup, monkeypatch):
     assert json.loads(client.publish.call_args.args[1])["workload"]["queue_size"] == 4
 
 
-# ==================== SOURCE / LAUNCHER CONFIGURATION ====================
-def test_simulator_four_logical_channels_and_shared_sequence():
-    source = SimulatorHeartbeats(load_network()["buses"][0])
-    source.update({sensor: "faulty" for sensor in SENSORS})
-    first, second = source.snapshot(), source.snapshot()
-    assert set(first.sensors) == set(SENSORS)
-    assert first.session_id == second.session_id
-    assert second.sequence_number == first.sequence_number + 1
-
-
 def test_main_uses_four_configured_instances():
     assert set(configured_instances(DEFAULT_NETWORK_PATH)) == {
         "edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"}
@@ -191,25 +178,6 @@ def test_heartbeat_subscription_is_registered(setup):
     assert client.subscribe.call_args.args[0] == "transit/heartbeats/bus/west/+"
 
 
-def test_other_workers_telemetry_never_fills_our_queue(setup):
-    from services.data_simulation.generate_data import generate_messages
-    source = next(generate_messages("302", 1, "bus-302-2", max_updates=1, update_seconds=0))
-    subscriber = TelemetrySubscriber("west", "edge-west-1", registry=setup.network.registry,
-                                     city_id="DURHAM", monitor=setup.monitor)
-    assert not subscriber.handle_raw_message("transit/buses/west/bus-302-2/telemetry", json.dumps(source).encode())
-    assert subscriber.messages.empty()
-
-
-def test_generator_reports_fault_without_inventing_telemetry():
-    from services.data_simulation.generate_data import generate_messages
-    health = []
-    assert list(generate_messages("302", 0, "bus-302-1", max_updates=2, update_seconds=0,
-                                  sensor_failure_rate=1.0, sensor_health=health.append)) == []
-    assert len(health) == 2
-    assert all(set(states) == set(SENSORS) and set(states.values()) == {"faulty"} for states in health)
-
-
-# EDGE-05/06: use the launcher's real configuration and worker construction.
 def test_main_deployment_has_two_disjoint_owners_per_region():
     from services.edge.main import deployment_plan
     plan = deployment_plan(DEFAULT_NETWORK_PATH)
@@ -255,7 +223,6 @@ def test_launcher_rejects_unknown_instance_before_starting_process(monkeypatch):
     process.assert_not_called()
 
 
-# Bounded synthetic load experiments: queue limits, region isolation and scale-up.
 def test_live_queue_defaults_to_fifty_and_rejects_larger_capacity(setup, monkeypatch):
     from services.edge.communication.data_to_edge import create_subscriber
     monkeypatch.delenv("EDGE_QUEUE_SIZE", raising=False)
@@ -344,7 +311,6 @@ def test_simulated_characteristics_reject_invalid_values(changes):
         simulation.configure("edge-west-1", **changes)
 
 
-
 def test_only_accepted_readings_supply_bus_speed_and_reading_age(setup):
     setup.monitor.mark_valid_data("bus-302-1", 0.0)
     setup.now[0] = 2
@@ -357,107 +323,10 @@ def test_only_accepted_readings_supply_bus_speed_and_reading_age(setup):
     assert next(bus for bus in setup.monitor.sensor_reports() if bus["bus_id"] == "bus-302-1")["valid_telemetry_age_seconds"] == 3
 
 
-
 @pytest.fixture
 def cluster():
     from services.edge.main import EdgeClusterSimulation
     return EdgeClusterSimulation()
-
-
-def test_05_replication_takeover_pending_fifo_and_old_owner_fencing(cluster):
-    bus = "bus-302-1"
-    assert cluster.generate(bus, 1)["accepted"] == 1
-    cluster.advance(1)
-    owner = cluster.registry.get(bus).edge_id
-    assert cluster.workers["edge-west-2"].replicas[bus]["floor"] == 1
-    assert cluster.generate(bus, 5)["accepted"] == 5
-    old_job = next(job for job in cluster.workers[owner].queue if job[1] == bus)
-    old_epoch = cluster.epochs[bus]
-    cluster.fail(owner)
-    assert not cluster.workers[owner].processors  # Actual local state is lost.
-    assert cluster.registry.get(bus).edge_id == "edge-west-2"
-    assert cluster.epochs[bus] > old_epoch
-    target = cluster.workers["edge-west-2"]
-    assert [job[3]["sequence_number"] for job in target.queue if job[1] == bus] == [2, 3, 4, 5, 6]
-    cluster._complete(cluster.workers[owner], old_job)
-    assert cluster.central_states[bus]["sequence_number"] == 1
-    assert cluster.outcomes["FENCED"] == 1
-    cluster.advance(1)
-    assert cluster.central_states[bus]["sequence_number"] == 6
-    assert cluster.central_states[bus]["edge_metadata"]["edge_id"] == "edge-west-2"
-    assert cluster.outcomes["ACCEPTED"] == 6
-    assert not cluster.journal
-
-
-def test_06_replays_conflicts_invalid_data_after_takeover_are_not_accepted(cluster):
-    from copy import deepcopy
-    bus = "bus-302-1"
-    cluster.generate(bus, 2)
-    cluster.advance(1)
-    cluster.fail("edge-west-1")
-    source = deepcopy(cluster.message_templates[bus])
-    source["sequence_number"] = source["lamport_clock"] = 2
-    assert cluster.submit_telemetry(source)["accepted"]
-    cluster.advance(1)
-    assert cluster.outcomes["DUPLICATE"] == 1
-    source["passengers"] += 1
-    assert cluster.submit_telemetry(source)["accepted"]
-    cluster.advance(1)
-    assert cluster.outcomes["CONFLICT"] == 1
-    source["sequence_number"] = 1
-    assert cluster.submit_telemetry(source)["accepted"]
-    cluster.advance(1)
-    assert cluster.outcomes["STALE"] == 1
-    source["latitude"] = 999
-    assert not cluster.submit_telemetry(source)["accepted"]
-    assert cluster.central_states[bus]["sequence_number"] == 2
-
-
-def test_08_assignment_balancing_and_12_new_instance_gets_synchronized_state(cluster):
-    for bus in cluster.bus_regions:
-        cluster.generate(bus, 1)
-    cluster.advance(1)
-    cluster.register("edge-west-dynamic", "west")
-    assert cluster.workers["edge-west-dynamic"].replicas["bus-302-1"]["floor"] == 1
-    cluster.advance(1)
-    counts = [len(cluster._assigned(w.edge_id)) for w in cluster._eligible("west")]
-    assert max(counts) - min(counts) <= 1
-    moved = cluster._assigned("edge-west-dynamic")
-    assert moved
-    for bus in moved:
-        cluster.generate(bus, 1)
-    cluster.advance(1)
-    for bus in moved:
-        assert cluster.central_states[bus]["sequence_number"] == 2
-        assert cluster.central_states[bus]["edge_metadata"]["edge_id"] == "edge-west-dynamic"
-
-
-def test_09_cross_region_takeover_preserves_home_route_then_synchronized_recovery(cluster):
-    bus = "bus-302-1"
-    cluster.generate(bus, 1)
-    cluster.advance(1)
-    cluster.fail("edge-west-1")
-    cluster.fail("edge-west-2")
-    remote = cluster.registry.get(bus).edge_id
-    assert remote.startswith("edge-east-")
-    cluster.generate(bus, 1)
-    cluster.advance(1)
-    state = cluster.central_states[bus]
-    assert state["edge_metadata"]["region_id"] == "west"
-    assert state["edge_metadata"]["route_id"] == "302"
-    assert state["edge_metadata"]["edge_id"] == remote
-    cluster.recover("edge-west-1")
-    assert cluster.workers["edge-west-1"].state == "recovering"
-    assert not cluster.workers["edge-west-1"].active
-    cluster.advance(1)
-    assert cluster.workers["edge-west-1"].state == "recovering"
-    cluster.advance(1)
-    assert cluster.workers["edge-west-1"].state == "healthy"
-    assert cluster.workers["edge-west-1"].replicas[bus]["floor"] == 2
-    cluster.transfer(bus, "edge-west-1")
-    cluster.generate(bus, 1)
-    cluster.advance(1)
-    assert cluster.central_states[bus]["sequence_number"] == 3
 
 
 def test_11_sustained_real_telemetry_scales_up_then_safely_scales_down(cluster):
@@ -482,91 +351,6 @@ def test_11_sustained_real_telemetry_scales_up_then_safely_scales_down(cluster):
     cluster.generate("bus-302-1", 1)
     cluster.advance(1)
     assert cluster.central_states["bus-302-1"]["sequence_number"] == 41
-
-
-def test_failed_full_target_keeps_pending_updates_until_capacity_returns(cluster):
-    cluster.configure("edge-west-2", processing_ms=60000)
-    cluster.generate("bus-302-2", 50)
-    cluster.generate("bus-302-1", 5)
-    cluster.fail("edge-west-1")
-    assert cluster.registry.get("bus-302-1").edge_id == "edge-west-1"
-    assert len(cluster.journal) == 55
-    cluster.configure("edge-west-2", processing_ms=5)
-    cluster.advance(1)
-    assert cluster.registry.get("bus-302-1").edge_id == "edge-west-2"
-    cluster.advance(1)
-    assert not cluster.journal
-    assert cluster.outcomes["ACCEPTED"] == 55
-
-
-def test_loss_of_all_replicas_does_not_reset_sequence_protection(cluster):
-    cluster.generate("bus-302-1", 1)
-    cluster.advance(1)
-    for edge_id in ("edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"):
-        cluster.fail(edge_id)
-    assert not cluster.submit_telemetry(cluster.message_templates["bus-302-1"])["accepted"]
-    with pytest.raises(ValueError, match="replica"):
-        cluster.recover("edge-west-1")
-    assert cluster.workers["edge-west-1"].state == "failed"
-
-
-def test_transfer_refuses_full_or_unhealthy_target_without_changing_owner(cluster):
-    cluster.generate("bus-302-1", 5)
-    cluster.generate("bus-302-2", 50)
-    before = cluster.snapshot()["ownership"]["bus-302-1"]
-    with pytest.raises(ValueError, match="capacity"):
-        cluster.transfer("bus-302-1", "edge-west-2")
-    assert cluster.snapshot()["ownership"]["bus-302-1"] == before
-    with pytest.raises(ValueError, match="healthy"):
-        cluster.transfer("bus-302-1", "edge-west-3")
-
-
-def test_replica_includes_sequence_floor_after_state_expiry(cluster):
-    bus = "bus-302-1"
-    cluster.generate(bus, 1)
-    cluster.advance(1)
-    owner = cluster.registry.get(bus).edge_id
-    processor = cluster._processor(owner, bus)
-    processor.cache.release_bus(cluster._key(bus))
-    cluster._replicate(owner, bus)
-    cluster.transfer(bus, "edge-west-2")
-    cluster.submit_telemetry(cluster.message_templates[bus])
-    cluster.advance(1)
-    assert cluster.outcomes["STALE"] == 1
-    assert cluster.central_states[bus]["sequence_number"] == 1
-
-
-@pytest.mark.parametrize("size", [5, 10, 25, 50])
-def test_10_fleet_performance_and_failover_have_no_lost_accepted_updates(size):
-    from services.edge.main import EdgeClusterSimulation
-    cluster = EdgeClusterSimulation(fleet_size=size)
-    for bus in cluster.bus_regions:
-        assert cluster.generate(bus, 2)["accepted"] == 2
-    cluster.advance(1)
-    cluster.fail("edge-west-1")
-    for bus in cluster.bus_regions:
-        assert cluster.generate(bus, 1)["accepted"] == 1
-    cluster.advance(1)
-    assert len(cluster.central_states) == size
-    assert all(state["sequence_number"] == 3 for state in cluster.central_states.values())
-    assert cluster.outcomes["ACCEPTED"] == size * 3
-    assert not cluster.journal
-    assert sum(w.completed for w in cluster.workers.values()) == size * 3
-    assert all(len(w.queue) <= w.capacity <= 50 for w in cluster.workers.values())
-
-
-
-def test_08_queue_pressure_moves_whole_bus_without_ownership_oscillation(cluster):
-    for edge_id in ("edge-west-1", "edge-west-2"):
-        cluster.configure(edge_id, processing_ms=60000)
-    cluster.generate("bus-302-1", 25)
-    cluster.generate("bus-900-1", 20)
-    cluster.advance(1)
-    workers = cluster._eligible("west")
-    assert sorted(len(worker.queue) for worker in workers) == [20, 25]
-    assert max(len(cluster._assigned(w.edge_id)) for w in workers) - min(len(cluster._assigned(w.edge_id)) for w in workers) <= 1
-    assert len(cluster.journal) == 45
-    assert not cluster.workers["edge-west-3"].active
 
 
 def test_scale_down_rejects_insufficient_capacity_atomically(cluster):
@@ -594,7 +378,6 @@ def test_new_instance_registration_and_snapshot_are_isolated(cluster):
     assert cluster.central_states["bus-302-1"]["sequence_number"] == 1
 
 
-
 def test_advance_chunking_does_not_change_recovery_or_processing():
     from services.edge.main import EdgeClusterSimulation
     large, small = EdgeClusterSimulation(), EdgeClusterSimulation()
@@ -610,15 +393,6 @@ def test_advance_chunking_does_not_change_recovery_or_processing():
     assert large.snapshot()["ownership"] == small.snapshot()["ownership"]
     assert large.outcomes == small.outcomes
     assert [w.state for w in large.workers.values()] == [w.state for w in small.workers.values()]
-
-
-def test_failure_preserves_synthetic_jobs_too(cluster):
-    cluster.submit("bus-302-1", 20)
-    cluster.fail("edge-west-1")
-    cluster.advance(1)
-    assert sum(w.completed for w in cluster.workers.values()) == 20
-    assert not cluster.orphaned_requests
-
 
 
 def test_autoscaling_cannot_resurrect_a_failed_third_instance(cluster):

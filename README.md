@@ -206,6 +206,8 @@ Heartbeat monitoring covers EDGE-04 and workload metrics cover EDGE-07, with a h
 
 ### Test ownership
 
+Instance behaviour is tested in `services/edge/tests/test_edge_server_testing.py`; telemetry flow and state handoffs are tested in `services/edge/tests/test_edge_pipeline.py`. The split preserves the existing checks. Central SQL/API and live MQTT/PostgreSQL integration tests remain in the central test directory.
+
 Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for the edge validation, processing, forwarding and heartbeat checks.
 
 Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (23 tests). Run `python -m pytest services/central/tests -q` for central ingestion/health checks and the optional live tests. These tests are preserved for central integration, not counted as completion of Carson's tickets.
@@ -403,7 +405,8 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `services/edge/edge_server.py` | Defines one edge instance and connects its queue, processing, forwarding and health reporting. |
 | `services/edge/edge_server_health.py` | EDGE-04 sensor heartbeat tracking/reporting and EDGE-07 queue metrics; shared timeout rules are in `shared/schema/health.py`. |
 | `services/central/health.py` | Detects missing edge heartbeats and exposes health to the UI, even when an edge has stopped. |
-| `services/edge/tests/test_edge_server_testing.py` | EDGE-06 instance/launcher, failure/takeover/recovery, replica, ownership, scaling, queue and fleet-size checks; existing processing/forwarding tests remain separate. |
+| `services/edge/tests/test_edge_server_testing.py` | Instance behaviour: heartbeats, lifecycle, recovery timing, configuration, queue capacity and scaling. |
+| `services/edge/tests/test_edge_pipeline.py` | Pipeline behaviour: publisher telemetry, replication, pending-update takeover, ownership, replay protection, cross-region handoffs and fleet throughput. |
 
 The current map uses logical route boundaries: west owns routes 302/900 (two buses per instance), east owns 407/409/901 (three buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. The simulation starts from these assignments, balances buses within their home region and permits controlled cross-region takeover when local workers fail. It keeps the original route region and coordinates when a remote instance hosts that work. The MQTT launcher continues using the fixed plan.
 
