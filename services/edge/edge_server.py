@@ -110,7 +110,7 @@ class EdgeServerInstance:
 
 @dataclass
 class SimulatedEdge:
-    """UI experiment worker. Its synthetic jobs never enter the live bus cache."""
+    """UI experiment worker; telemetry uses isolated processor/cache instances."""
 
     edge_id: str
     region_id: str
@@ -125,6 +125,10 @@ class SimulatedEdge:
         self.credit_ms = 0.0
         self.completed = 0
         self.latency_seconds = 0.0
+        self.state = "healthy" if self.active else "standby"
+        self.replicas = {}
+        self.processors = {}
+        self.on_telemetry = None
 
     def advance(self, seconds, now):
         # Virtual time lets the UI repeat a load experiment without sleeping.
@@ -136,7 +140,10 @@ class SimulatedEdge:
         while self.queue and available + 1e-9 >= self.processing_ms:
             available -= self.processing_ms
             offset_ms += self.processing_ms
-            _, _, received_at = self.queue.popleft()
+            job = self.queue.popleft()
+            _, _, received_at = job[:3]
+            if len(job) > 3:
+                self.on_telemetry(self, job)
             self.completed += 1
             self.latency_seconds += max(0.0, now - seconds + offset_ms / 1000 - received_at)
         self.credit_ms = available if self.queue else 0.0
@@ -145,7 +152,7 @@ class SimulatedEdge:
         from shared.schema.health import load_band
         utilization = len(self.queue) / self.capacity * 100
         return dict(edge_id=self.edge_id, region_id=self.region_id, city_id=self.city_id,
-                    active=self.active, queue_capacity=self.capacity, queue_size=len(self.queue),
+                    active=self.active, state=self.state, queue_capacity=self.capacity, queue_size=len(self.queue),
                     queue_utilization_percent=utilization, load_band=load_band(utilization),
                     processing_ms=self.processing_ms, completed=self.completed,
                     average_latency_ms=(self.latency_seconds / self.completed * 1000 if self.completed else None))

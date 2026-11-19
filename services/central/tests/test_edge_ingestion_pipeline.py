@@ -338,3 +338,69 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
             assert [stop["stop_id"] for stop in actual] == [stop["stop_id"] for stop in expected]
             assert all(stop["direction_id"] == direction for stop in actual)
     assert api.get("/routes/302/stops", params={"direction": 2}).status_code == 422
+
+
+
+def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(tmp_path, monkeypatch):
+    """Same processor/mapper/central SQL/API, with simulated ownership handoffs."""
+    from services.edge.main import EdgeClusterSimulation
+    from services.data_simulation.export_routes import seed_sql
+    from shared.schema.network import load_network
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused/cluster")
+    from services.central.routers import bus_states
+    from services.central.main import app
+    from services.messaging import mqtt_client
+    path = tmp_path / "cluster-central.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.executescript("""
+            CREATE TABLE regions(region_id TEXT, name TEXT, primary_edge TEXT, backup_edge TEXT);
+            CREATE TABLE routes(route_id TEXT PRIMARY KEY, name TEXT, region_id TEXT);
+            CREATE TABLE stops(stop_id TEXT PRIMARY KEY, name TEXT, lat REAL, lon REAL);
+            CREATE TABLE buses(bus_id TEXT PRIMARY KEY, route_id TEXT);
+            CREATE TABLE route_stops(route_id TEXT, direction_id INTEGER, position INTEGER, stop_id TEXT);
+            CREATE TABLE bus_states(bus_id TEXT PRIMARY KEY, lat REAL, lon REAL, speed REAL,
+                direction_id INTEGER, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
+                sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
+        """)
+        connection.executescript(seed_sql(load_network()))
+    monkeypatch.setattr(bus_states.psycopg, "connect", lambda url, **kwargs: TestDatabase(path, **kwargs))
+    transport = LocalTransport(mqtt_client.on_message)
+    api = TestClient(app)
+    cluster = EdgeClusterSimulation()
+    bus_id = "bus-302-1"
+    def flush_and_read():
+        cluster.advance(1)
+        payload = cluster.central_states[bus_id]
+        transport.publish(f"transit/west/bus/{bus_id}/state", json.dumps(payload))
+        response = api.get(f"/bus_states/{bus_id}")
+        assert response.status_code == 200
+        assert response.json()["sequence_number"] == payload["sequence_number"]
+        assert response.json()["edge_metadata"] == payload["edge_metadata"]
+        return response.json()
+    cluster.generate(bus_id, 1)
+    assert flush_and_read()["sequence_number"] == 1
+    cluster.generate(bus_id, 1)
+    old_job = next(job for job in cluster.workers["edge-west-1"].queue if job[1] == bus_id)
+    cluster.fail("edge-west-1")
+    cluster._complete(cluster.workers["edge-west-1"], old_job)
+    state = flush_and_read()
+    assert state["sequence_number"] == 2
+    assert state["edge_metadata"]["edge_id"] == "edge-west-2"
+    cluster.fail("edge-west-2")
+    cluster.generate(bus_id, 1)
+    state = flush_and_read()
+    assert state["sequence_number"] == 3
+    assert state["edge_metadata"]["edge_id"].startswith("edge-east-")
+    assert state["edge_metadata"]["region_id"] == "west"
+    cluster.recover("edge-west-1")
+    cluster.advance(2)
+    cluster.register("edge-west-extra", "west")
+    cluster.transfer(bus_id, "edge-west-extra")
+    cluster.generate(bus_id, 1)
+    assert flush_and_read()["sequence_number"] == 4
+    cluster.scale_down("edge-west-extra")
+    cluster.generate(bus_id, 1)
+    state = flush_and_read()
+    assert state["sequence_number"] == 5
+    assert state["edge_metadata"]["edge_id"] == "edge-west-1"
+    assert cluster.outcomes["FENCED"] == 1

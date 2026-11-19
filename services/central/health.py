@@ -133,9 +133,9 @@ def get_edge_health():
 # telemetry, start OS processes or alter the live ownership registry.
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from services.edge.main import EdgeLoadSimulation
+from services.edge.main import EdgeClusterSimulation
 
-simulation = EdgeLoadSimulation()
+simulation = EdgeClusterSimulation()
 
 
 class SimulationInput(BaseModel):
@@ -194,15 +194,67 @@ def configure_simulation_policy(body: SimulationPolicy):
         return simulation.snapshot()
 
 
+class SimulationReset(SimulationInput):
+    fleet_size: int | None = Field(default=None, ge=1, le=50)
+
+
+class SimulationInstance(SimulationInput):
+    edge_id: str = Field(min_length=1, max_length=80)
+    region_id: str = Field(min_length=1)
+    capacity: int = Field(default=50, ge=1, le=50)
+    processing_ms: float = Field(default=5.0, ge=1, le=60000)
+
+
+class SimulationTransfer(SimulationInput):
+    bus_id: str
+    target_id: str
+
+
 @router.post("/simulation/reset")
-def reset_simulation():
-    # Keep one lock for all readers; reinitialize state atomically in place.
-    fresh = EdgeLoadSimulation()
-    with simulation.lock:
-        simulation.time = fresh.time
-        simulation.sequence = simulation.accepted = simulation.rejected = 0
-        simulation.auto_scale = True
-        simulation.overload_since.clear()
-        simulation.events.clear()
-        simulation.workers = fresh.workers
-        return simulation.snapshot()
+def reset_simulation(body: SimulationReset | None = None):
+    global simulation
+    simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
+    return simulation.snapshot()
+
+
+def simulation_action(action, *args, **kwargs):
+    try:
+        return action(*args, **kwargs)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/simulation/telemetry")
+def submit_telemetry(body: dict):
+    return simulation_action(simulation.submit_telemetry, body)
+
+
+@router.post("/simulation/telemetry/generate")
+def generate_telemetry(body: SimulationRequests):
+    return simulation_action(simulation.generate, body.bus_id, body.count)
+
+
+@router.post("/simulation/instances")
+def register_instance(body: SimulationInstance):
+    return simulation_action(simulation.register, **body.model_dump())
+
+
+@router.post("/simulation/instances/{edge_id}/fail")
+def fail_instance(edge_id: str):
+    return simulation_action(simulation.fail, edge_id)
+
+
+@router.post("/simulation/instances/{edge_id}/recover")
+def recover_instance(edge_id: str):
+    return simulation_action(simulation.recover, edge_id)
+
+
+@router.post("/simulation/instances/{edge_id}/scale-down")
+def scale_down_instance(edge_id: str):
+    return simulation_action(simulation.scale_down, edge_id)
+
+
+@router.post("/simulation/transfer")
+def transfer_bus(body: SimulationTransfer):
+    simulation_action(simulation.transfer, body.bus_id, body.target_id)
+    return simulation.snapshot()

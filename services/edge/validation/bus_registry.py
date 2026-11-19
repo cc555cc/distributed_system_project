@@ -40,6 +40,14 @@ class BusRegistry:
                       if (assignment.city_id, assignment.region_id, assignment.edge_id)
                       == (city_id, region_id, edge_id))
 
+    def transfer_owner(self, bus_id, expected_owner, new_owner):
+        """Simulation coordinator calls this while holding its transaction lock."""
+        from dataclasses import replace
+        assignment = self._assignments.get(bus_id)
+        if assignment is None or assignment.edge_id != expected_owner:
+            raise ValueError("Bus ownership changed before transfer")
+        self._assignments[bus_id] = replace(assignment, edge_id=new_owner)
+
     def check_identity(
         self, bus_id: str, region_id: str, route_id: str, city_id: str | None = None
     ) -> list[str]:

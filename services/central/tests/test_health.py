@@ -313,3 +313,31 @@ def test_zero_speed_is_not_stationary_during_edge_recovery(monitor):
     receive(store, value)
     bus = next(bus for bus in store.snapshot()["buses"] if bus["bus_id"] == value["buses"][0]["bus_id"])
     assert bus["health"]["status"] == "recovering"
+
+
+
+def test_cluster_ui_api_runs_telemetry_takeover_registration_and_recovery(monkeypatch):
+    from services.central import health
+    from services.central.main import app
+    from services.edge.main import EdgeClusterSimulation
+    monkeypatch.setattr(health, "simulation", EdgeClusterSimulation())
+    client = TestClient(app)
+    assert client.post("/health/simulation/telemetry/generate", json={"bus_id":"bus-302-1", "count":2}).json()["accepted"] == 2
+    assert client.post("/health/simulation/advance", json={"seconds":1}).status_code == 200
+    failed = client.post("/health/simulation/instances/edge-west-1/fail").json()
+    assert failed["ownership"]["bus-302-1"]["edge_id"] == "edge-west-2"
+    client.post("/health/simulation/telemetry/generate", json={"bus_id":"bus-302-1", "count":1})
+    result = client.post("/health/simulation/advance", json={"seconds":1}).json()
+    assert result["central_states"]["bus-302-1"]["sequence_number"] == 3
+    assert client.post("/health/simulation/instances", json={"edge_id":"edge-west-4", "region_id":"west"}).status_code == 200
+    transferred = client.post("/health/simulation/transfer", json={"bus_id":"bus-302-1", "target_id":"edge-west-4"}).json()
+    assert transferred["ownership"]["bus-302-1"]["edge_id"] == "edge-west-4"
+    assert client.post("/health/simulation/instances/edge-west-4/scale-down").status_code == 200
+    assert client.post("/health/simulation/instances/edge-west-1/recover").status_code == 200
+    client.post("/health/simulation/advance", json={"seconds":2})
+    assert health.simulation.workers["edge-west-1"].state == "healthy"
+    assert client.post("/health/simulation/instances/unknown/fail").status_code == 422
+    assert client.post("/health/simulation/transfer", json={"bus_id":"unknown", "target_id":"unknown"}).status_code == 422
+    assert client.post("/health/simulation/reset", json={"fleet_size":50}).status_code == 200
+    assert len(health.simulation.bus_regions) == 50
+    assert client.post("/health/simulation/reset", json={"fleet_size":51}).status_code == 422

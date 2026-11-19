@@ -61,3 +61,30 @@ class EdgeStateCache:
     def values(self):
         """Internal iterator; use under lock only."""
         return self._entries.items()
+
+
+    def export_bus(self, key):
+        """Copy both state and replay protection; an empty cache still has a floor."""
+        with self.lock:
+            return dict(entry=deepcopy(self._entries.get(key)), floor=self._sequence_floors.get(key))
+
+    def restore_bus(self, key, state):
+        """Install a synchronized replica without allowing its sequence to go back."""
+        with self.lock:
+            floor, entry = state["floor"], state["entry"]
+            current = self._sequence_floors.get(key)
+            if current is not None and (floor is None or floor < current):
+                raise ValueError("Replica is older than the local sequence floor")
+            if entry is not None and entry.telemetry["sequence_number"] != floor:
+                raise ValueError("Replica state and sequence floor disagree")
+            if floor is not None:
+                self._sequence_floors[key] = floor
+            if entry is None:
+                self._entries.pop(key, None)
+            else:
+                self._entries[key] = deepcopy(entry)
+
+    def release_bus(self, key):
+        """A former owner can forget data but must keep its replay floor."""
+        with self.lock:
+            self._entries.pop(key, None)

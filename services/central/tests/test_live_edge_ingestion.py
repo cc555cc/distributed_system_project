@@ -133,8 +133,8 @@ def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
 def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
     """Real launcher children, MQTT, PostgreSQL and central API; isolated SQL schema.
 
-    Test the implemented topology. This does not claim state replication or
-    takeover: those mechanisms do not exist and cannot be certified here.
+    Test the fixed MQTT topology. Stateful handoff has separate simulation
+    tests; this test does not certify an interprocess replication protocol.
     """
     from multiprocessing import get_context
     import paho.mqtt.client as mqtt
