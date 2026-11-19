@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulation Controls</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>Transit System</h1>
+    <nav>
+      <a href="index.html">Passenger Planner</a>
+      <a href="operator.html">Operator Dashboard</a>
+      <a href="controls.html" class="active">Simulation Controls</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <div class="card">
+      <h2>Edge server failures</h2>
+      <p class="note">Fail a server to see its buses move to the other server in the region.</p>
+      <div class="table-wrap" id="edge-table">Loading...</div>
+      <p id="message" class="message"></p>
+      <button id="reset-button">Reset simulation</button>
+    </div>
+
+    <div class="card">
+      <h2>Bus simulation</h2>
+      <p class="note">These controls are not connected yet. The bus simulator does not have a command API (BUS-05).</p>
+      <div class="control-row">
+        <button disabled>Start</button>
+        <button disabled>Pause</button>
+      </div>
+      <div class="control-row">
+        <label>Passenger demand</label>
+        <select disabled>
+          <option>Normal</option>
+          <option>Peak</option>
+          <option>Off-peak</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label>Traffic delay</label>
+        <select disabled>
+          <option>None</option>
+          <option>Light</option>
+          <option>Heavy</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label>Sensor fault</label>
+        <button disabled>Trigger</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/mock.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/helpers.js"></script>
+  <script src="js/controls.js"></script>
+</body>
+</html>
