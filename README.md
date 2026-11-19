@@ -81,7 +81,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Edge implementation on `ali`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **210 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **225 passing offline tests and one skipped live integration test**. EDGE-03 remains partial until live MQTT/PostgreSQL delivery and the team's field semantics are verified. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
@@ -426,3 +426,23 @@ The coordinator assigns each synthetic request to the same-region active worker 
 Repeatable overload demonstration: reset; set `processing_ms` to 60000 on `edge-west-1` and `edge-west-2` (deliberately slow stress settings); submit 80 requests for `bus-302-1`; advance 5 seconds (third still inactive); advance 1 more second (third activates and receives requests); advance again to process its queue. With the default 5 ms delay, that same short burst drains without requiring a third worker. Use `/docs` to exercise these routes before connecting the UI.
 
 These controls demonstrate balancing/scaling policy for EDGE-08/11/12. Those tickets remain unfinished for live telemetry: replicated state, ownership fencing, ordering during handoff, process registration, recovery and safe scale-down are still required. No UI screen was added in this step. Offline tests cover bounded queues, overflow, latency, regional isolation, short bursts, sustained scale-up, request conservation and API input validation.
+
+
+### Shared health definitions
+
+`shared/schema/health.py` defines the evidence rules. The edge reports sensor liveness, declared faults, the age of the last accepted telemetry and its speed. Central combines those observations with its own edge timeout. `/health/edges` includes a `buses` list, each bus's `health.status` and `health.reasons`, each sensor's `health_status`, and each edge's `workload_status`. Existing heartbeat `status` remains a liveness field: a sensor can be alive while reporting a fault.
+
+| Evidence | Result |
+|---|---|
+| Edge has never reported or its heartbeat expires | Bus health `unknown`; reason `edge_unknown` / `edge_unavailable`; sensor health unknown |
+| All four sensor channels expire while edge still reports | Bus `telemetry_unavailable` |
+| One or more sensors report a fault or expire | Bus `degraded`, with sensor-specific reasons; sensor `faulty` / `unavailable` |
+| Edge/sensor heartbeats resume within the recovery window | Bus `recovering`, unless a known fault/missing channel already makes it degraded |
+| Sensor evidence is incomplete | Bus `unknown` |
+| All sensors are healthy but accepted telemetry is absent or expired | Bus `data_stale` |
+| All sensors healthy, accepted telemetry fresh and speed zero | Bus `stationary` |
+| All sensors healthy and accepted telemetry fresh | Bus `healthy` |
+| Healthy edge queue at/above the configured threshold | Workload `high_load`, then `overloaded` after the sustained interval |
+| Edge is not healthy | Workload `unknown`; old queue reports are not treated as current |
+
+Reading freshness uses `SENSOR_HEARTBEAT_TIMEOUT_SECONDS` (10 seconds by default); stationary requires fresh accepted telemetry, not just an alive heartbeat. An accepted reading's age continues increasing even if fresh heartbeats arrive. Classification is recalculated when the health API is read, so timeouts do not need a new packet. Queue overload and heartbeat liveness are separate statuses. A bus that is stationary is not automatically broken down. No missing-heartbeat pattern diagnoses a crash or mechanical failure; those need separate explicit evidence or simulation events, which are not added here.

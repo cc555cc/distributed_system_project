@@ -286,7 +286,7 @@ def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngr
             result = (forwarder.process(telemetry) if forwarder is not None
                       else receiver.process_telemetry(telemetry))
             if subscriber.monitor is not None and result.status.value == "ACCEPTED":
-                subscriber.monitor.mark_valid_data(telemetry["bus_id"])
+                subscriber.monitor.mark_valid_data(telemetry["bus_id"], telemetry["speed_kmh"])
             logging.info("Processing result=%s", result.status.value)
 
             # # If centeral server exists, then attempt to send one pending message.

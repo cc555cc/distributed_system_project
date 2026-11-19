@@ -342,3 +342,16 @@ def test_simulated_characteristics_reject_invalid_values(changes):
     simulation = slow_simulation()
     with pytest.raises(ValueError):
         simulation.configure("edge-west-1", **changes)
+
+
+
+def test_only_accepted_readings_supply_bus_speed_and_reading_age(setup):
+    setup.monitor.mark_valid_data("bus-302-1", 0.0)
+    setup.now[0] = 2
+    bus = next(bus for bus in setup.monitor.sensor_reports() if bus["bus_id"] == "bus-302-1")
+    assert bus["last_speed_kmh"] == 0.0
+    assert bus["valid_telemetry_age_seconds"] == 2
+    # A new heartbeat says the sensor is alive; it cannot refresh the reading.
+    receive(setup, bus_heartbeat())
+    setup.now[0] = 3
+    assert next(bus for bus in setup.monitor.sensor_reports() if bus["bus_id"] == "bus-302-1")["valid_telemetry_age_seconds"] == 3

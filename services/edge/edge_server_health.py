@@ -16,6 +16,7 @@ class EdgeMonitor:
         self.lock = RLock()
         self.started_at = clock()
         self.valid_data = {}
+        self.last_speed = {}
         self.received = self.processed = 0
         self.processing_seconds = 0.0
 
@@ -38,10 +39,11 @@ class EdgeMonitor:
                                           heartbeat.sequence_number, state) or changed
         return changed
 
-    def mark_valid_data(self, bus_id):
+    def mark_valid_data(self, bus_id, speed_kmh=None):
         """An alive sensor and a recent valid reading are different things."""
         with self.lock:
             self.valid_data[bus_id] = self.clock()
+            self.last_speed[bus_id] = speed_kmh
 
     def record_received(self):
         with self.lock:
@@ -55,7 +57,7 @@ class EdgeMonitor:
     def sensor_reports(self) -> list[dict]:
         with self.lock:
             now = self.clock()
-            return [dict(bus_id=bus, sensors={sensor: self.tracker.report((bus, sensor)) for sensor in SENSORS},
+            return [dict(bus_id=bus, last_speed_kmh=self.last_speed.get(bus), sensors={sensor: self.tracker.report((bus, sensor)) for sensor in SENSORS},
                          valid_telemetry_age_seconds=(max(0.0, now - self.valid_data[bus]) if bus in self.valid_data else None))
                     for bus in self.bus_ids]
 

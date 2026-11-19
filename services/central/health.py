@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from services.messaging.topics import edge_heartbeat
 from shared.schema.health import EdgeHeartbeat, HeartbeatTracker, HealthPolicy, SENSORS, policy_from_environment
+from shared.schema.health import classify_bus_health, sensor_health_status, edge_workload_status
 from shared.schema.network import load_network
 
 
@@ -63,6 +64,7 @@ class CentralHealthMonitor:
         with self.lock:
             now = self.clock()
             edges = []
+            buses = []
             for edge_id, (city, region, _) in sorted(self.expected.items()):
                 status = self.tracker.report(edge_id)
                 report = deepcopy(self.reports.get(edge_id))
@@ -80,8 +82,23 @@ class CentralHealthMonitor:
                                     sensor["status"] = "unavailable"
                             if status["status"] == "unavailable":
                                 sensor["status"] = "unknown"
-                edges.append(dict(edge_id=edge_id, city_id=city, region_id=region, **status, last_report=report))
-            return dict(edges=edges, recommendations=self.recommendations(edges, now))
+                reports = report["buses"] if report is not None else [
+                    dict(bus_id=bus_id, valid_telemetry_age_seconds=None, last_speed_kmh=None,
+                         sensors={name: dict(status="unknown", reported_state="unknown", age_seconds=None)
+                                  for name in SENSORS})
+                    for bus_id, owner in self.owners.items() if owner == (city, region, edge_id)]
+                for bus in reports:
+                    bus["health"] = classify_bus_health(bus, status["status"], self.policy.sensor_timeout_seconds)
+                    for sensor in bus["sensors"].values():
+                        sensor["health_status"] = sensor_health_status(sensor, status["status"], self.policy.sensor_timeout_seconds)
+                    buses.append(dict(edge_id=edge_id, city_id=city, region_id=region, **deepcopy(bus)))
+                since = self.overloaded_since.get(edge_id)
+                utilization = report["workload"]["queue_utilization_percent"] if report else None
+                workload_status = edge_workload_status(status["status"], utilization,
+                    since is not None and now - since >= self.policy.sustained_seconds, self.policy.overload_percent)
+                edges.append(dict(edge_id=edge_id, city_id=city, region_id=region, **status,
+                                  workload_status=workload_status, last_report=report))
+            return dict(edges=edges, buses=buses, recommendations=self.recommendations(edges, now))
 
     def recommendations(self, edges, now):
         """Least-loaded healthy peer selection; no migration or instance creation."""

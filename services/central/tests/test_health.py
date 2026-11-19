@@ -213,3 +213,103 @@ def test_simulation_api_controls_virtual_capacity_and_third_instance(monkeypatch
     assert reset["accepted"] == 0 and reset["virtual_seconds"] == 0
     assert all(w["queue_size"] == 0 for w in reset["workers"])
     assert sum(w["active"] for w in client.get("/health/simulation").json()["workers"]) == 4
+
+
+
+def healthy_bus_report():
+    value = report()
+    for bus in value["buses"]:
+        bus["valid_telemetry_age_seconds"] = 0.0
+        bus["last_speed_kmh"] = 0.0
+        for sensor in bus["sensors"].values():
+            sensor.update(status="healthy", reported_state="healthy", age_seconds=0.0)
+    return value
+
+
+@pytest.mark.parametrize("pattern,expected", [
+    ("stationary", "stationary"), ("moving", "healthy"),
+    ("faulty", "degraded"), ("one_missing", "degraded"),
+    ("all_missing", "telemetry_unavailable"), ("stale_data", "data_stale"),
+    ("no_data", "data_stale"), ("unknown_sensor", "unknown"),
+    ("recovering_sensor", "recovering")])
+def test_central_classifies_bus_patterns_from_report_evidence(monitor, pattern, expected):
+    store, _, _ = monitor
+    value = healthy_bus_report()
+    bus = value["buses"][0]
+    if pattern == "moving":
+        bus["last_speed_kmh"] = 25.0
+    elif pattern == "faulty":
+        bus["sensors"]["gps"]["reported_state"] = "faulty"
+    elif pattern == "one_missing":
+        bus["sensors"]["gps"].update(status="unavailable", age_seconds=5.0)
+    elif pattern == "all_missing":
+        for sensor in bus["sensors"].values():
+            sensor.update(status="unavailable", age_seconds=5.0)
+    elif pattern == "stale_data":
+        bus["valid_telemetry_age_seconds"] = 5.0
+    elif pattern == "no_data":
+        bus["valid_telemetry_age_seconds"] = None
+    elif pattern == "unknown_sensor":
+        bus["sensors"]["gps"].update(status="unknown", reported_state="unknown", age_seconds=None)
+    elif pattern == "recovering_sensor":
+        bus["sensors"]["gps"]["status"] = "recovering"
+    assert receive(store, value)
+    classified = next(item for item in store.snapshot()["buses"] if item["bus_id"] == bus["bus_id"])
+    assert classified["health"]["status"] == expected
+    assert classified["health"]["reasons"]
+    if pattern == "faulty":
+        assert classified["sensors"]["gps"]["status"] == "healthy"
+        assert classified["sensors"]["gps"]["health_status"] == "faulty"
+
+
+def test_missing_edge_overrides_old_bus_faults_with_unknown(monitor):
+    store, now, _ = monitor
+    value = healthy_bus_report()
+    value["buses"][0]["sensors"]["gps"]["reported_state"] = "faulty"
+    receive(store, value)
+    now[0] = 10
+    bus = next(item for item in store.snapshot()["buses"] if item["bus_id"] == value["buses"][0]["bus_id"])
+    assert bus["health"] == dict(status="unknown", reasons=["edge_unavailable"])
+    assert all(sensor["health_status"] == "unknown" for sensor in bus["sensors"].values())
+
+
+def test_unseen_buses_are_listed_as_unknown_without_inventing_breakdowns(monitor):
+    store, _, _ = monitor
+    buses = store.snapshot()["buses"]
+    assert len(buses) == 10
+    assert all(bus["health"]["status"] == "unknown" for bus in buses)
+    assert all(bus["health"]["reasons"] == ["edge_unknown"] for bus in buses)
+
+
+def test_stationary_expires_to_missing_telemetry_then_unknown_edge(monitor):
+    store, now, _ = monitor
+    value = healthy_bus_report()
+    receive(store, value)
+    bus_id = value["buses"][0]["bus_id"]
+    now[0] = 5
+    bus = next(bus for bus in store.snapshot()["buses"] if bus["bus_id"] == bus_id)
+    assert bus["health"]["status"] == "telemetry_unavailable"
+    now[0] = 10
+    assert next(bus for bus in store.snapshot()["buses"] if bus["bus_id"] == bus_id)["health"]["status"] == "unknown"
+
+
+def test_edge_overload_is_separate_from_heartbeat_liveness(monitor):
+    store, now, _ = monitor
+    receive(store, report(percent=80))
+    assert edge(store)["status"] == "healthy"
+    assert edge(store)["workload_status"] == "high_load"
+    now[0] = 3
+    assert edge(store)["workload_status"] == "overloaded"
+    now[0] = 10
+    assert edge(store)["workload_status"] == "unknown"
+
+
+def test_zero_speed_is_not_stationary_during_edge_recovery(monitor):
+    store, now, _ = monitor
+    value = healthy_bus_report()
+    receive(store, value)
+    now[0] = 10
+    value["sequence_number"] = 2
+    receive(store, value)
+    bus = next(bus for bus in store.snapshot()["buses"] if bus["bus_id"] == value["buses"][0]["bus_id"])
+    assert bus["health"]["status"] == "recovering"

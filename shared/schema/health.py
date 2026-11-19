@@ -66,10 +66,11 @@ class SensorHealth(BaseModel):
 
 
 class BusHealth(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     bus_id: str
     sensors: dict[SensorName, SensorHealth]
     valid_telemetry_age_seconds: float | None = Field(ge=0)
+    last_speed_kmh: float | None = Field(default=None, ge=0)
 
 
 class Workload(BaseModel):
@@ -172,3 +173,55 @@ def policy_from_environment() -> HealthPolicy:
         overload_percent=float(os.getenv("EDGE_OVERLOAD_PERCENT", "80")),
         sustained_seconds=float(os.getenv("EDGE_OVERLOAD_SUSTAIN_SECONDS", "6")),
     )
+
+
+
+def sensor_health_status(sensor, edge_status, timeout):
+    """A missing edge makes its sensors unknown, not proven faulty or dead."""
+    if edge_status in ("unknown", "unavailable"):
+        return "unknown"
+    age = sensor["age_seconds"]
+    if sensor["status"] == "unavailable" or (age is not None and age >= timeout):
+        return "unavailable"
+    if sensor["status"] == "unknown":
+        return "unknown"
+    if sensor["reported_state"] == "faulty":
+        return "faulty"
+    if edge_status == "recovering" or sensor["status"] == "recovering":
+        return "recovering"
+    return "healthy" if sensor["reported_state"] == "healthy" else "unknown"
+
+
+def classify_bus_health(bus, edge_status, timeout):
+    """Shared evidence rules. No pattern here diagnoses a crash or breakdown.
+
+    Liveness, reported faults and valid readings are different evidence. Keep
+    the reason codes so the UI can explain a classification rather than guess.
+    """
+    if edge_status in ("unknown", "unavailable"):
+        return dict(status="unknown", reasons=["edge_" + edge_status])
+    states = {name: sensor_health_status(bus["sensors"][name], edge_status, timeout) for name in SENSORS}
+    reasons = [name + "_" + state for name, state in states.items() if state != "healthy"]
+    if all(state == "unavailable" for state in states.values()):
+        return dict(status="telemetry_unavailable", reasons=reasons)
+    if any(state in ("faulty", "unavailable") for state in states.values()):
+        return dict(status="degraded", reasons=reasons)
+    if edge_status == "recovering" or "recovering" in states.values():
+        return dict(status="recovering", reasons=reasons or ["edge_recovering"])
+    if "unknown" in states.values():
+        return dict(status="unknown", reasons=reasons)
+    age = bus["valid_telemetry_age_seconds"]
+    if age is None or age >= timeout:
+        return dict(status="data_stale", reasons=["no_recent_valid_telemetry"])
+    if bus.get("last_speed_kmh") == 0:
+        return dict(status="stationary", reasons=["fresh_valid_speed_zero"])
+    return dict(status="healthy", reasons=["fresh_valid_telemetry_and_sensor_heartbeats"])
+
+
+def edge_workload_status(edge_status, utilization, sustained_overload, threshold):
+    """Separate load pressure from the edge's heartbeat liveness status."""
+    if edge_status != "healthy" or utilization is None:
+        return "unknown"
+    if utilization < threshold:
+        return "normal"
+    return "overloaded" if sustained_overload else "high_load"
