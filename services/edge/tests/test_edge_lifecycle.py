@@ -17,25 +17,24 @@ def slow_simulation():
     return simulation
 
 
-@pytest.fixture
-def cluster():
+def make_cluster():
     from services.edge.main import EdgeClusterSimulation
     return EdgeClusterSimulation()
 
 
-def test_main_uses_four_configured_instances():
+def test_instance_creation_configuration_and_isolation():
+    # Main uses four configured instances.
     assert set(configured_instances(DEFAULT_NETWORK_PATH)) == {
         "edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"}
 
+    # Single instance checks environment.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("EDGE_ID", "edge-west-1")
+        monkeypatch.setenv("REGION_ID", "east")
+        with pytest.raises(ValueError, match="does not match"):
+            run_single_instance()
 
-def test_single_instance_checks_environment(monkeypatch):
-    monkeypatch.setenv("EDGE_ID", "edge-west-1")
-    monkeypatch.setenv("REGION_ID", "east")
-    with pytest.raises(ValueError, match="does not match"):
-        run_single_instance()
-
-
-def test_main_deployment_has_two_disjoint_owners_per_region():
+    # Main deployment has two disjoint owners per region.
     from services.edge.main import deployment_plan
     plan = deployment_plan(DEFAULT_NETWORK_PATH)
     all_buses = []
@@ -49,38 +48,39 @@ def test_main_deployment_has_two_disjoint_owners_per_region():
     assert set(all_buses) == {bus["bus_id"] for bus in load_network()["buses"]}
     assert len(all_buses) == len(set(all_buses))
 
+    # Main constructs independent workers.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        import services.edge.main as launcher
+        monkeypatch.setenv("CENTRAL_OCCUPANCY_UNIT", "passengers")
+        workers = []
+        real_worker = EdgeServerInstance
+        def capture(*args):
+            worker = real_worker(*args)
+            worker.run = Mock()
+            workers.append(worker)
+            return worker
+        monkeypatch.setattr(launcher, "EdgeServerInstance", capture)
+        stop = Mock()
+        for identity in launcher.configured_instances(DEFAULT_NETWORK_PATH).values():
+            launcher.run_instance(DEFAULT_NETWORK_PATH, identity, stop)
+        assert len(workers) == 4
+        assert len({id(worker.subscriber.messages) for worker in workers}) == 4
+        assert len({id(worker.receiver.processor.cache) for worker in workers}) == 4
+        for worker in workers:
+            worker.run.assert_called_once_with(stop)
 
-def test_main_constructs_independent_workers(monkeypatch):
-    import services.edge.main as launcher
-    monkeypatch.setenv("CENTRAL_OCCUPANCY_UNIT", "passengers")
-    workers = []
-    real_worker = EdgeServerInstance
-    def capture(*args):
-        worker = real_worker(*args)
-        worker.run = Mock()
-        workers.append(worker)
-        return worker
-    monkeypatch.setattr(launcher, "EdgeServerInstance", capture)
-    stop = Mock()
-    for identity in launcher.configured_instances(DEFAULT_NETWORK_PATH).values():
-        launcher.run_instance(DEFAULT_NETWORK_PATH, identity, stop)
-    assert len(workers) == 4
-    assert len({id(worker.subscriber.messages) for worker in workers}) == 4
-    assert len({id(worker.receiver.processor.cache) for worker in workers}) == 4
-    for worker in workers:
-        worker.run.assert_called_once_with(stop)
+    # Launcher rejects unknown instance before starting process.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        import services.edge.main as launcher
+        process = Mock()
+        monkeypatch.setattr(launcher, "Process", process)
+        with pytest.raises(ValueError, match="unregistered"):
+            launcher.launch_instances(DEFAULT_NETWORK_PATH, ["unknown-edge"])
+        process.assert_not_called()
 
 
-def test_launcher_rejects_unknown_instance_before_starting_process(monkeypatch):
-    import services.edge.main as launcher
-    process = Mock()
-    monkeypatch.setattr(launcher, "Process", process)
-    with pytest.raises(ValueError, match="unregistered"):
-        launcher.launch_instances(DEFAULT_NETWORK_PATH, ["unknown-edge"])
-    process.assert_not_called()
-
-
-def test_sustained_load_starts_third_and_preserves_every_synthetic_request():
+def test_scaling_policy_for_bursts_sustained_load_and_failure():
+    # Sustained load starts third and preserves every synthetic request.
     simulation = slow_simulation()
     simulation.submit("bus-302-1", 80)
     before = {job[0] for w in simulation.workers.values() for job in w.queue}
@@ -98,8 +98,7 @@ def test_sustained_load_starts_third_and_preserves_every_synthetic_request():
     assert third.completed > 0
     assert sum(len(w.queue) + w.completed for w in simulation.workers.values()) == 80
 
-
-def test_short_burst_drains_without_starting_third_instance():
+    # Short burst drains without starting third instance.
     from services.edge.main import EdgeLoadSimulation
     simulation = EdgeLoadSimulation()
     simulation.submit("bus-302-1", 80)
@@ -108,16 +107,28 @@ def test_short_burst_drains_without_starting_third_instance():
     assert not simulation.workers["edge-west-3"].active
     assert simulation.workers["edge-west-1"].snapshot()["average_latency_ms"] == pytest.approx(102.5)
 
-
-def test_disabled_autoscale_keeps_third_stopped():
+    # Disabled autoscale keeps third stopped.
     simulation = slow_simulation()
     simulation.auto_scale = False
     simulation.submit("bus-302-1", 80)
     simulation.advance(10)
     assert not simulation.workers["edge-west-3"].active
 
+    # Autoscaling cannot resurrect a failed third instance.
+    cluster = make_cluster()
+    cluster.fail("edge-west-3")
+    for edge_id in ("edge-west-1", "edge-west-2"):
+        cluster.configure(edge_id, processing_ms=60000)
+    cluster.generate("bus-302-1", 40)
+    cluster.generate("bus-302-2", 40)
+    cluster.advance(6)
+    assert cluster.workers["edge-west-3"].state == "failed"
+    assert not cluster.workers["edge-west-3"].active
 
-def test_11_sustained_real_telemetry_scales_up_then_safely_scales_down(cluster):
+
+def test_telemetry_scale_up_and_safe_scale_down():
+    # 11 sustained real telemetry scales up then safely scales down.
+    cluster = make_cluster()
     for edge_id in ("edge-west-1", "edge-west-2"):
         cluster.configure(edge_id, processing_ms=60000)
     cluster.generate("bus-302-1", 40)
@@ -140,8 +151,8 @@ def test_11_sustained_real_telemetry_scales_up_then_safely_scales_down(cluster):
     cluster.advance(1)
     assert cluster.central_states["bus-302-1"]["sequence_number"] == 41
 
-
-def test_scale_down_rejects_insufficient_capacity_atomically(cluster):
+    # Scale down rejects insufficient capacity atomically.
+    cluster = make_cluster()
     cluster.generate("bus-302-1", 10)
     cluster.generate("bus-302-2", 50)
     before = cluster.snapshot()["ownership"]
@@ -151,7 +162,9 @@ def test_scale_down_rejects_insufficient_capacity_atomically(cluster):
     assert cluster.workers["edge-west-1"].active
 
 
-def test_new_instance_registration_and_snapshot_are_isolated(cluster):
+def test_registration_snapshot_and_recovery_timing():
+    # New instance registration and snapshot are isolated.
+    cluster = make_cluster()
     with pytest.raises(ValueError, match="unique"):
         cluster.register("edge-west-1", "west")
     with pytest.raises(ValueError, match="Unknown region"):
@@ -165,8 +178,7 @@ def test_new_instance_registration_and_snapshot_are_isolated(cluster):
     snapshot["central_states"]["bus-302-1"]["sequence_number"] = -1
     assert cluster.central_states["bus-302-1"]["sequence_number"] == 1
 
-
-def test_advance_chunking_does_not_change_recovery_or_processing():
+    # Advance chunking does not change recovery or processing.
     from services.edge.main import EdgeClusterSimulation
     large, small = EdgeClusterSimulation(), EdgeClusterSimulation()
     for cluster in (large, small):
@@ -181,14 +193,3 @@ def test_advance_chunking_does_not_change_recovery_or_processing():
     assert large.snapshot()["ownership"] == small.snapshot()["ownership"]
     assert large.outcomes == small.outcomes
     assert [w.state for w in large.workers.values()] == [w.state for w in small.workers.values()]
-
-
-def test_autoscaling_cannot_resurrect_a_failed_third_instance(cluster):
-    cluster.fail("edge-west-3")
-    for edge_id in ("edge-west-1", "edge-west-2"):
-        cluster.configure(edge_id, processing_ms=60000)
-    cluster.generate("bus-302-1", 40)
-    cluster.generate("bus-302-2", 40)
-    cluster.advance(6)
-    assert cluster.workers["edge-west-3"].state == "failed"
-    assert not cluster.workers["edge-west-3"].active
