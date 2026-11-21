@@ -51,8 +51,8 @@ def on_message(client, userdata, msg):
                 logger.debug("Stale update for %s (seq %s) ignored", bus_id, bus_state.sequence_number)
             else:
                 logger.warning("Rejected update for %s on %s: %s",bus_id, msg.topic, reason)
-
-        logger.info("Applied %s seq=%s from %s", bus_id, bus_state.sequence_number, msg.topic)
+        else:
+            logger.info("Applied %s seq=%s from %s", bus_id, bus_state.sequence_number, msg.topic)
 
 
     #errpr handling
