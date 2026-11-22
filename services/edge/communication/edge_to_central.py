@@ -36,6 +36,9 @@ from services.edge.processing.processor import ProcessingResult, ProcessingStatu
 from services.edge.transformation.central_mapper import OccupancyUnit, map_bus_update
 
 
+from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
+
+
 class EdgeToCentral:
     """Own the connection and check every payload again before publishing it."""
 
@@ -44,6 +47,7 @@ class EdgeToCentral:
         self.config = config
         self.registry = registry
         self.contract = contract
+        self.auth = EdgeAuth.from_environment(config.edge_id, config.region_id, registry, config.city_id)
         self._client: Any | None = None
 
     def validate_payload(self, bus_id: str, payload: dict) -> str:
@@ -83,6 +87,7 @@ class EdgeToCentral:
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=f"{self.config.edge_id}-to-central",
         )
+        configure_mqtt_client(client)
         client.reconnect_delay_set(min_delay=1, max_delay=10)
         try:
             client.connect(host, port, keepalive=60)
@@ -105,12 +110,27 @@ class EdgeToCentral:
 
         # This is the topic Carson's existing subscriber listens to.
         topic = f"transit/{self.config.region_id}/bus/{bus_id}/state"
+        self.auth.authorize_publish(topic)
         receipt = self._client.publish(topic, encoded, qos=1, retain=False)
         if receipt.rc != 0:
             raise ConnectionError("MQTT broker did not accept the publish request")
         receipt.wait_for_publish(timeout=timeout)
         if not receipt.is_published():
             raise TimeoutError("MQTT broker receipt timed out")
+
+    def publish_heartbeat(self, heartbeat) -> None:
+        """Send health without putting it behind the bus-update retry queue."""
+        from services.messaging.topics import edge_heartbeat
+        if (heartbeat.city_id, heartbeat.region_id, heartbeat.edge_id) != (
+                self.config.city_id, self.config.region_id, self.config.edge_id):
+            raise ValueError("Heartbeat identity does not match this edge")
+        if self._client is None or not self._client.is_connected():
+            raise ConnectionError("Central heartbeat connection is not ready")
+        self.auth.authorize_publish(edge_heartbeat(self.config.region_id, self.config.edge_id))
+        receipt = self._client.publish(edge_heartbeat(self.config.region_id, self.config.edge_id),
+                                       heartbeat.model_dump_json(), qos=1, retain=False)
+        if receipt.rc != 0:
+            raise ConnectionError("Heartbeat publish was not accepted")
 
     def close(self) -> None:
         """Release the connection when this edge process stops."""

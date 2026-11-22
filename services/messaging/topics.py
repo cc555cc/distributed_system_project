@@ -24,3 +24,18 @@ def alert(region_id: str, source_id: str) -> str:
 
 def command(region_id: str, bus_id: str = ALL_BUSES) -> str:
     return f"transit/commands/{region_id}/{bus_id}"
+
+
+EDGE_HEARTBEAT_FILTER = "transit/heartbeats/edge/+/+"
+
+
+def bus_heartbeat(region_id: str, bus_id: str) -> str:
+    return f"transit/heartbeats/bus/{region_id}/{bus_id}"
+
+
+def bus_heartbeat_filter(region_id: str) -> str:
+    return f"transit/heartbeats/bus/{region_id}/+"
+
+
+def edge_heartbeat(region_id: str, edge_id: str) -> str:
+    return f"transit/heartbeats/edge/{region_id}/{edge_id}"

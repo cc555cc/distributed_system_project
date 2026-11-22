@@ -7,6 +7,7 @@ import logging
 import os
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
+from services.messaging.topics import EDGE_HEARTBEAT_FILTER
 from services.central.routers.bus_states import BusStateUpdate, apply_bus_state
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
         return
     #start subscription
     client.subscribe(topic, qos=1)
+    client.subscribe(EDGE_HEARTBEAT_FILTER, qos=1)
     logger.info("MQTT is connected, Server subscribe to %s", topic)
 
 def on_disconnection(client, userdata, flags, reason_code, properties):
@@ -29,6 +31,11 @@ def on_disconnection(client, userdata, flags, reason_code, properties):
 
 def on_message(client, userdata, msg):
     try:
+        if msg.topic.startswith("transit/heartbeats/edge/"):
+            from services.central.health import monitor
+            if not monitor.receive(msg.topic, msg.payload):
+                logger.warning("Rejected edge heartbeat")
+            return
         parts = msg.topic.split("/")
         if len(parts) != 5 or parts[0] != "transit" or parts[2] != "bus" or parts[4] != "state" or not parts[1] or not parts[3]:
             logger.warning("Ignoring unexpected topic %s", msg.topic)
@@ -44,6 +51,9 @@ def on_message(client, userdata, msg):
                 logger.debug("Stale update for %s (seq %s) ignored", bus_id, bus_state.sequence_number)
             else:
                 logger.warning("Rejected update for %s on %s: %s",bus_id, msg.topic, reason)
+        else:
+            logger.info("Applied %s seq=%s from %s", bus_id, bus_state.sequence_number, msg.topic)
+
 
     #errpr handling
     except ValidationError as error:

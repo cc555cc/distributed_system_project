@@ -41,7 +41,11 @@ project/
 |   |   |-- mqtt_client.py      # existing central subscriber
 |   |   |-- topics.py           # agreed MQTT topic names
 |   |   `-- tests/
-|   |-- edge/                   # Ali: local ingress and processing
+|   |-- edge/                   # Ali: local ingress, processing and monitoring
+|   |   |-- main.py             # launch configured independent edge processes
+|   |   |-- edge_server_health.py # sensor deadlines and queue measurements
+|   |   |-- auth_edge_server.py # signed publishers, permissions and MQTT security settings
+|   |   |-- data_to_json_converter.py # canonical JSON, vendor JSON and CSV adapters
 |   |   |-- config.py           # network configuration and cache policy
 |   |   |-- edge_server.py      # accepted-message queue adapter
 |   |   |-- communication/      # data_to_edge.py and edge_to_central.py
@@ -51,6 +55,7 @@ project/
 |   |   |-- transformation/     # central_mapper.py: EDGE-03 mapping
 |   |   `-- tests/              # validation, processing and forwarding tests
 |   `-- central/                # Carson: API, ingestion and scheduling
+|       |-- health.py           # central edge-heartbeat receiver and health API
 |       |-- main.py
 |       |-- routers/
 |       |   |-- bus_states.py
@@ -63,6 +68,7 @@ project/
 |   |-- routes.json             # active Durham route snapshot
 |   `-- schema/
 |       |-- bus_state.py        # shared central input and edge metadata model
+|       |-- health.py           # shared heartbeat models and monotonic deadlines
 |       |-- network.py          # shared network loading and assignment checks
 |       |-- schema.sql          # database tables and constraints
 |       `-- seed.sql            # sample routes and stops
@@ -92,16 +98,16 @@ This directory guide describes the earlier `main` structure and reserved locatio
 | `carson` | `services/central/`; database SQL in `shared/schema/` |
 | `danial` | `frontend/` |
 
-Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The central subscriber and local EDGE-01/02 pipeline are implemented on `main`; newer edge simulation and integration evidence are available on `ali` as summarized above.
+Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The central subscriber and local EDGE-01/02 pipeline are implemented. Regional failure, balancing and scaling scenarios are verified in the UI-controlled simulation; the separate MQTT worker launcher retains fixed ownership.
 
 
 ## Backend implementation currently on `main`
 
-This section describes the earlier backend implementation already merged into `main`: receiving, validation, processing, mapping and automatic forwarding. Later work and completion statuses are reported across branches above. Live MQTT/PostgreSQL delivery has since been verified on `ali`; this README-only update does not merge its newer implementation or Carson's newer ETA changes.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **292 passing tests with MQTT/PostgreSQL and authenticated-broker checks enabled (no skips)**: 289 offline checks plus three opt-in live tests. EDGE-03 is verified against the current shared model and central ingestion code. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
 
 ### Follow the data
 
-In this `main` snapshot there is no separate edge `main.py` or edge HTTP server. `communication/data_to_edge.py` runs the MQTT worker: receive, validate, queue and pass accepted readings through processing and forwarding. `communication/edge_to_central.py` owns outgoing validation and delivery. A running worker is still needed to keep MQTT connections alive; instance orchestration and balancing belong to later tickets.
+`main.py` is now the instance launcher. It creates each configured worker in a separate process, with independent subscriber, queue, processor/cache, sender and monitor objects. It is not an edge HTTP server. `communication/data_to_edge.py` still handles incoming data and the processing loop; its older single-instance command delegates to the launcher for compatibility.
 
 1. `communication/data_to_edge.py` decodes incoming MQTT telemetry, validates it and queues accepted messages.
 2. `edge_server.py` passes the queued reading to `processing/processor.py`. That file keeps the small route, occupancy, statistics and snapshot-building helpers together. `cache/edge_state_cache.py` stores bus states and remembered sequences, scoped by city/region/bus. Cache updates remain locked.
@@ -190,13 +196,43 @@ Messages retain `schema_version: "bus-telemetry-v1"`, registered bus/city/region
 
 Only accepted new updates are staged. Stale, duplicate and conflicting readings do not generate new sends. A broker failure leaves the latest pending payload per owned bus for retry; a newer accepted update replaces that slot. Expired pending updates are dropped rather than advertised as current. This queue and the cache are in memory, so restarts do not preserve unsent updates or sequence history. A broker receipt is not a database-write acknowledgement.
 
-Freshness uses a monotonic clock. Cache entries expire only under the configured safe-capacity policy; sequence floors remain remembered during the process lifetime. Route progress uses reported stops, not GPS proximity. Stale/offline buses stay out of active totals, and unknown occupancy stays out of averages. This earlier `main` pipeline does not contain the newer stateful edge simulation. ETA, journey planning and scheduling must be assessed separately from forwarding.
+Freshness uses a monotonic clock. Cache entries expire only under the configured safe-capacity policy; sequence floors remain remembered during the process lifetime. Route progress uses reported stops, not GPS proximity. Stale/offline buses stay out of active totals, and unknown occupancy stays out of averages. No replication, failover, automatic workload migration, instance scaling, ETA, journey planning or scheduling was added. Queue thresholds only produce recommendations.
+
+### Heartbeats, instances and workload thresholds
+
+Carson's branch was merged first at `c29865b`, preserving his demo stack, ingestion fixes and terminal endpoint. The heartbeat additions are based on that version. His ETA draft is not changed or presented as a working ETA endpoint.
+
+`python -m services.edge.main` creates all four configured edge processes. Use `--edge edge-west-1 --edge edge-west-2` to select workers. `--single` uses `EDGE_ID` and checks that `CITY_ID`/`REGION_ID` match the shared map; the compose image uses this mode so each container creates only its own instance. Static assignments are read from configuration. The launcher logs worker exits and stops children on shutdown; it does not claim automatic takeover or recovery synchronization.
+
+A bus heartbeat has separate `gps`, `speed`, `stop_status` and `occupancy` states. These are four logical sensor channels inside the current simulator, not four independent physical devices. Heartbeats run on a separate publisher timer; simulated sensor faults still report `faulty` even when no telemetry reading is emitted. An omitted channel stops refreshing that sensor's receipt deadline. Only its assigned edge processes sensor heartbeats and queues bus telemetry, so a peer's traffic does not falsely inflate this worker's queue.
+
+The edge forwards sensor-health summaries inside its own periodic heartbeat. Central computes edge timeout/recovery independently and exposes `GET /health/edges`. It returns `unknown`, `healthy`, `unavailable` or `recovering`, the latest workload/sensor report, and scoped load recommendations. A live heartbeat does not prove valid sensor data: `reported_state` can be `faulty`, and accepted-telemetry age is tracked separately. Old/duplicate heartbeat sequences and retired sessions do not refresh liveness. Timeouts use local monotonic receipt clocks; UTC source timestamps are for reporting.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `HEARTBEAT_INTERVAL_SECONDS` | 2 | Bus/edge heartbeat period |
+| `SENSOR_HEARTBEAT_TIMEOUT_SECONDS` | 10 | Missing sensor deadline |
+| `EDGE_HEARTBEAT_TIMEOUT_SECONDS` | 10 | Central's missing-edge deadline |
+| `HEARTBEAT_RECOVERY_SECONDS` | 4 | Repeated-pulse recovery window |
+| `EDGE_QUEUE_SIZE` | 50 | Maximum queued telemetry messages per instance (1-50) |
+| `EDGE_OVERLOAD_PERCENT` | 80 | Queue utilization threshold |
+| `EDGE_OVERLOAD_SUSTAIN_SECONDS` | 6 | Sustained high-load window before recommendation |
+
+Queue utilization is `queue_size / queue_capacity * 100`, entirely separate from passenger occupancy. The 50/70/75/79/80 bands are labelled notice/prepare/ready/near-capacity/overloaded in health reports. Workload also includes incoming-message rate since startup, average processing latency, active/assigned bus counts and pending outgoing updates. These are local queue measurements, not a measurement of CPU capacity.
+
+After sustained overload, central uses least-queue-utilization selection among healthy peers in the same city/region. It recommends considering migration to the least-loaded peer, or additional capacity when none has room. Every recommendation explicitly says `migration_performed: false`. This live-monitor recommendation endpoint does not perform transfers. The separate simulation coordinator described below synchronizes bus state, transfers ownership and models third-instance activation and scale-down.
+
+An expired heartbeat means unavailable communication/telemetry, not a confirmed crash or proof that the bus stopped. Central marks sensor reports uncertain when their reporting edge is unavailable. Manual GPS entry and incident prediction are not implemented. Health state and recovery session history are in memory; process restarts reset them. Authentication, broker failure guarantees and real multi-process network verification remain outside the offline test results.
+
+Heartbeat monitoring covers EDGE-04 and workload metrics cover EDGE-07, with a health endpoint contribution to CENTRAL-05. The simulation coordinator covers the EDGE-05/06/08/09/10/11/12 scenarios described below. The two new test files use injected clocks and include source-heartbeat → edge → central/API checks. No artificial sleeping or live services are required for these tests; the live MQTT/PostgreSQL tests remain opt-in.
 
 ### Test ownership
 
-Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for this branch's edge tests.
+Object health/queue behaviour is tested in `services/edge/tests/test_edge_server_testing.py`, instance creation/recovery/scaling in `services/edge/tests/test_edge_lifecycle.py`, and telemetry flow/state handoffs in `services/edge/tests/test_edge_pipeline.py`. The split preserves the existing checks. Central SQL/API and live MQTT/PostgreSQL integration tests remain in the central test directory.
 
-Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (23 tests). Run `python -m pytest services/central/tests -q` for this branch's central tests; the live integration check requires dedicated service settings. These tests are preserved for central integration, not counted as completion of Carson's tickets.
+Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for the edge validation, processing, forwarding and heartbeat checks.
+
+Central/database/API integration coverage is kept under Carson's area: `services/central/tests/test_edge_ingestion_pipeline.py` and `services/central/tests/test_live_edge_ingestion.py`, alongside his ingestion regression tests. Simulator/configuration tests are in `services/data_simulation/tests/test_simulation.py` (23 tests). Run `python -m pytest services/central/tests -q` for central ingestion/health checks and the optional live tests. These tests are preserved for central integration, not counted as completion of Carson's tickets.
 
 Production roles remain separate: `central_mapper.py` maps fields, `edge_to_central.py` sends, and `shared/schema/bus_state.py` is the common model. Carson's existing MQTT callback and ingestion functions receive the messages; the edge does not duplicate those central operations.
 
@@ -204,7 +240,7 @@ Production roles remain separate: `central_mapper.py` maps fields, `edge_to_cent
 
 Offline tests now include real messages generated by Zach's simulator for every configured Durham bus, both real route directions and Carson's route-stop API. They execute the full code path: input decoding/validation, queue, processing, mapping, outgoing validation, central MQTT callback, real central SQL statements via a SQLite adapter, and API readback. They compare coordinates, speed, counts, clocks, timestamps, city/region/route context, crowding and summaries. They also check invalid types/identifiers, stale and duplicate messages, conflicts, broker-failure retries and the actual runtime forwarding loop. SQLite and the in-memory transport do not substitute for a live PostgreSQL/MQTT run.
 
-An opt-in test is provided for dedicated test services:
+Two opt-in tests are provided for dedicated test services:
 
 ```powershell
 $env:EDGE_LIVE_DATABASE_URL = "postgresql://USER:PASSWORD@localhost:5432/TEST_DATABASE"
@@ -213,7 +249,9 @@ $env:EDGE_LIVE_MQTT_PORT = "1883"
 python -m pytest services/central/tests/test_live_edge_ingestion.py -q
 ```
 
-That test creates a unique PostgreSQL schema and unique bus/region/topic identifiers, sends telemetry over a real broker, reads the central database/API result and removes only its test schema. It requires permission to create/drop a schema. It is skipped when the database URL is absent. Live verification subsequently passed on `ali` using dedicated MQTT/PostgreSQL services and central API readback, including all ten configured buses. Its latest full suite also includes isolated broker-authentication tests (292 passing, no skips). The test services and temporary credentials were removed afterward. These results do not deploy the newer branch code into `main` or replace any remaining team contract review.
+Both live tests use unique PostgreSQL schemas and remove only their test data. They require permission to create/drop schemas and are skipped when `EDGE_LIVE_DATABASE_URL` is absent. Use a dedicated broker: the four-instance test uses the configured edge IDs and bus topics and must not share an active project broker. The tests passed against isolated Mosquitto 2 and PostgreSQL 17 containers, which were removed afterward. The second test launches four actual child processes through `main.run_instance`, exercises all ten configured buses and verifies coordinates, speed, occupancy, stop/direction/status, clocks, timestamps, city/route/region and edge owner in database/API readback. It checks each process's workload metrics and 50-message capacity, passes GPS fault/restoration through MQTT to the health API, stops one process, observes timeout while its peer remains healthy, and restarts it through recovering to healthy. The complete command `python -m pytest services/data_simulation/tests services/edge/tests services/central/tests -q --tb=short -ra` passed **292 tests, no skips** with those dedicated services and the isolated authenticated-broker settings configured.
+
+All **12 edge tickets are complete for the agreed simulation demonstration**: EDGE-01/02/03/04/07 have the existing pipeline/live-service evidence, and EDGE-05/06/08/09/10/11/12 have tested stateful simulation scenarios and fleet measurements. The simulation uses the real validator, route/occupancy processor, cache/sequence logic and central mapping contract. Its reliable single coordinator models atomic ownership changes, replication and a retained pending-request journal. It does not add distributed consensus, disk durability, network partitions or a live interprocess replication protocol to the separate MQTT workers. The full-code-path central integration test also sends post-handoff payloads through central ingestion SQL and API readback using its SQLite adapter. This verification does not claim a separate human contract approval from Carson.
 
 ## Branch workflow
 
@@ -379,3 +417,114 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `TEAM-20` | **P2** | Create PowerPoint slides, rehearse the 10-minute presentation and prepare Q&A answers | ⬜ Pending |
 
 </details>
+
+
+### Edge instance file responsibilities
+
+| File | Responsibility / tickets |
+|---|---|
+| `services/edge/main.py` | EDGE-05 launcher and simulation coordinator; `--plan` shows fixed MQTT-worker assignments; `--benchmark` measures stateful simulation scenarios. |
+| `services/edge/edge_server.py` | Defines one edge instance and connects its queue, processing, forwarding and health reporting. |
+| `services/edge/edge_server_health.py` | EDGE-04 sensor heartbeat tracking/reporting and EDGE-07 queue metrics; shared timeout rules are in `shared/schema/health.py`. |
+| `services/central/health.py` | Detects missing edge heartbeats and exposes health to the UI, even when an edge has stopped. |
+| `services/edge/tests/test_edge_server_testing.py` | Object behaviour: heartbeat health, measurements and queue capacity. |
+| `services/edge/tests/test_edge_lifecycle.py` | Instance creation/configuration, registration, recovery timing, scale-up and safe scale-down. |
+| `services/edge/tests/test_edge_pipeline.py` | Pipeline behaviour: publisher telemetry, replication, pending-update takeover, ownership, replay protection, cross-region handoffs and fleet throughput. |
+
+The current map uses logical route boundaries: west owns routes 302/900 (two buses per instance), east owns 407/409/901 (three buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. The simulation starts from these assignments, balances buses within their home region and permits controlled cross-region takeover when local workers fail. It keeps the original route region and coordinates when a remote instance hosts that work. The MQTT launcher continues using the fixed plan.
+
+
+### UI-controlled edge cluster simulation
+
+Each edge queue holds at most 50 waiting messages; the default modeled processing delay is 5 ms. `EdgeClusterSimulation` in `main.py` starts two active instances per region and a standby third instance in each region. It uses actual shared-route telemetry with the existing validator, processor, cache and central mapper. Its central-shaped output is visible in `central_states`; it does not publish experiments into the live database or change running MQTT workers. Use one central API process: simulation state and replicas are in memory and reset on restart. Existing `/requests` remains a synthetic queue-only experiment; use `/telemetry` or `/telemetry/generate` to exercise bus processing and stateful handoffs.
+
+| Method | Path (prefix `/health/simulation`) | Purpose / body |
+|---|---|---|
+| GET | (prefix itself) | Queues, metrics, states, ownership versions, replica sequences and recent events |
+| PATCH | `/instances/{edge_id}` | Set `capacity` (1-50), `processing_ms` (1-60000); assigned instances stop through failure/scale-down actions |
+| POST | `/telemetry` | Submit a complete shared-format telemetry object |
+| POST | `/telemetry/generate` | `{"bus_id":"bus-302-1","count":20}` generates valid repeated sensor readings from a shared-route sample |
+| POST | `/advance` | `{"seconds":6}` advances virtual time; no real sleeping |
+| POST | `/instances/{edge_id}/fail` | Lose the worker's local cache/queue and trigger takeover using surviving replicas and the coordinator's journal |
+| POST | `/instances/{edge_id}/recover` | Synchronize before a 2-second modeled recovery window; no assignments while recovering |
+| POST | `/instances` | Register `edge_id`, `region_id`, optional `capacity` and `processing_ms` |
+| POST | `/transfer` | `{"bus_id":"bus-302-1","target_id":"edge-west-3"}`; target must already be healthy/active |
+| POST | `/instances/{edge_id}/scale-down` | Preflight capacity and transfer all owned buses before stopping |
+| PATCH | `/policy` | `{"auto_scale":true}` enables the standby third instance |
+| POST | `/reset` | Optional `{"fleet_size":50}`; accepted sizes 1-50, default restores the configured ten buses |
+
+The coordinator serializes changes under one lock. Accepted bus states and sequence floors are copied to healthy/recovering instances in the same city, including the other region so both local failures can be demonstrated. Accepted pending telemetry is retained in the coordinator's journal. A handoff installs the latest surviving replica, advances an ownership version, changes the registry owner and transfers that bus's queued updates in order. Only the current owner/version may commit. Old owners, duplicate/stale sequences and conflicting replays cannot overwrite a newer state. A full target delays takeover without dropping accepted journal entries. Loss of every replica prevents recovery rather than resetting sequence history. These are explicit simulation assumptions; network consensus and loss of the coordinator are outside this model.
+
+Normal ownership aims for equal bus counts (difference at most one). Queue pressure also considers processing speed and predicted waiting time. Telemetry moves by whole-bus assignment rather than distributing concurrent messages from one bus across owners. A geographic route keeps its original city/region when hosted elsewhere. Healthy local capacity is preferred; if no local worker remains healthy, an eligible healthy same-city server in another region can take over. Returning workers synchronize before accepting work; controlled transfers can restore their assignments.
+
+If both regional queues remain at least 80% full for 6 modeled seconds, the standby third worker synchronizes and starts processing reassigned buses. After all active regional queues stay below 20% for 10 modeled seconds, the automatically started third worker transfers its buses back and stops when capacity permits. Failed standby workers are not automatically resurrected. Dynamic registration also synchronizes state before transfers. Insufficient capacity blocks scale-down without losing ownership or queued telemetry.
+
+Repeatable demonstration in `/docs`: reset; set `processing_ms` to 60000 on both west workers (deliberately slow stress settings); generate 40 readings each for `bus-302-1` and `bus-302-2`; advance 5 seconds (third still inactive); advance 1 (third active with real telemetry assignments); set the two original workers back to 5 ms; advance 1 to drain the readings; advance 10 to observe safe scale-down. Failure/recovery and dynamic registration have their own routes above. No UI screen is added; these APIs supply the controls for Danial's UI.
+
+### Fleet performance evidence (EDGE-10)
+
+Run `python -m services.edge.main --benchmark`. Each scenario sends one valid reading per bus per virtual second for 20 rounds and fails `edge-west-1` halfway through. Larger fleets clone the configured bus definitions on the same real routes in an isolated registry; shared map files are not rewritten. All accepted readings were processed, with zero rejected or pending readings in the measured runs.
+
+| Buses | Processed | Normal / after-failure modeled mean latency (ms) | Measured harness updates/s | Measured handoff decision (ms) |
+|---|---:|---:|---:|---:|
+| 5 | 100 | 6 / 7 | 558.24 | 0.442 |
+| 10 | 200 | 9 / 11 | 512.31 | 1.172 |
+| 25 | 500 | 18.8 / 23.8 | 286.47 | 4.200 |
+| 50 | 1000 | 35 / 45 | 136.32 | 10.319 |
+
+Latency uses the virtual clock and configured 5 ms service time; measured harness throughput and handoff-decision time use the local wall clock. These figures include local simulation/validation/processing overhead, not network or PostgreSQL throughput. The failure is explicitly injected, so measured handoff time excludes heartbeat detection. Hardware/load changes affect measured values. Normal west/east assignment counts were respectively `1/1;2/1`, `2/2;3/3`, `5/5;8/7`, `10/10;15/15`; after the west failure its survivor owned 2, 4, 10 and 20 buses respectively. Separate tests cover both-local-server failure, cross-region recovery, capacity pressure and third-instance scale-up/scale-down.
+
+### Shared health definitions
+
+`shared/schema/health.py` defines the evidence rules. The edge reports sensor liveness, declared faults, the age of the last accepted telemetry and its speed. Central combines those observations with its own edge timeout. `/health/edges` includes a `buses` list, each bus's `health.status` and `health.reasons`, each sensor's `health_status`, and each edge's `workload_status`. Existing heartbeat `status` remains a liveness field: a sensor can be alive while reporting a fault.
+
+| Evidence | Result |
+|---|---|
+| Edge has never reported or its heartbeat expires | Bus health `unknown`; reason `edge_unknown` / `edge_unavailable`; sensor health unknown |
+| All four sensor channels expire while edge still reports | Bus `telemetry_unavailable` |
+| One or more sensors report a fault or expire | Bus `degraded`, with sensor-specific reasons; sensor `faulty` / `unavailable` |
+| Edge/sensor heartbeats resume within the recovery window | Bus `recovering`, unless a known fault/missing channel already makes it degraded |
+| Sensor evidence is incomplete | Bus `unknown` |
+| All sensors are healthy but accepted telemetry is absent or expired | Bus `data_stale` |
+| All sensors healthy, accepted telemetry fresh and speed zero | Bus `stationary` |
+| All sensors healthy and accepted telemetry fresh | Bus `healthy` |
+| Healthy edge queue at/above the configured threshold | Workload `high_load`, then `overloaded` after the sustained interval |
+| Edge is not healthy | Workload `unknown`; old queue reports are not treated as current |
+
+Reading freshness uses `SENSOR_HEARTBEAT_TIMEOUT_SECONDS` (10 seconds by default); stationary requires fresh accepted telemetry, not just an alive heartbeat. An accepted reading's age continues increasing even if fresh heartbeats arrive. Classification is recalculated when the health API is read, so timeouts do not need a new packet. Queue overload and heartbeat liveness are separate statuses. A bus that is stationary is not automatically broken down. No missing-heartbeat pattern diagnoses a crash or mechanical failure; those need separate explicit evidence or simulation events, which are not added here.
+
+
+### Edge input conversion and authentication
+
+Four files add these features: `services/edge/data_to_json_converter.py`, `services/edge/auth_edge_server.py`, `services/edge/tests/test_converter_edge_server.py`, and `services/edge/tests/test_auth_edge_server.py`. Tests use pytest's `test_` filename prefix for automatic discovery. Existing ingress, sender and simulator files connect these modules to the running pipeline.
+
+The order is **decode bounded input -> authenticate signed topic/body -> convert a declared format -> validate shared telemetry and registered identity -> check edge ownership -> queue -> process -> central mapping/forwarding**. Sensor heartbeats are authenticated before health monitoring too. The converter is an adapter for known formats, not arbitrary data interpretation.
+
+| Declared format | Supported input / normalization |
+|---|---|
+| `canonical-v1` | Existing shared JSON objects/UTF-8 JSON; field types and meanings remain unchanged |
+| `vendor-v1` | Explicit `vehicleId/city/area/route`, `location.lat/lng`, `speed.value/unit`, `load.passengers/capacity`, `observedAt`, `sequence/lamport/direction`, `state/sensorState`, `currentStop/nextStop` fields; `version` must equal `vendor-v1` |
+| `csv-v1` | UTF-8 header plus exactly one record, using shared telemetry column names; numeric columns are converted to their declared types |
+
+Vendor speed units are explicitly `km/h`, `mph` or `m/s`, normalized to `speed_kmh`. Vendor timestamps accept timezone-aware ISO strings or Unix **seconds**, normalized to UTC. Vendor bus states map `stopped` to `at_stop` and preserve the supported `moving`, `boarding`, `out_of_service` meanings; sensor states map `ok/fault/offline` to `healthy/faulty/offline`. Identifiers must still match the shared registry and incoming topic. Missing fields, unknown units/states/versions, invalid numbers/ranges, ambiguous JSON keys, malformed CSV and inputs over 64 KiB are rejected. No location, city, identity or missing sensor value is guessed.
+
+Existing canonical JSON can be published unchanged in demo mode. Alternative MQTT input uses `{"format":"vendor-v1","data":OTHER_OBJECT}` or `{"format":"csv-v1","data":"HEADER\nRECORD"}`. Standalone `data_to_json(raw, source_format=..., expected_region=..., expected_bus=..., registry=...)` returns shared-format JSON; `convert_to_telemetry` returns the validated Python object. Tests compare all three paths through the actual processor and central mapper to show equivalent output, rather than just checking that JSON parses. This demonstrates format interoperability; it does not claim cross-hardware/OS testing.
+
+`auth_edge_server.py` uses HMAC-SHA256 to verify a publisher's shared secret and binds the signature to its principal, exact topic, timestamp, nonce and payload. The signing envelope has `auth` and `payload` fields. A bus principal is `bus:<registered bus ID>`. `sign_message(topic, payload, principal, secret)` creates that envelope; `encode_bus_message` lets the existing simulator sign telemetry and heartbeats from environment-provided keys. Alternative-format envelopes go inside the signed `payload`. The edge only accepts its currently assigned buses, rejects topic/payload identity mismatches, and rejects tampering, replays, packets 30 seconds old or timestamps more than 5 seconds ahead. Replay tracking is bounded at 4096 live entries and is in memory; it resets with the process. Sender-side permissions restrict outgoing states and edge heartbeats to the configured scope.
+
+| Setting | Meaning |
+|---|---|
+| `EDGE_PUBLISHER_KEYS_JSON` | Secret JSON object mapping `bus:<id>` to strong signing keys (at least 32 UTF-8 bytes each); provision outside Git |
+| `EDGE_AUTH_REQUIRED=true` | Reject unsigned telemetry/heartbeats; missing keys fail startup. Supplying keys enables this by default unless explicitly set false |
+| `EDGE_AUTH_REQUIRED=false` | Explicit unsigned demo compatibility; this is also the default when no keys exist |
+| `MQTT_USERNAME`, `MQTT_PASSWORD` | Per-process broker credentials; both must be provided together |
+| `MQTT_TLS=true` | Enable certificate/hostname verification using the system trust store or `MQTT_TLS_CA_FILE`; configure the appropriate broker port |
+| `EDGE_ALLOW_INSECURE_MQTT=true` | Explicit local-test exception for password authentication without TLS; production connections should use verified TLS |
+
+Signing authenticates incoming publisher data but does not encrypt it. The client configures credentials/TLS before connecting. Use unique account credentials and provision each publisher with its own signing key; the trusted simulator launcher may hold the fleet's key mapping to start its bus processes. For per-bus broker credentials, run the existing simulator with `--bus <id>` and that account's environment. Never commit or print the real keys/passwords.
+
+Broker enforcement is separate: `mosquitto_acl(load_network())` generates ACL text for the fixed shared topology. Bus broker usernames are the **bare bus IDs**, edge usernames are edge IDs, and the central reader is `central`. Buses may write only their telemetry/heartbeat topics; edges may read their regional feeds and write their own assigned state/health topics; central may read state and edge health. Install the generated ACL and a hashed password file on the broker, disable anonymous access and configure server certificates for TLS. See the official [Paho credential/TLS API](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html) and [Mosquitto password/ACL settings](https://mosquitto.org/man/mosquitto-conf-5.html). This change leaves the team's shared demo broker configuration unchanged; dynamic simulated ownership is not automatically deployed into live broker ACLs.
+
+The full suite passed **292 tests, no skips**, with isolated PostgreSQL, the existing demo broker and a separate password/ACL-enabled Mosquitto broker. The live security test rejects anonymous/wrong-password logins and cross-bus, forged-state and forged-edge-heartbeat publishes. It confirms unauthorized reads are not delivered (Mosquitto may acknowledge the subscription itself), while an authorized signed message reaches the edge queue. The authenticated broker test uses `EDGE_AUTH_LIVE_MQTT_HOST`, `EDGE_AUTH_LIVE_MQTT_PORT` and `EDGE_AUTH_LIVE_PASSWORD` against dedicated test accounts `edge-west-1` and `bus-302-1`; its local transport is intentionally plaintext. Certificate-verification configuration is covered separately; a live TLS handshake is not demonstrated here. Without service settings, 289 offline tests pass and three integration tests skip. Temporary test credentials and containers are removed after verification.
+
+These additions demonstrate edge publisher authentication, authorization and input-format interoperability. Central UI login/roles and deployment of broker credentials, ACLs and certificates remain separate work; the whole project's security should not be marked complete solely from these edge tests.
