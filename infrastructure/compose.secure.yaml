@@ -1,0 +1,53 @@
+# MQTT-07 overlay: authenticated broker with topic ACLs and one account per service.
+#
+#   python -m services.messaging.broker_security          # once: acl, passwd, secure.env
+#   podman compose -f infrastructure/compose.yaml -f infrastructure/compose.secure.yaml \
+#       --env-file infrastructure/secure.env up -d --build
+#   podman compose -f infrastructure/compose.yaml -f infrastructure/compose.secure.yaml \
+#       --env-file infrastructure/secure.env run --rm buses
+#
+# Passwords travel in plain TCP on the private compose network, so each client
+# sets EDGE_ALLOW_INSECURE_MQTT=true explicitly. Expose the broker beyond this
+# host only behind a TLS listener (MQTT_TLS=true on the clients).
+
+x-insecure-ok: &insecure-ok
+  EDGE_ALLOW_INSECURE_MQTT: "true"
+
+services:
+  mosquitto:
+    command: ["mosquitto", "-c", "/mosquitto/secure/mosquitto.conf"]
+    volumes:
+      - ./mosquitto-secure:/mosquitto/secure:ro
+
+  central:
+    environment:
+      <<: *insecure-ok
+      MQTT_USERNAME: central
+      MQTT_PASSWORD: ${CENTRAL_MQTT_PASSWORD:?run python -m services.messaging.broker_security}
+
+  edge-west-1:
+    environment:
+      <<: *insecure-ok
+      MQTT_USERNAME: edge-west-1
+      MQTT_PASSWORD: ${EDGE_WEST_1_MQTT_PASSWORD:?missing secure.env}
+  edge-west-2:
+    environment:
+      <<: *insecure-ok
+      MQTT_USERNAME: edge-west-2
+      MQTT_PASSWORD: ${EDGE_WEST_2_MQTT_PASSWORD:?missing secure.env}
+  edge-east-1:
+    environment:
+      <<: *insecure-ok
+      MQTT_USERNAME: edge-east-1
+      MQTT_PASSWORD: ${EDGE_EAST_1_MQTT_PASSWORD:?missing secure.env}
+  edge-east-2:
+    environment:
+      <<: *insecure-ok
+      MQTT_USERNAME: edge-east-2
+      MQTT_PASSWORD: ${EDGE_EAST_2_MQTT_PASSWORD:?missing secure.env}
+
+  # One launcher, one broker account per bus (selected by bus ID).
+  buses:
+    environment:
+      <<: *insecure-ok
+      MQTT_BUS_PASSWORDS_JSON: ${MQTT_BUS_PASSWORDS_JSON:?missing secure.env}

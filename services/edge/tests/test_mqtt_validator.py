@@ -9,11 +9,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from services.edge.edge_server import EdgeIngress
-from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
-from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
-from services.edge.validation.bus_registry import BusRegistry, BusAssignment
 from services.edge.communication.data_to_edge import TelemetrySubscriber
+from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
+from services.edge.edge_server import EdgeIngress
+from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
+from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 
 
 @dataclass
@@ -33,11 +33,18 @@ def subscriber() -> TelemetrySubscriber:
 @pytest.fixture
 def edge() -> EdgeIngress:
     """Real EDGE-01 receiver (not a mock), initially empty."""
-    network = NetworkConfig(BusRegistry({
-        "BUS-001": BusAssignment("north", "R1", "CITY-A", "north-edge-test"),
-        "BUS-002": BusAssignment("north", "R1", "CITY-A", "north-edge-test"),
-    }), (RouteDefinition("CITY-A", "north", "R1", ("STOP-01", "STOP-02", "STOP-03")),))
-    return EdgeIngress(EdgeProcessor(EdgeConfig("CITY-A", "north", "north-edge-test"), network))
+    network = NetworkConfig(
+        BusRegistry(
+            {
+                "BUS-001": BusAssignment("north", "R1", "CITY-A", "north-edge-test"),
+                "BUS-002": BusAssignment("north", "R1", "CITY-A", "north-edge-test"),
+            }
+        ),
+        (RouteDefinition("CITY-A", "north", "R1", ("STOP-01", "STOP-02", "STOP-03")),),
+    )
+    return EdgeIngress(
+        EdgeProcessor(EdgeConfig("CITY-A", "north", "north-edge-test"), network)
+    )
 
 
 @pytest.fixture
@@ -88,7 +95,9 @@ def test_01_valid_data_reaches_edge(
     valid_data: dict[str, object],
 ) -> None:
     publish_to_callback(subscriber, valid_data)
-    assert [r.status for r in edge.drain_pending(subscriber)] == [ProcessingStatus.ACCEPTED]
+    assert [r.status for r in edge.drain_pending(subscriber)] == [
+        ProcessingStatus.ACCEPTED
+    ]
     assert edge.accepted[0]["bus_id"] == "BUS-001"
 
 
@@ -104,8 +113,16 @@ def test_02_invalid_json_is_rejected(
 @pytest.mark.parametrize(
     "field",
     [
-        "bus_id", "route_id", "region_id", "latitude", "longitude",
-        "speed_kmh", "passengers", "capacity", "sequence_number", "timestamp",
+        "bus_id",
+        "route_id",
+        "region_id",
+        "latitude",
+        "longitude",
+        "speed_kmh",
+        "passengers",
+        "capacity",
+        "sequence_number",
+        "timestamp",
     ],
 )
 def test_03_missing_required_field_is_rejected(
@@ -150,9 +167,7 @@ def test_05_invalid_speed_is_rejected(
 
 
 # TEST-06: Passenger readings cannot violate bus capacity.
-@pytest.mark.parametrize(
-    ("passengers", "capacity"), [(60, 50), (-1, 50), (1, 0)]
-)
+@pytest.mark.parametrize(("passengers", "capacity"), [(60, 50), (-1, 50), (1, 0)])
 def test_06_invalid_occupancy_is_rejected(
     subscriber: TelemetrySubscriber,
     edge: EdgeIngress,
@@ -187,7 +202,9 @@ def test_08_bus_with_wrong_region_is_rejected(
 ) -> None:
     south_subscriber = TelemetrySubscriber("south", "south-edge-test")
     network = NetworkConfig(BusRegistry({}), ())
-    south_edge = EdgeIngress(EdgeProcessor(EdgeConfig("CITY-A", "south", "south-edge-test"), network))
+    south_edge = EdgeIngress(
+        EdgeProcessor(EdgeConfig("CITY-A", "south", "south-edge-test"), network)
+    )
     valid_data["region_id"] = "south"  # Topic and payload agree, registry does not.
     publish_to_callback(
         south_subscriber,
@@ -256,7 +273,9 @@ def test_11_multiple_valid_messages_reach_edge(
     second = dict(valid_data)
     second["sequence_number"] = 2
     publish_to_callback(subscriber, second)
-    assert [r.status for r in edge.drain_pending(subscriber)] == [ProcessingStatus.ACCEPTED] * 2
+    assert [r.status for r in edge.drain_pending(subscriber)] == [
+        ProcessingStatus.ACCEPTED
+    ] * 2
     assert [m["sequence_number"] for m in edge.accepted] == [2]
 
 
@@ -270,7 +289,9 @@ def test_12_invalid_followed_by_valid(
     broken["latitude"] = 1000
     publish_to_callback(subscriber, broken)
     publish_to_callback(subscriber, valid_data)
-    assert [r.status for r in edge.drain_pending(subscriber)] == [ProcessingStatus.ACCEPTED]
+    assert [r.status for r in edge.drain_pending(subscriber)] == [
+        ProcessingStatus.ACCEPTED
+    ]
     assert edge.accepted[0]["latitude"] == 43.945
 
 
@@ -281,25 +302,34 @@ def test_12_invalid_followed_by_valid(
 # topic resubscription and resumed receipt with real MQTT networking.
 
 
-@pytest.mark.parametrize("topic", [
-    "other/buses/north/BUS-001/telemetry",
-    "transit/buses/south/BUS-001/telemetry",
-    "transit/buses/north//telemetry",
-    "transit/buses/north/BUS-001/state",
-    "transit/buses/north/BUS-001/telemetry/extra",
-])
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "other/buses/north/BUS-001/telemetry",
+        "transit/buses/south/BUS-001/telemetry",
+        "transit/buses/north//telemetry",
+        "transit/buses/north/BUS-001/state",
+        "transit/buses/north/BUS-001/telemetry/extra",
+    ],
+)
 def test_invalid_topic_rejected(subscriber, edge, valid_data, topic):
     publish_to_callback(subscriber, valid_data, topic=topic)
     assert_never_reaches_edge(subscriber, edge)
 
 
-@pytest.mark.parametrize("raw", [b"\xff", b"[]", b"null", b"x" * 65537], ids=["utf8", "array", "null", "oversize"])
+@pytest.mark.parametrize(
+    "raw",
+    [b"\xff", b"[]", b"null", b"x" * 65537],
+    ids=["utf8", "array", "null", "oversize"],
+)
 def test_invalid_payload_rejected(subscriber, edge, raw):
     publish_to_callback(subscriber, raw)
     assert_never_reaches_edge(subscriber, edge)
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), 10**1000], ids=["nan", "infinity", "huge-int"])
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf"), 10**1000], ids=["nan", "infinity", "huge-int"]
+)
 def test_extreme_number_rejected(subscriber, edge, valid_data, value):
     valid_data["latitude"] = value
     publish_to_callback(subscriber, valid_data)
@@ -318,13 +348,18 @@ def test_full_queue_rejects_without_displacing_valid_message(valid_data):
 def test_reconnect_resubscribes_and_failed_connection_does_not():
     from types import SimpleNamespace
     from unittest.mock import Mock
+
     subscriber = TelemetrySubscriber("north", "edge-test")
     client = Mock()
     client.subscribe.return_value = (0, 1)
     subscriber.on_connect(client, None, None, SimpleNamespace(is_failure=True), None)
     client.subscribe.assert_not_called()
     for _ in range(2):
-        subscriber.on_connect(client, None, None, SimpleNamespace(is_failure=False), None)
+        subscriber.on_connect(
+            client, None, None, SimpleNamespace(is_failure=False), None
+        )
     assert client.subscribe.call_count == 4  # assignment + telemetry, on each connect
     client.subscribe.assert_called_with(subscriber.topic_filter, qos=1)
-    assert [call.args[0] for call in client.subscribe.call_args_list].count("transit/assignments/north") == 2
+    assert [call.args[0] for call in client.subscribe.call_args_list].count(
+        "transit/assignments/north"
+    ) == 2

@@ -1,29 +1,38 @@
 import os
+
 import psycopg
 from fastapi import APIRouter, HTTPException
-from psycopg.types.json import Jsonb
-from shared.schema.bus_state import BusStateUpdate
 from psycopg.rows import dict_row
-from services.central.ingestion_check import check_update #ingestion check function
+from psycopg.types.json import Jsonb
+
+from services.central.ingestion_check import check_update  # ingestion check function
+from shared.schema.bus_state import BusStateUpdate
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
 
-def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> tuple[bool, str | None]:
+def apply_bus_state(
+    bus_id: str, region_id: str, state: BusStateUpdate
+) -> tuple[bool, str | None]:
     with psycopg.connect(db_url) as connection:
-        if state.edge_metadata is not None and state.edge_metadata.region_id != region_id:
+        if (
+            state.edge_metadata is not None
+            and state.edge_metadata.region_id != region_id
+        ):
             return False, "metadata region differs from MQTT/API region"
 
-        #validate sequence number first 
+        # validate sequence number first
         row = connection.execute(
             "SELECT sequence_number FROM bus_states WHERE bus_id = %s FOR UPDATE",
             (bus_id,),
         ).fetchone()
-        if row is not None and row[0] >= state.sequence_number: #a late message, drop it
+        if (
+            row is not None and row[0] >= state.sequence_number
+        ):  # a late message, drop it
             return False, "stale update"
-        
-        #use ingestion check first before pushing update to the database
+
+        # use ingestion check first before pushing update to the database
         reason = check_update(connection, bus_id, region_id, state)
         if reason is not None:
             return False, reason
@@ -48,16 +57,27 @@ def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> tuple
             WHERE bus_states.sequence_number < EXCLUDED.sequence_number
             """,
             (
-                bus_id, state.lat, state.lon, state.speed, state.direction_id, state.next_stop_id,
-                state.bus_status, state.occupancy, state.sequence_number, state.lamport,
-                Jsonb(state.edge_metadata.model_dump(mode="json")) if state.edge_metadata else None,
+                bus_id,
+                state.lat,
+                state.lon,
+                state.speed,
+                state.direction_id,
+                state.next_stop_id,
+                state.bus_status,
+                state.occupancy,
+                state.sequence_number,
+                state.lamport,
+                Jsonb(state.edge_metadata.model_dump(mode="json"))
+                if state.edge_metadata
+                else None,
             ),
         )
         if cursor.rowcount == 0:
             return False, "stale update"
         return True, None
 
-#HTTP route to update bus state
+
+# HTTP route to update bus state
 @router.put("/regions/{region_id}/bus_states/{bus_id}")
 def update_bus_state(region_id: str, bus_id: str, state: BusStateUpdate):
     applied, reason = apply_bus_state(bus_id, region_id, state)
@@ -65,16 +85,20 @@ def update_bus_state(region_id: str, bus_id: str, state: BusStateUpdate):
         raise HTTPException(422, reason)
     return {"bus_id": bus_id, "applied": applied}
 
-#fetch a bus's status by id
+
+# fetch a bus's status by id
 @router.get("/bus_states/{bus_id}")
 def get_bus_state(bus_id: str):
     with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        row = connection.execute("SELECT * FROM bus_states WHERE bus_id = %s", (bus_id,)).fetchone()
+        row = connection.execute(
+            "SELECT * FROM bus_states WHERE bus_id = %s", (bus_id,)
+        ).fetchone()
     if row is None:
         raise HTTPException(404, f"Bus: {bus_id} not found")
     return row
 
-#remove bus from active network when it reaches the terminal
+
+# remove bus from active network when it reaches the terminal
 @router.put("/bus_states/{bus_id}/terminal")
 def remove_bus_from_network(bus_id: str):
     with psycopg.connect(db_url) as connection:
@@ -105,4 +129,3 @@ def remove_bus_from_network(bus_id: str):
 
 def connect_db():
     return psycopg.connect(db_url)
-

@@ -27,9 +27,16 @@ def backup():
     network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
     config = EdgeConfig("DURHAM", "west", "edge-west-2")
     monitor = EdgeMonitor(config, network.registry, HealthPolicy())
-    subscriber = TelemetrySubscriber("west", "edge-west-2", city_id="DURHAM",
-                                     registry=network.registry, monitor=monitor)
-    return SimpleNamespace(network=network, config=config, monitor=monitor, subscriber=subscriber)
+    subscriber = TelemetrySubscriber(
+        "west",
+        "edge-west-2",
+        city_id="DURHAM",
+        registry=network.registry,
+        monitor=monitor,
+    )
+    return SimpleNamespace(
+        network=network, config=config, monitor=monitor, subscriber=subscriber
+    )
 
 
 def assignment(owners, epoch=100, region="west"):
@@ -47,27 +54,50 @@ def telemetry_for(bus_id):
 def test_backup_takes_over_buses_and_processes_their_telemetry(backup):
     b = backup
     assert set(b.monitor.bus_ids) == WEST_2_HOME
-    assert sorted(b.subscriber.apply_assignment(assignment(failover_owners()))) == sorted(WEST_1_HOME)
-    assert set(b.network.registry.assigned_bus_ids("DURHAM", "west", "edge-west-2")) == WEST_1_HOME | WEST_2_HOME
-    assert set(b.monitor.bus_ids) == WEST_1_HOME | WEST_2_HOME  # heartbeat now reports them too
+    assert sorted(
+        b.subscriber.apply_assignment(assignment(failover_owners()))
+    ) == sorted(WEST_1_HOME)
+    assert (
+        set(b.network.registry.assigned_bus_ids("DURHAM", "west", "edge-west-2"))
+        == WEST_1_HOME | WEST_2_HOME
+    )
+    assert (
+        set(b.monitor.bus_ids) == WEST_1_HOME | WEST_2_HOME
+    )  # heartbeat now reports them too
 
     source = telemetry_for("bus-302-1")
     topic = "transit/buses/west/bus-302-1/telemetry"
-    assert b.subscriber.handle_raw_message(topic, json.dumps(source).encode())  # queued, not discarded
-    valid, errors = parse_telemetry(source, expected_region="west", expected_bus="bus-302-1",
-                                    registry=b.network.registry)
+    assert b.subscriber.handle_raw_message(
+        topic, json.dumps(source).encode()
+    )  # queued, not discarded
+    valid, errors = parse_telemetry(
+        source,
+        expected_region="west",
+        expected_bus="bus-302-1",
+        registry=b.network.registry,
+    )
     assert not errors
-    assert EdgeProcessor(b.config, b.network).process(valid).status == ProcessingStatus.ACCEPTED
+    assert (
+        EdgeProcessor(b.config, b.network).process(valid).status
+        == ProcessingStatus.ACCEPTED
+    )
 
 
 def test_failback_hands_buses_back_and_stops_processing_them(backup):
     b = backup
     b.subscriber.apply_assignment(assignment(failover_owners(), epoch=100))
-    home = {**{bus: "edge-west-1" for bus in WEST_1_HOME}, **{bus: "edge-west-2" for bus in WEST_2_HOME}}
-    assert sorted(b.subscriber.apply_assignment(assignment(home, epoch=101))) == sorted(WEST_1_HOME)
+    home = {
+        **{bus: "edge-west-1" for bus in WEST_1_HOME},
+        **{bus: "edge-west-2" for bus in WEST_2_HOME},
+    }
+    assert sorted(b.subscriber.apply_assignment(assignment(home, epoch=101))) == sorted(
+        WEST_1_HOME
+    )
     assert set(b.monitor.bus_ids) == WEST_2_HOME
     source = telemetry_for("bus-302-1")
-    assert not b.subscriber.handle_raw_message("transit/buses/west/bus-302-1/telemetry", json.dumps(source).encode())
+    assert not b.subscriber.handle_raw_message(
+        "transit/buses/west/bus-302-1/telemetry", json.dumps(source).encode()
+    )
 
 
 def test_older_assignment_arriving_late_is_ignored(backup):
@@ -78,23 +108,36 @@ def test_older_assignment_arriving_late_is_ignored(backup):
     assert b.network.registry.get("bus-302-1").edge_id == "edge-west-2"
 
 
-@pytest.mark.parametrize("raw", [
-    b"not json",
-    json.dumps(["list"]).encode(),
-    assignment({"bus-302-1": "edge-west-2"}, region="east"),
-    json.dumps({"region_id": "west", "epoch": "1", "owners": {}}).encode(),
-    json.dumps({"region_id": "west", "epoch": 1, "owners": {"bus-302-1": ""}}).encode(),
-])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"not json",
+        json.dumps(["list"]).encode(),
+        assignment({"bus-302-1": "edge-west-2"}, region="east"),
+        json.dumps({"region_id": "west", "epoch": "1", "owners": {}}).encode(),
+        json.dumps(
+            {"region_id": "west", "epoch": 1, "owners": {"bus-302-1": ""}}
+        ).encode(),
+    ],
+)
 def test_malformed_assignment_is_rejected_without_changing_ownership(backup, raw):
     b = backup
     message = SimpleNamespace(topic="transit/assignments/west", payload=raw)
     b.subscriber.on_message(None, None, message)  # logged and ignored, never raises
-    assert set(b.network.registry.assigned_bus_ids("DURHAM", "west", "edge-west-2")) == WEST_2_HOME
+    assert (
+        set(b.network.registry.assigned_bus_ids("DURHAM", "west", "edge-west-2"))
+        == WEST_2_HOME
+    )
 
 
 def test_assignment_cannot_pull_buses_from_another_region(backup):
     b = backup
-    assert b.subscriber.apply_assignment(assignment({"bus-407-1": "edge-west-2", "unknown-bus": "edge-west-2"})) == []
+    assert (
+        b.subscriber.apply_assignment(
+            assignment({"bus-407-1": "edge-west-2", "unknown-bus": "edge-west-2"})
+        )
+        == []
+    )
     assert b.network.registry.get("bus-407-1").edge_id == "edge-east-1"
 
 

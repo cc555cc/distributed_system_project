@@ -23,9 +23,16 @@ def run_round(monitor, ownership, publish) -> set[str]:
     changed = ownership.reconcile(monitor.statuses())
     for bus_id, owner in sorted(ownership.owners().items()):
         if before[bus_id] != owner:
-            monitor.events.append("bus_reassigned", bus_id=bus_id, region_id=ownership.region_of[bus_id],
-                                  from_edge=before[bus_id], to_edge=owner)
-            logger.warning("Bus %s reassigned from %s to %s", bus_id, before[bus_id], owner)
+            monitor.events.append(
+                "bus_reassigned",
+                bus_id=bus_id,
+                region_id=ownership.region_of[bus_id],
+                from_edge=before[bus_id],
+                to_edge=owner,
+            )
+            logger.warning(
+                "Bus %s reassigned from %s to %s", bus_id, before[bus_id], owner
+            )
     for region_id in sorted(changed):
         publish(region_id, ownership.assignment(region_id))
     return changed

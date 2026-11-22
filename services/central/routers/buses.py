@@ -1,13 +1,15 @@
 import os
+
 import psycopg
-from psycopg.rows import dict_row
 from fastapi import APIRouter
+from psycopg.rows import dict_row
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
-#list every bus with its latest state (state fields are null if the bus has not reported yet)
-#optional filters: /buses?region_id=west, /buses?route_id=302
+
+# list every bus with its latest state (state fields are null if the bus has not reported yet)
+# optional filters: /buses?region_id=west, /buses?route_id=302
 @router.get("/buses")
 def get_all_buses(region_id: str | None = None, route_id: str | None = None):
     with psycopg.connect(db_url, row_factory=dict_row) as connection:

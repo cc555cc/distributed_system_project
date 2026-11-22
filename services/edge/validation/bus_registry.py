@@ -18,9 +18,14 @@ class BusAssignment:
     edge_id: str | None = None
 
     def __post_init__(self) -> None:
-        if not all(isinstance(x, str) and x.strip() for x in (self.city_id, self.region_id, self.route_id)):
+        if not all(
+            isinstance(x, str) and x.strip()
+            for x in (self.city_id, self.region_id, self.route_id)
+        ):
             raise ValueError("Bus assignment identifiers must be nonempty strings")
-        if self.edge_id is not None and (not isinstance(self.edge_id, str) or not self.edge_id.strip()):
+        if self.edge_id is not None and (
+            not isinstance(self.edge_id, str) or not self.edge_id.strip()
+        ):
             raise ValueError("Edge owner must be a nonempty string")
 
 
@@ -36,13 +41,17 @@ class BusRegistry:
 
     def assigned_bus_ids(self, city_id: str, region_id: str, edge_id: str) -> list[str]:
         """Only these buses count toward this worker's workload and sensor health."""
-        return sorted(bus_id for bus_id, assignment in self._assignments.items()
-                      if (assignment.city_id, assignment.region_id, assignment.edge_id)
-                      == (city_id, region_id, edge_id))
+        return sorted(
+            bus_id
+            for bus_id, assignment in self._assignments.items()
+            if (assignment.city_id, assignment.region_id, assignment.edge_id)
+            == (city_id, region_id, edge_id)
+        )
 
     def set_owner(self, bus_id: str, edge_id: str) -> bool:
         """Apply central's live assignment for one known bus; returns True if it changed."""
         from dataclasses import replace
+
         assignment = self._assignments.get(bus_id)
         if assignment is None or not isinstance(edge_id, str) or not edge_id.strip():
             raise ValueError("Unknown bus or invalid edge owner")
@@ -54,6 +63,7 @@ class BusRegistry:
     def transfer_owner(self, bus_id, expected_owner, new_owner):
         """Simulation coordinator calls this while holding its transaction lock."""
         from dataclasses import replace
+
         assignment = self._assignments.get(bus_id)
         if assignment is None or assignment.edge_id != expected_owner:
             raise ValueError("Bus ownership changed before transfer")
