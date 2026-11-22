@@ -223,8 +223,8 @@ The secured broker ([mosquitto-secure/mosquitto.conf](./mosquitto-secure/mosquit
 
 | Account | May write | May read |
 | --- | --- | --- |
-| `central` | `transit/commands/#` | `transit/+/bus/+/state`, `transit/heartbeats/edge/+/+`, `transit/alerts/#` |
-| `<edge_id>` | its own heartbeat and alert topics; the state topic of each bus it owns | its region's telemetry and sensor heartbeats |
+| `central` | `transit/commands/#`, `transit/assignments/+` | `transit/+/bus/+/state`, `transit/heartbeats/edge/+/+`, `transit/alerts/#` |
+| `<edge_id>` | its own heartbeat and alert topics; the state topic of every bus in its region (failover may hand it any of them; central's ownership check rejects a non-owner) | its region's telemetry, sensor heartbeats and ownership assignments |
 | `<bus_id>` | its own telemetry, heartbeat and alert topics | its own and its region's command topics |
 
 ```text
@@ -239,7 +239,7 @@ Tested against the secured broker (`test_live_broker_security.py`, 6 tests):
 
 - Anonymous logins, wrong passwords, another account's password and unknown users are refused at CONNECT.
 - `bus-302-1` is refused (PUBACK "not authorized") when it publishes another bus's telemetry, its own ID in another region, an edge state, a command, an edge alert or an edge heartbeat.
-- `edge-west-1` may publish states only for the buses it owns.
+- `edge-west-1` may publish states for buses in its own region (any of them, for failover) but not for another region's buses.
 - A bus subscribing to `transit/commands/#` receives only its own and its region's commands, and a bus subscribing to `transit/buses/#` receives no other bus's telemetry.
 - With every service on its own account, bus → edge telemetry, edge → central state, central → bus command and bus → central alert all still work.
 

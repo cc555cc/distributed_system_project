@@ -115,6 +115,18 @@ def test_startup_unknown_status_moves_nothing(ownership):
     assert ownership.buses_of("west-1") == {"w-a", "w-b"}
 
 
+def test_staggered_startup_does_not_move_buses_to_the_first_healthy_edge(ownership):
+    # west-1 has reported, west-2 has not been heard from yet (still starting)
+    assert ownership.reconcile(status(west_2="unknown")) == set()
+    assert ownership.buses_of("west-2") == {"w-c"}
+
+
+def test_recovering_current_owner_keeps_its_buses(ownership):
+    # w-c's home and current owner west-2 restarted; it is alive again, so nothing moves to west-1
+    assert ownership.reconcile(status(west_2="recovering")) == set()
+    assert ownership.buses_of("west-2") == {"w-c"}
+
+
 def test_failure_never_crosses_regions(ownership):
     east_epoch = ownership.assignment("east")["epoch"]
     assert ownership.reconcile(

@@ -17,11 +17,11 @@ INSERT INTO routes (route_id, name, region_id) VALUES
 
 -- default two buses for each route, add more for simulation test cases in the future
 INSERT INTO buses (bus_id, route_id) VALUES
-  ('bus-302-1', '302'), ('bus-302-2', '302'),
-  ('bus-407-1', '407'), ('bus-407-2', '407'),
-  ('bus-409-1', '409'), ('bus-409-2', '409'),
-  ('bus-900-1', '900'), ('bus-900-2', '900'),
-  ('bus-901-1', '901'), ('bus-901-2', '901');
+  ('bus-302-1', '302'), ('bus-302-2', '302'), ('bus-302-3', '302'), ('bus-302-4', '302'),
+  ('bus-407-1', '407'), ('bus-407-2', '407'), ('bus-407-3', '407'), ('bus-407-4', '407'),
+  ('bus-409-1', '409'), ('bus-409-2', '409'), ('bus-409-3', '409'), ('bus-409-4', '409'),
+  ('bus-900-1', '900'), ('bus-900-2', '900'), ('bus-900-3', '900'), ('bus-900-4', '900'),
+  ('bus-901-1', '901'), ('bus-901-2', '901'), ('bus-901-3', '901'), ('bus-901-4', '901');
 
 INSERT INTO stops (stop_id, name, lat, lon) VALUES
   ('166', 'Brock Street Northbound @ Arthur', 43.869007, -78.937411),

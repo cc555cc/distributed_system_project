@@ -47,8 +47,8 @@ def test_main_deployment_has_two_disjoint_owners_per_region():
     plan = deployment_plan(DEFAULT_NETWORK_PATH)
     all_buses = []
     for region, routes, count in (
-        ("west", {"302", "900"}, 2),
-        ("east", {"407", "409", "901"}, 3),
+        ("west", {"302", "900"}, 4),
+        ("east", {"407", "409", "901"}, 6),
     ):
         workers = [worker for worker in plan if worker["region_id"] == region]
         assert len(workers) == 2

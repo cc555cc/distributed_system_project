@@ -3,6 +3,7 @@
 # expecting edge servers to publish topics in shape: transit/<region_id>/bus/<bus_id>/state
 # with a JSON payload matching the BusStateUpdate method.
 
+import json
 import logging
 import os
 
@@ -13,7 +14,7 @@ from services.central.routers.bus_states import BusStateUpdate, apply_bus_state
 from services.edge.auth_edge_server import configure_mqtt_client
 from services.messaging import alerts, commands, topics
 from services.messaging.lamport import LamportClock
-from services.messaging.topics import ALERT_FILTER, EDGE_HEARTBEAT_FILTER
+from services.messaging.topics import ALERT_FILTER, EDGE_HEARTBEAT_FILTER, assignment
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,27 @@ def on_connect(client, userdata, flags, reason_code, properties):
     client.subscribe(EDGE_HEARTBEAT_FILTER, qos=1)
     client.subscribe(ALERT_FILTER, qos=1)
     logger.info("MQTT is connected, Server subscribe to %s", topic)
+    # publish every region's ownership so the retained assignments always match central,
+    # including after a central restart or a missed publish while disconnected
+    from services.central.ownership import bus_ownership
+
+    for region_id in bus_ownership.regions():
+        publish_assignment(region_id, bus_ownership.assignment(region_id))
+
+
+# tell the edges in a region which edge owns each bus; retained so a restarting edge gets it immediately
+def publish_assignment(region_id: str, payload: dict) -> None:
+    if client is None:
+        return
+    result = client.publish(
+        assignment(region_id), json.dumps(payload), qos=1, retain=True
+    )
+    if result.rc != mqtt.MQTT_ERR_SUCCESS:
+        logger.warning(
+            "Assignment for %s not sent yet (rc=%s); it is republished on reconnect",
+            region_id,
+            result.rc,
+        )
 
 
 def on_disconnection(client, userdata, flags, reason_code, properties):

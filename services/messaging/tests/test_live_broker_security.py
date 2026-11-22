@@ -144,14 +144,17 @@ def test_bus_cannot_publish_on_protected_topics_it_does_not_own(clients, passwor
         assert not publish_denied(bus, allowed), allowed
 
 
-def test_edge_may_publish_only_states_of_buses_it_owns(clients, passwords):
+def test_edge_may_publish_states_only_within_its_region(clients, passwords):
+    # Failover can hand any bus in the region to this edge, so the ACL allows the whole
+    # region; central's ownership check rejects states from an edge that is not the owner.
     edge, _ = connect(clients, "edge-west-1", passwords["edge-west-1"])
     assert not publish_denied(
         edge, topics.state("west", "bus-302-1")
-    )  # assigned to edge-west-1
-    assert publish_denied(
+    )  # home edge-west-1
+    assert not publish_denied(
         edge, topics.state("west", "bus-302-2")
-    )  # assigned to edge-west-2
+    )  # takeover from edge-west-2
+    assert publish_denied(edge, topics.state("east", "bus-407-1"))  # other region
     assert publish_denied(edge, topics.telemetry("west", "bus-302-1"))
     assert publish_denied(edge, topics.command("west"))
 

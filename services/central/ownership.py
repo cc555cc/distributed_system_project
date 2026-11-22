@@ -1,6 +1,8 @@
 import time
 from threading import RLock
 
+from shared.schema.network import load_network
+
 
 class BusOwnership:
     def __init__(self, network: dict):
@@ -27,10 +29,22 @@ class BusOwnership:
                 bus_id for bus_id, owner in self.current.items() if owner == edge_id
             }
 
+    # copy of every bus's current owner, used to see which buses moved during a reconcile
+    def owners(self) -> dict[str, str]:
+        with self.lock:
+            return dict(self.current)
+
+    def regions(self) -> list[str]:
+        return sorted(self.region_edges)
+
     # redirect bus stat report to the edge server that should be owning it now
     def reconcile(self, edge_status: dict[str, str]) -> set[str]:
         def healthy(edge_id):
             return edge_status.get(edge_id) == "healthy"
+
+        # only a confirmed failure moves buses away; "unknown" and "recovering" keep what they have, so staggered startups do not cause churn
+        def failed(edge_id):
+            return edge_status.get(edge_id) == "unavailable"
 
         changed = set()
         with self.lock:
@@ -39,10 +53,10 @@ class BusOwnership:
                 home, current = self.home[bus_id], self.current[bus_id]
                 if healthy(home):
                     target = home  # if the home edge server is healthy: nth change or switching back to its primary server after a crash
-                elif healthy(current):
-                    target = current  # if prime server is not healthy, what about its current one? This condition is only to prevent churn
+                elif not failed(current):
+                    target = current  # home is not healthy, but the current owner has not failed: keep it there (no churn)
                 else:
-                    # home and current are both unhealthy, move to the least-loaded healthy edge in the region, or stay put if none found
+                    # the current owner has failed: move to the least-loaded healthy edge in the region, or stay put if none found
                     available_servers = [
                         edge for edge in self.region_edges[region_id] if healthy(edge)
                     ]
@@ -76,3 +90,8 @@ class BusOwnership:
                 "epoch": self.epoch[region_id],
                 "owners": owners,
             }
+
+
+# the one ownership table used by the whole central process (ingestion fencing, health, failover loop)
+# a central restart starts again from the home assignment; the failover loop corrects it within a timeout
+bus_ownership = BusOwnership(load_network())

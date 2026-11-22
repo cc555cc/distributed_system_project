@@ -147,6 +147,7 @@ class EdgeAuth:
         if topic not in (
             f"transit/buses/{self.region_id}/+/telemetry",
             f"transit/heartbeats/bus/{self.region_id}/+",
+            f"transit/assignments/{self.region_id}",
         ):
             raise PermissionError("Edge cannot subscribe outside its region")
 
@@ -266,6 +267,7 @@ def mosquitto_acl(network):
         "topic read transit/heartbeats/edge/+/+",
         "topic read transit/alerts/#",
         "topic write transit/commands/#",
+        "topic write transit/assignments/+",
     ]
     edge_ids = set()
     for region in network["regions"]:
@@ -289,15 +291,15 @@ def mosquitto_acl(network):
                     f"topic read transit/heartbeats/bus/{region['region_id']}/+",
                     f"topic write transit/heartbeats/edge/{region['region_id']}/{edge_id}",
                     f"topic write transit/alerts/{region['region_id']}/{edge_id}",
+                    f"topic read transit/assignments/{region['region_id']}",
                 ]
             )
+            # Central may hand any bus in the region to this edge during failover, so it may
+            # write state for every bus of its region (central's ownership check fences the rest).
             for bus in network["buses"]:
-                if bus["edge_id"] == edge_id:
-                    if (
-                        not _segment(bus["bus_id"])
-                        or bus["region_id"] != region["region_id"]
-                    ):
-                        raise ValueError("Unsafe or mismatched bus assignment")
+                if bus["region_id"] == region["region_id"]:
+                    if not _segment(bus["bus_id"]):
+                        raise ValueError("Unsafe bus assignment")
                     lines.append(
                         f"topic write transit/{region['region_id']}/bus/{bus['bus_id']}/state"
                     )

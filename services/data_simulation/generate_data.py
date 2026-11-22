@@ -48,8 +48,12 @@ def generate_messages(
     sensor_health=None,
     clock=None,
     controls=None,
+    start_stop_index=0,
 ):
     """Yield standard messages so stdout, MQTT and tests use identical data.
+
+    start_stop_index lets a second bus in the same direction begin partway along
+    the route instead of on top of the first one.
 
     ``controls`` (a services.messaging.commands.BusControls) lets simulation
     commands change a running bus: pause/resume take effect before the next
@@ -80,6 +84,14 @@ def generate_messages(
         raise ValueError("Bus is not registered on the requested route")
     bus = buses[0]
     stops = load_stops(route_id, direction, network=network)
+    if (
+        isinstance(start_stop_index, bool)
+        or not isinstance(start_stop_index, int)
+        or not 0 <= start_stop_index < len(stops) - 1
+    ):
+        raise ValueError(
+            "start_stop_index must leave at least one stop ahead on the route"
+        )
     utc_now = utc_now or (lambda: datetime.now(UTC))
     passengers = random.Random(42)
     sensors = random.Random(43)
@@ -89,7 +101,7 @@ def generate_messages(
     # Pass a clock in when something else in this bus process also receives
     # messages (commands): its receive() calls then raise later send stamps.
     clock = clock if clock is not None else LamportClock()
-    for index in range(len(stops) - 1):
+    for index in range(start_stop_index, len(stops) - 1):
         start, end = stops[index : index + 2]
         if controls is not None:
             demand, speed = controls.demand, SPEED_KMH * controls.traffic_factor

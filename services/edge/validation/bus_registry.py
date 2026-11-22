@@ -48,6 +48,18 @@ class BusRegistry:
             == (city_id, region_id, edge_id)
         )
 
+    def set_owner(self, bus_id: str, edge_id: str) -> bool:
+        """Apply central's live assignment for one known bus; returns True if it changed."""
+        from dataclasses import replace
+
+        assignment = self._assignments.get(bus_id)
+        if assignment is None or not isinstance(edge_id, str) or not edge_id.strip():
+            raise ValueError("Unknown bus or invalid edge owner")
+        if assignment.edge_id == edge_id:
+            return False
+        self._assignments[bus_id] = replace(assignment, edge_id=edge_id)
+        return True
+
     def transfer_owner(self, bus_id, expected_owner, new_owner):
         """Simulation coordinator calls this while holding its transaction lock."""
         from dataclasses import replace

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operator Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>Transit System</h1>
+    <nav>
+      <a href="index.html">Passenger Planner</a>
+      <a href="operator.html" class="active">Operator Dashboard</a>
+      <a href="controls.html">Simulation Controls</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <p id="updated">Loading...</p>
+    <div class="stats" id="summary"></div>
+
+    <div class="card">
+      <h2>Alerts</h2>
+      <div id="alerts"></div>
+    </div>
+
+    <div class="card">
+      <h2>Buses</h2>
+      <div class="table-wrap" id="buses"></div>
+    </div>
+
+    <div class="card">
+      <h2>Routes</h2>
+      <div class="table-wrap" id="routes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Edge servers</h2>
+      <div class="table-wrap" id="edges"></div>
+    </div>
+
+    <div class="card">
+      <h2>Edge status changes</h2>
+      <p class="note">Detected from live heartbeats while this page is open.</p>
+      <div id="events"></div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/mock.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/helpers.js"></script>
+  <script src="js/operator.js"></script>
+</body>
+</html>

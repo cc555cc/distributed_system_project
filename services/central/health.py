@@ -1,10 +1,12 @@
 """Central watches edge heartbeats independently; failed edges cannot report themselves."""
 
 import time
+from collections import deque
 from copy import deepcopy
+from datetime import UTC, datetime
 from threading import RLock
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from services.messaging.topics import edge_heartbeat
 from shared.schema.health import (
@@ -20,9 +22,40 @@ from shared.schema.health import (
 from shared.schema.network import load_network
 
 
+class EventLog:
+    """Recent central events, newest last. In memory; a central restart clears it."""
+
+    def __init__(self, maxlen=200):
+        self.events = deque(
+            maxlen=maxlen
+        )  # oldest events drop off automatically once full
+        self.lock = RLock()
+
+    def append(self, event_type: str, **fields) -> None:
+        # wall-clock UTC is for people reading the log; timeout logic keeps using the monotonic clock
+        event = {"time": datetime.now(UTC).isoformat(), "type": event_type, **fields}
+        with self.lock:
+            self.events.append(event)
+
+    def recent(self, limit: int = 50) -> list[dict]:
+        with self.lock:
+            return list(reversed(self.events))[:limit]  # newest first
+
+
 class CentralHealthMonitor:
-    def __init__(self, network, policy: HealthPolicy, *, clock=time.monotonic):
+    def __init__(
+        self,
+        network,
+        policy: HealthPolicy,
+        *,
+        clock=time.monotonic,
+        events=None,
+        ownership=None,
+    ):
         self.policy, self.clock = policy, clock
+        self.events = events or EventLog()
+        self.ownership = ownership  # live BusOwnership; None = use the static owners from the network file
+        self.last_status = {}  # edge_id -> status seen by the previous poll()
         self.expected = {}
         self.owners = {
             bus["bus_id"]: (bus["city_id"], bus["region_id"], bus["edge_id"])
@@ -53,12 +86,17 @@ class CentralHealthMonitor:
             heartbeat.region_id, heartbeat.edge_id
         ):
             return False
-        owned = {bus_id for bus_id, owner in self.owners.items() if owner == key}
+        # Liveness must not depend on ownership being in sync: during a handoff the edge may
+        # report its old or new bus set for a moment. Accept any set of buses from the edge's
+        # own region, as long as the report is internally consistent.
+        region_buses = {
+            bus_id for bus_id, owner in self.owners.items() if owner[:2] == key[:2]
+        }
         supplied = [bus.bus_id for bus in heartbeat.buses]
         if (
-            set(supplied) != owned
-            or len(supplied) != len(owned)
-            or heartbeat.workload.assigned_buses != len(owned)
+            len(set(supplied)) != len(supplied)
+            or not set(supplied) <= region_buses
+            or heartbeat.workload.assigned_buses != len(supplied)
         ):
             return False
         if any(set(bus.sensors) != set(SENSORS) for bus in heartbeat.buses):
@@ -118,27 +156,35 @@ class CentralHealthMonitor:
                                     sensor["status"] = "unavailable"
                             if status["status"] == "unavailable":
                                 sensor["status"] = "unknown"
-                reports = (
-                    report["buses"]
+                # List each bus once, under the edge that owns it now. A bus the owner has not
+                # reported yet (e.g. just handed over) appears as unknown instead of disappearing.
+                reported = (
+                    {bus["bus_id"]: bus for bus in report["buses"]}
                     if report is not None
-                    else [
-                        {
-                            "bus_id": bus_id,
-                            "valid_telemetry_age_seconds": None,
-                            "last_speed_kmh": None,
-                            "sensors": {
-                                name: {
-                                    "status": "unknown",
-                                    "reported_state": "unknown",
-                                    "age_seconds": None,
-                                }
-                                for name in SENSORS
-                            },
-                        }
-                        for bus_id, owner in self.owners.items()
-                        if owner == (city, region, edge_id)
-                    ]
+                    else {}
                 )
+                owned_now = sorted(
+                    bus_id
+                    for bus_id, owner in self.owners.items()
+                    if owner[:2] == (city, region) and self._owner(bus_id) == edge_id
+                )
+                reports = [
+                    reported.get(bus_id)
+                    or {
+                        "bus_id": bus_id,
+                        "valid_telemetry_age_seconds": None,
+                        "last_speed_kmh": None,
+                        "sensors": {
+                            name: {
+                                "status": "unknown",
+                                "reported_state": "unknown",
+                                "age_seconds": None,
+                            }
+                            for name in SENSORS
+                        },
+                    }
+                    for bus_id in owned_now
+                ]
                 for bus in reports:
                     bus["health"] = classify_bus_health(
                         bus, status["status"], self.policy.sensor_timeout_seconds
@@ -227,15 +273,55 @@ class CentralHealthMonitor:
             )
         return choices
 
+    def _owner(self, bus_id):
+        if self.ownership is not None:
+            return self.ownership.owner(bus_id)
+        return self.owners[bus_id][2]
+
+    def statuses(self) -> dict[str, str]:
+        """Current liveness status of every expected edge (healthy/recovering/unavailable/unknown)."""
+        return {
+            edge_id: self.tracker.report(edge_id)["status"] for edge_id in self.expected
+        }
+
+    def poll(self) -> None:
+        """Called every second by central. An edge going silent produces no message,
+        so status changes can only be noticed by checking regularly."""
+        with self.lock:
+            for edge_id in sorted(self.expected):
+                status = self.tracker.report(edge_id)["status"]
+                previous = self.last_status.get(edge_id)
+                if previous is not None and previous != status:
+                    city, region, _ = self.expected[edge_id]
+                    self.events.append(
+                        "edge_status",
+                        edge_id=edge_id,
+                        city_id=city,
+                        region_id=region,
+                        from_status=previous,
+                        to_status=status,
+                    )
+                self.last_status[edge_id] = status
+
 
 router = APIRouter(prefix="/health", tags=["health"])
 # Built once per central process. A central restart intentionally forgets old liveness.
-monitor = CentralHealthMonitor(load_network(), policy_from_environment())
+from services.central.ownership import bus_ownership
+
+monitor = CentralHealthMonitor(
+    load_network(), policy_from_environment(), ownership=bus_ownership
+)
 
 
 @router.get("/edges")
 def get_edge_health():
     return monitor.snapshot()
+
+
+# recent edge status changes, newest first
+@router.get("/events")
+def get_events(limit: int = Query(default=50, ge=1, le=200)):
+    return monitor.events.recent(limit)
 
 
 # UI experiments have their own queues and virtual clock. They do not publish
