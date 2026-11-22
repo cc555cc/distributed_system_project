@@ -35,8 +35,14 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
                       traffic_factor=1.0, sensor_failure_rate=0.0, *,
                       network_path=DEFAULT_NETWORK_PATH, max_updates=MAX_UPDATES,
                       update_seconds=UPDATE_SECONDS, utc_now=None, sensor_health=None,
-                      clock=None):
-    """Yield standard messages so stdout, MQTT and tests use identical data."""
+                      clock=None, controls=None):
+    """Yield standard messages so stdout, MQTT and tests use identical data.
+
+    ``controls`` (a services.messaging.commands.BusControls) lets simulation
+    commands change a running bus: pause/resume take effect before the next
+    reading; demand and traffic apply from the next stop segment; the sensor
+    failure rate applies from the next reading.
+    """
     if demand not in ("peak", "off_peak"):
         raise ValueError("Demand must be peak or off_peak")
     if not 0 < traffic_factor <= 1 or not math.isfinite(traffic_factor):
@@ -66,6 +72,8 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
     clock = clock if clock is not None else LamportClock()
     for index in range(len(stops) - 1):
         start, end = stops[index:index + 2]
+        if controls is not None:
+            demand, speed = controls.demand, SPEED_KMH * controls.traffic_factor
         occupancy -= passengers.randint(0, occupancy)
         boarding = passengers.randint(10, 20) if demand == "peak" else passengers.randint(0, 5)
         occupancy = min(bus["capacity"], occupancy + boarding)
@@ -73,6 +81,9 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
         steps = max(1, math.ceil(distance_metres(start, end) / metres_per_update))
         for step in range(steps + 1):
             if sequence >= max_updates:
+                return
+            # A paused bus generates nothing; it resumes from the same point.
+            if controls is not None and not controls.wait_while_paused():
                 return
             progress = step / steps
             at_stop = step == 0 or step == steps
@@ -99,6 +110,8 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
                 message["next_stop_city_id"] = following["city_id"]
             # Keep Zach's fault behaviour: movement continues but a failed sensor
             # produces no reading. Do not publish invented replacement values.
+            if controls is not None:
+                sensor_failure_rate = controls.sensor_failure_rate
             failed = sensors.random() < sensor_failure_rate
             if sensor_health is not None:
                 sensor_health({sensor: "faulty" if failed else "healthy" for sensor in SENSORS})

@@ -62,6 +62,27 @@ class EdgeServerInstance:
         self.forwarder = CentralForwarder(self.receiver, self.sender, occupancy_unit)
         self.session_id = str(uuid4())
         self.heartbeat_sequence = 0
+        self.subscriber.on_queue_full = self.report_overload
+        self._last_overload_alert = None
+
+    def report_overload(self, *, interval_seconds=30.0, now=None):
+        """Send at most one edge_overload alert per interval while readings are dropped."""
+        import logging
+        import time
+        from services.messaging.alerts import make_alert
+        now = time.monotonic() if now is None else now
+        if self._last_overload_alert is not None and now - self._last_overload_alert < interval_seconds:
+            return False
+        self._last_overload_alert = now
+        alert = make_alert(self.config.region_id, self.config.edge_id, "edge", "edge_overload", "critical",
+                           f"Ingress queue full ({self.subscriber.messages.maxsize}); telemetry is being rejected",
+                           clock=self.forwarder.clock)
+        try:
+            self.sender.publish_alert(alert)
+        except (ConnectionError, OSError, RuntimeError, PermissionError):
+            logging.warning("Overload alert not sent: edge=%s", self.config.edge_id)
+            return False
+        return True
 
     def heartbeat(self):
         """Build a checked health snapshot without touching bus ownership."""

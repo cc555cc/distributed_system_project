@@ -90,6 +90,9 @@ class TelemetrySubscriber:
         # This is what connets to the MQTT broker and handles incoming messages
         self._client: Any | None = None
 
+        # Optional callback run when a reading is rejected because the queue is full.
+        self.on_queue_full: Any | None = None
+
 
     # This is the main function that handles input data and to make it ready for processing
     def handle_raw_message(self, topic: str, raw_payload: bytes) -> bool:
@@ -145,6 +148,8 @@ class TelemetrySubscriber:
         except Full:
             # If the queue is full, it logs an error and returns False to indicate that the message was rejected.
             logger.error("Rejected telemetry: edge ingress queue is full")
+            if self.on_queue_full is not None:
+                self.on_queue_full()      # e.g. an edge_overload alert to central (MQTT-05)
             return False
 
         if self.monitor is not None:

@@ -7,8 +7,10 @@ import logging
 import os
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
+from services.edge.auth_edge_server import configure_mqtt_client
+from services.messaging import alerts, commands, topics
 from services.messaging.lamport import LamportClock
-from services.messaging.topics import EDGE_HEARTBEAT_FILTER
+from services.messaging.topics import ALERT_FILTER, EDGE_HEARTBEAT_FILTER
 from services.central.routers.bus_states import BusStateUpdate, apply_bus_state
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,9 @@ CLIENT_ID = "central-server"
 
 # Central's Lamport clock (MQTT-03). Advanced by every valid bus-state message.
 clock = LamportClock()
+
+# Alerts received from buses and edges (MQTT-05), newest kept, duplicates dropped.
+alert_store = alerts.AlertStore()
 
 client: mqtt.Client | None = None
 topic: str = ""
@@ -28,6 +33,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
     #start subscription
     client.subscribe(topic, qos=1)
     client.subscribe(EDGE_HEARTBEAT_FILTER, qos=1)
+    client.subscribe(ALERT_FILTER, qos=1)
     logger.info("MQTT is connected, Server subscribe to %s", topic)
 
 def on_disconnection(client, userdata, flags, reason_code, properties):
@@ -39,6 +45,9 @@ def on_message(client, userdata, msg):
             from services.central.health import monitor
             if not monitor.receive(msg.topic, msg.payload):
                 logger.warning("Rejected edge heartbeat")
+            return
+        if msg.topic.startswith("transit/alerts/"):
+            handle_alert(msg.topic, msg.payload)
             return
         parts = msg.topic.split("/")
         if len(parts) != 5 or parts[0] != "transit" or parts[2] != "bus" or parts[4] != "state" or not parts[1] or not parts[3]:
@@ -72,6 +81,34 @@ def on_message(client, userdata, msg):
     except Exception:
         logger.exception("Failed to process message on %s", msg.topic)
 
+def handle_alert(topic: str, payload: bytes) -> bool:
+    """Validate and store one alert; apply the Lamport receive rule to it."""
+    try:
+        alert = alerts.parse(topic, payload)
+    except ValueError as error:
+        logger.warning("Rejected alert on %s: %s", topic, type(error).__name__)
+        return False
+    central_clock = clock.receive(alert.lamport_clock)
+    stored = alert_store.add(alert, central_clock)
+    if stored:
+        logger.warning("Alert %s from %s/%s: %s", alert.kind, alert.region_id, alert.source_id, alert.message)
+    return stored
+
+
+def publish_command(region_id: str, action: str, params: dict | None = None,
+                    target: str = topics.ALL_BUSES) -> commands.Command:
+    """Publish one simulation command (QoS 1). Raise ConnectionError if it cannot be queued."""
+    if client is None:
+        raise ConnectionError("MQTT client is not started")
+    command = commands.make_command(region_id, action, params, target=target, clock=clock)
+    topic, payload = commands.encode(command)
+    info = client.publish(topic, payload, qos=1, retain=False)
+    if info.rc not in (mqtt.MQTT_ERR_SUCCESS, mqtt.MQTT_ERR_NO_CONN):
+        raise ConnectionError(f"MQTT publish failed: {mqtt.error_string(info.rc)}")
+    logger.info("Command %s %s -> %s (lamport %s)", command.command_id, action, topic, command.lamport_clock)
+    return command
+
+
 def start() -> None:
     #read config after .env get load inmain.py
     global client, topic
@@ -84,6 +121,7 @@ def start() -> None:
     client.on_connect = on_connect
     client.on_disconnect = on_disconnection
     client.on_message = on_message
+    configure_mqtt_client(client)     # broker account "central" when MQTT-07 security is on
     client.reconnect_delay_set(min_delay=1, max_delay=30)
     client.connect_async(host,port)
     client.loop_start()

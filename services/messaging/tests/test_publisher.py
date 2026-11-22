@@ -69,7 +69,9 @@ def test_offline_messages_are_queued_then_acknowledged_after_reconnect(publisher
     assert publisher.unacknowledged == 2            # not assumed delivered
     client.online = True
     client.on_connect(client, None, None, OK, None)
-    client.acknowledge_all()                        # Paho resends, broker acknowledges
+    from services.messaging.relay import wait_for
+    wait_for(lambda: len(client.kept) == 2, timeout=2, what="offline messages sent after reconnect")
+    client.acknowledge_all()                        # broker acknowledges
     assert publisher.stats == dict(sent=0, queued=2, dropped=0, acknowledged=2, disconnects=1, reconnects=1)
     assert publisher.flush(0) == 0
 
@@ -107,3 +109,86 @@ def test_other_publish_errors_are_raised(publisher, monkeypatch):
 def test_queue_bound_must_be_a_positive_integer(bad):
     with pytest.raises(ValueError):
         ReliablePublisher("x", max_queued=bad, client_factory=FakeClient)
+
+
+class RecordingClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self.wire = []                        # payloads in the order handed to Paho
+
+    def publish(self, topic, payload, qos, retain):
+        self.wire.append(payload)
+        return super().publish(topic, payload, qos, retain)
+
+    def acknowledge(self, mid):
+        self.kept.remove(mid)
+        self.on_publish(self, None, mid, OK, None)
+
+
+def test_messages_published_right_after_reconnect_wait_for_the_resends():
+    """Paho resends kept messages only after on_connect returns; newer ones must not overtake them."""
+    from services.messaging.relay import wait_for
+    client = RecordingClient()
+    publisher = ReliablePublisher("bus-1-publisher", client_factory=lambda: client)
+    client.on_connect(client, None, None, OK, None)
+    client.online = False                                      # lost, but not yet noticed
+    assert [publisher.publish("t", f"old{n}") for n in (1, 2)] == ["queued", "queued"]
+    assert client.wire == ["old1"]                             # kept by Paho; old2 waits behind it
+    client.on_disconnect(client, None, None, "lost", None)
+    client.online = True
+    client.on_connect(client, None, None, OK, None)          # Paho's resend of old1 comes after this
+    assert publisher.publish("t", "new3") == "queued"          # held back, not on the wire
+    assert publisher.publish("t", "new4") == "queued"
+    assert client.wire == ["old1"] and publisher.unacknowledged == 4
+    client.acknowledge(1)
+    wait_for(lambda: client.wire == ["old1", "old2", "new3", "new4"], timeout=2, what="backlog in order")
+    client.acknowledge_all()
+    assert publisher.flush(1) == 0
+    assert publisher.publish("t", "new5") == "sent"            # caught up: straight through
+    publisher.close(flush_timeout=0)
+
+
+def test_messages_published_while_offline_are_sent_in_order_after_reconnect():
+    from services.messaging.relay import wait_for
+    client = RecordingClient()
+    publisher = ReliablePublisher("bus-1-publisher", client_factory=lambda: client)
+    client.on_connect(client, None, None, OK, None)
+    assert publisher.publish("t", "a") == "sent"               # in flight when the link drops
+    client.online = False
+    client.on_disconnect(client, None, None, "lost", None)
+    assert [publisher.publish("t", n) for n in ("b", "c")] == ["queued", "queued"]
+    client.online = True
+    client.on_connect(client, None, None, OK, None)
+    assert client.wire == ["a"]                                # b, c wait until a is acknowledged
+    client.acknowledge_all()
+    wait_for(lambda: client.wire == ["a", "b", "c"], timeout=2, what="offline messages in order")
+    publisher.close(flush_timeout=0)
+
+
+def test_held_back_messages_count_toward_the_queue_bound():
+    client = RecordingClient()
+    publisher = ReliablePublisher("bus-1-publisher", max_queued=3, client_factory=lambda: client)
+    client.on_connect(client, None, None, OK, None)
+    client.online = False
+    publisher.publish("t", "old1")
+    publisher.publish("t", "old2")
+    client.on_disconnect(client, None, None, "lost", None)
+    client.online = True
+    client.on_connect(client, None, None, OK, None)
+    assert [publisher.publish("t", n) for n in ("a", "b")] == ["queued", "dropped"]
+    assert publisher.stats["dropped"] == 1
+    assert publisher.close(flush_timeout=0) == 3               # reported, not assumed delivered
+
+
+def test_ack_arriving_before_publish_returns_is_not_lost():
+    client = RecordingClient()
+    original = client.publish
+    def instant_ack(topic, payload, qos, retain):
+        info = original(topic, payload, qos, retain)
+        client.acknowledge(info.mid)                          # broker answered inside publish()
+        return info
+    client.publish = instant_ack
+    publisher = ReliablePublisher("bus-1-publisher", client_factory=lambda: client)
+    client.on_connect(client, None, None, OK, None)
+    assert publisher.publish("t", "x") == "sent"
+    assert publisher.unacknowledged == 0 and publisher.stats["acknowledged"] == 1

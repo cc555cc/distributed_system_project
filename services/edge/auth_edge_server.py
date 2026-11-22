@@ -83,7 +83,8 @@ class EdgeAuth:
             self.city_id is None or assignment.city_id == self.city_id)
 
     def authorize_publish(self, topic):
-        if topic == f"transit/heartbeats/edge/{self.region_id}/{self.edge_id}":
+        if topic in (f"transit/heartbeats/edge/{self.region_id}/{self.edge_id}",
+                     f"transit/alerts/{self.region_id}/{self.edge_id}"):
             return
         parts = topic.split("/")
         if len(parts) == 5 and parts[:3] == ["transit", self.region_id, "bus"] and parts[4] == "state" and self._owned(parts[3]):
@@ -130,9 +131,14 @@ class EdgeAuth:
         return message["payload"]
 
 
-def configure_mqtt_client(client):
-    """Set broker credentials and verified TLS before connect; never log secrets."""
-    username, password = os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD")
+def configure_mqtt_client(client, username=None, password=None):
+    """Set broker credentials and verified TLS before connect; never log secrets.
+
+    Credentials come from MQTT_USERNAME/MQTT_PASSWORD unless given explicitly,
+    e.g. per-bus accounts selected by the simulator launcher (MQTT-07).
+    """
+    if username is None and password is None:
+        username, password = os.getenv("MQTT_USERNAME"), os.getenv("MQTT_PASSWORD")
     if (username is None) != (password is None) or username == "" or password == "":
         raise ValueError("MQTT_USERNAME and MQTT_PASSWORD must both be nonempty")
     tls = os.getenv("MQTT_TLS", "false").lower()
@@ -166,7 +172,8 @@ def mosquitto_acl(network):
     An operator installs this alongside a password file and allow_anonymous false.
     It does not silently deploy broker-wide policy or create credentials.
     """
-    lines = ["user central", "topic read transit/+/bus/+/state", "topic read transit/heartbeats/edge/+/+"]
+    lines = ["user central", "topic read transit/+/bus/+/state", "topic read transit/heartbeats/edge/+/+",
+             "topic read transit/alerts/#", "topic write transit/commands/#"]
     edge_ids = set()
     for region in network["regions"]:
         if not _segment(region["region_id"]):
@@ -179,7 +186,8 @@ def mosquitto_acl(network):
             lines.extend(["", "user " + edge_id,
                 f"topic read transit/buses/{region['region_id']}/+/telemetry",
                 f"topic read transit/heartbeats/bus/{region['region_id']}/+",
-                f"topic write transit/heartbeats/edge/{region['region_id']}/{edge_id}"])
+                f"topic write transit/heartbeats/edge/{region['region_id']}/{edge_id}",
+                f"topic write transit/alerts/{region['region_id']}/{edge_id}"])
             for bus in network["buses"]:
                 if bus["edge_id"] == edge_id:
                     if not _segment(bus["bus_id"]) or bus["region_id"] != region["region_id"]:
@@ -192,5 +200,8 @@ def mosquitto_acl(network):
         usernames.add(bus["bus_id"])
         lines.extend(["", "user " + bus["bus_id"],
             f"topic write transit/buses/{bus['region_id']}/{bus['bus_id']}/telemetry",
-            f"topic write transit/heartbeats/bus/{bus['region_id']}/{bus['bus_id']}"])
+            f"topic write transit/heartbeats/bus/{bus['region_id']}/{bus['bus_id']}",
+            f"topic write transit/alerts/{bus['region_id']}/{bus['bus_id']}",
+            f"topic read transit/commands/{bus['region_id']}/{bus['bus_id']}",
+            f"topic read transit/commands/{bus['region_id']}/all"])
     return "\n".join(lines) + "\n"

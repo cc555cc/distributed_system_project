@@ -13,8 +13,6 @@ keeps running. Broker restarts are MQTT-10.
 
 import json
 import os
-import socket
-from threading import Thread
 import time
 from types import SimpleNamespace
 from uuid import uuid4
@@ -29,85 +27,16 @@ from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 from services.messaging import topics
 from services.messaging.publisher import ReliablePublisher
+from services.messaging.relay import Link, wait_for
 
 HOST = os.getenv("EDGE_LIVE_MQTT_HOST")
 PORT = int(os.getenv("EDGE_LIVE_MQTT_PORT", "1883"))
 pytestmark = pytest.mark.skipif(not HOST, reason="set EDGE_LIVE_MQTT_HOST to run live MQTT checks")
 
 
-def wait_for(condition, timeout=20.0, what="condition"):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if condition():
-            return
-        time.sleep(0.05)
-    raise AssertionError(f"Timed out waiting for {what}")
-
-
-class Link:
-    """TCP relay to the broker. cut() drops every connection and refuses new ones."""
-
-    def __init__(self):
-        self.server = socket.create_server(("127.0.0.1", 0))
-        self.port = self.server.getsockname()[1]
-        self.up, self.open, self.sockets = True, True, []
-        Thread(target=self._accept, daemon=True).start()
-
-    def _accept(self):
-        while self.open:
-            try:
-                near, _ = self.server.accept()
-            except OSError:
-                return
-            if not self.up:
-                near.close()
-                continue
-            try:
-                far = socket.create_connection((HOST, PORT), timeout=5)
-            except OSError:
-                near.close()
-                continue
-            far.settimeout(None)
-            self.sockets += [near, far]
-            Thread(target=self._pump, args=(near, far), daemon=True).start()
-            Thread(target=self._pump, args=(far, near), daemon=True).start()
-
-    @staticmethod
-    def _pump(source, target):
-        try:
-            while data := source.recv(65536):
-                target.sendall(data)
-        except OSError:
-            pass
-        finally:
-            for sock in (source, target):
-                try:
-                    sock.close()
-                except OSError:
-                    pass
-
-    def cut(self):
-        self.up = False
-        sockets, self.sockets = self.sockets, []
-        for sock in sockets:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            sock.close()
-
-    def restore(self):
-        self.up = True
-
-    def close(self):
-        self.cut()
-        self.open = False
-        self.server.close()
-
-
 @pytest.fixture
 def link():
-    link = Link()
+    link = Link(HOST, PORT)
     yield link
     link.close()
 

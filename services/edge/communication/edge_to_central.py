@@ -133,6 +133,21 @@ class EdgeToCentral:
         if receipt.rc != 0:
             raise ConnectionError("Heartbeat publish was not accepted")
 
+    def publish_alert(self, alert) -> None:
+        """Report a problem this edge detected to central (MQTT-05); never blocks."""
+        from services.messaging import alerts
+        if (alert.region_id, alert.source_id, alert.source_type) != (
+                self.config.region_id, self.config.edge_id, "edge"):
+            raise ValueError("Alert source does not match this edge")
+        if self._client is None:
+            raise ConnectionError("Central alert connection is not ready")
+        topic, payload = alerts.encode(alert)
+        self.auth.authorize_publish(topic)
+        # QoS 1: paho keeps it and resends after a reconnect.
+        receipt = self._client.publish(topic, payload, qos=1, retain=False)
+        if receipt.rc not in (0, 4):          # 4 = MQTT_ERR_NO_CONN, queued for resend
+            raise ConnectionError("Alert publish was not accepted")
+
     def close(self) -> None:
         """Release the connection when this edge process stops."""
         if self._client is not None:

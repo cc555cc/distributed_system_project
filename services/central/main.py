@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from fastapi import FastAPI
-from services.central.routers import bus_states, stops, routes, eta
+from services.central.routers import bus_states, stops, routes, eta, messaging
 from contextlib import asynccontextmanager
 from services.messaging import mqtt_client
 from services.central.health import router as health_router
@@ -24,6 +24,7 @@ app.include_router(stops.router)
 app.include_router(routes.router)
 app.include_router(health_router)
 app.include_router(eta.router)
+app.include_router(messaging.router)
 
 
 
