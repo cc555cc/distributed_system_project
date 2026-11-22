@@ -2,9 +2,9 @@
 
 A public-transit simulation connecting bus telemetry, MQTT messaging, regional edge services, a central API and PostgreSQL, and passenger/operator interfaces.
 
-## Project progress
+## Progress across branches
 
-**48/77 completed (62.3%), 13 partial (16.9%), 16 pending (20.8%).** The unfinished portion is **29/77 (37.7%)**. Percentages count tickets, not remaining effort; partial work is not counted as half-complete. Values are rounded.
+**48/77 completed (62.3%), 13 partial (16.9%), 16 pending (20.8%).** The unfinished portion is **29/77 (37.7%)**. Percentages count tickets, not remaining effort; partial tickets are not counted as half-complete.
 
 | Section | Completed | Partial | Pending | Total |
 |---|---:|---:|---:|---:|
@@ -16,13 +16,11 @@ A public-transit simulation connecting bus telemetry, MQTT messaging, regional e
 | Shared integration | 7 | 6 | 7 | 20 |
 | **Total** | **48** | **13** | **16** | **77** |
 
-This `ali` checkout integrates the fetched `main` implementation, including Carson's central-driven live failover and dashboard endpoints, Julian's messaging work, Danial's frontend and the edge simulation/authentication/conversion work. Your four broader scenario tests are retained in each server, lifecycle and pipeline file. The audit counts each ticket once across the pushed branches, regardless of who contributed a particular change. The agreed demonstration now covers map movement, area isolation, runtime controls, sensor/transport conditions, delivery retries and recovery. The live MQTT feed and controlled demonstration are explicitly selectable. Completion is assessed against this simulation scope; journey search, arrival predictions and operator permissions remain unfinished.
+These statuses cover verified work across the pushed branches under the agreed controlled-demonstration scope. The latest fleet, bus registration, scheduler controls, frontend and recovery changes are on [ali](https://github.com/cc555cc/distributed_system_project/tree/ali), with implementation through commit `ccdda4b`. This README-only update does not merge that code into `main`; use `ali` to run those features. Completion does not imply optional sensor extensions, dynamic live MQTT registration or automatic demand-based scheduling were implemented.
 
-Verification: **426 tests passed, 18 opt-in service tests skipped (444 collected)** using `python -m pytest services/data_simulation/tests services/edge/tests services/central/tests services/messaging/tests -q --tb=short -ra`. Four new high-level scenario tests cover movement/runtime controls, sensor/validation conditions, transport/process/central failures, and invalid controls/area isolation. Earlier live recovery and MQTT command checks remain documented; these skipped service-dependent tests were not all rerun for the controlled demo.
+Verification on `ali`: **426 tests passed, 18 opt-in service tests skipped (444 collected)**. Browser checks verified fleet sizing, newly registered buses on the map/dashboard, dispatch, movement, fault status, recovery and API error handling. Four new fleet/scheduler tests also pass independently. Live MQTT and controlled-demonstration feeds remain explicitly selectable; modeled failures do not stop OS processes or write experiments into the live database.
 
-The configured Durham network has 373 stops, five routes and 20 buses (four per route, two per direction). Central now polls edge health, reconciles ownership, publishes regional assignments and exposes dashboard endpoints. Stateful replication, queued-update transfer, cross-region recovery, balancing and third-instance scaling also have the agreed single-coordinator simulation evidence. These demonstrations do not establish durable distributed consensus or arbitrary network-partition safety. The default demo broker is anonymous; a separate secured broker configuration and credential/ACL tests are provided in the messaging area. Central UI login/roles remain unfinished.
-
-Largest remaining areas: automatic demand scheduling and its feedback loop; route-based ETA with traffic and stop waiting time; demand scheduling, A-to-B planning and recommendations; backend operator authorization; remaining UI features and integration; and report/demo/submission work. Pause/resume and traffic/demand/sensor commands are implemented, and the Lamport/messaging work is recorded complete. Carson's ETA still uses direct GPS distance to stops and a fallback speed, so CENTRAL-03 remains partial.
+Remaining work includes route-based ETA and demand scheduling, A-to-B planning and recommendations, backend operator authorization, remaining UI acceptance/tests, complete scheduling feedback, and report/presentation/submission tasks. All 77 ticket rows below distinguish Done, Partial and Pending. BUS-02 uses the agreed west/east map scope; BUS-11 covers adding buses only. BUS-01's telemetry contract remains unchanged.
 
 ## Architecture and structure
 
