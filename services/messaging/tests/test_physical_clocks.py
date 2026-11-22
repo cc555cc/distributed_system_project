@@ -16,8 +16,14 @@ from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 from services.messaging import commands
-from services.messaging.clock_sync import (ManualTime, SimulatedClock, classify_timestamp, estimate_offset,
-                                           parse_timestamp, timestamp_skew)
+from services.messaging.clock_sync import (
+    ManualTime,
+    SimulatedClock,
+    classify_timestamp,
+    estimate_offset,
+    parse_timestamp,
+    timestamp_skew,
+)
 from services.messaging.lamport import LamportClock
 
 
@@ -106,10 +112,10 @@ def processor():
 
 
 def telemetry(sequence, timestamp):
-    return dict(bus_id="S1", city_id="CITY-S", region_id="west", route_id="R1", latitude=43.9, longitude=-78.9,
-                speed_kmh=30.0, passengers=10, capacity=50, sequence_number=sequence, timestamp=timestamp,
-                bus_status="moving", lamport_clock=sequence, direction_id=0, current_stop_id="A",
-                next_stop_id="B", sensor_status="healthy")
+    return {"bus_id": "S1", "city_id": "CITY-S", "region_id": "west", "route_id": "R1", "latitude": 43.9, "longitude": -78.9,
+                "speed_kmh": 30.0, "passengers": 10, "capacity": 50, "sequence_number": sequence, "timestamp": timestamp,
+                "bus_status": "moving", "lamport_clock": sequence, "direction_id": 0, "current_stop_id": "A",
+                "next_stop_id": "B", "sensor_status": "healthy"}
 
 
 def test_edge_orders_by_sequence_whatever_the_timestamps_say(processor):

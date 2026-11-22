@@ -66,7 +66,7 @@ class EdgeStateCache:
     def export_bus(self, key):
         """Copy both state and replay protection; an empty cache still has a floor."""
         with self.lock:
-            return dict(entry=deepcopy(self._entries.get(key)), floor=self._sequence_floors.get(key))
+            return {"entry": deepcopy(self._entries.get(key)), "floor": self._sequence_floors.get(key)}
 
     def restore_bus(self, key, state):
         """Install a synchronized replica without allowing its sequence to go back."""

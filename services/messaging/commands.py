@@ -11,10 +11,10 @@ repeat harmless. Each command carries central's Lamport stamp, and the bus
 applies the receive rule before acting, so its next telemetry stamp is higher.
 """
 
-from collections import OrderedDict
-from datetime import datetime, timezone
 import logging
 import math
+from collections import OrderedDict
+from datetime import UTC, datetime
 from threading import Condition
 from typing import Any, Literal
 from uuid import uuid4
@@ -83,7 +83,7 @@ class Command(BaseModel):
 def make_command(region_id, action, params=None, *, target=topics.ALL_BUSES, clock, issued_by="central",
                  utc_now=None) -> Command:
     """Build a command, ticking the sender's Lamport clock (send rule)."""
-    now = (utc_now or (lambda: datetime.now(timezone.utc)))()
+    now = (utc_now or (lambda: datetime.now(UTC)))()
     return Command(command_id=uuid4().hex, region_id=region_id, target=target, action=action,
                    params=params or {}, issued_by=issued_by, timestamp=now.isoformat(),
                    lamport_clock=clock.tick())

@@ -12,7 +12,14 @@ import pytest
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
-from services.messaging.causality import AFTER, BEFORE, CONCURRENT, EventLog, compare, demo_scenario
+from services.messaging.causality import (
+    AFTER,
+    BEFORE,
+    CONCURRENT,
+    EventLog,
+    compare,
+    demo_scenario,
+)
 
 
 def event(log, label):
@@ -120,9 +127,7 @@ def test_random_concurrent_fleet_with_delays_and_reordering(seed):
     buses = [f"bus-{i}" for i in range(6)]
     log = EventLog(*buses, "edge-a", "edge-b", "central")
     in_flight = []                                    # (deliver_at, message, destination)
-    now = 0
-    for _ in range(120):
-        now += 1
+    for now in range(1, 121):
         actor = rng.choice(buses + ["central"])
         if actor == "central":
             if rng.random() < 0.3:
@@ -171,10 +176,10 @@ def test_edge_processor_rejects_the_late_reading_from_the_scenario():
     network = NetworkConfig(registry, (RouteDefinition("C", "west", "R1", ("A", "B")),))
     processor = EdgeProcessor(EdgeConfig("C", "west", "edge"), network)
     def reading(bus, sequence, lamport):
-        return dict(bus_id=bus, city_id="C", region_id="west", route_id="R1", latitude=43.9, longitude=-78.9,
-                    speed_kmh=30.0, passengers=10, capacity=50, sequence_number=sequence,
-                    timestamp="2026-11-22T12:00:00+00:00", bus_status="moving", lamport_clock=lamport,
-                    direction_id=0, current_stop_id="A", next_stop_id="B", sensor_status="healthy")
+        return {"bus_id": bus, "city_id": "C", "region_id": "west", "route_id": "R1", "latitude": 43.9, "longitude": -78.9,
+                    "speed_kmh": 30.0, "passengers": 10, "capacity": 50, "sequence_number": sequence,
+                    "timestamp": "2026-11-22T12:00:00+00:00", "bus_status": "moving", "lamport_clock": lamport,
+                    "direction_id": 0, "current_stop_id": "A", "next_stop_id": "B", "sensor_status": "healthy"}
     log = demo_scenario()
     arrivals = [e for e in log["edge"].events if e.kind == "receive"]
     statuses = []

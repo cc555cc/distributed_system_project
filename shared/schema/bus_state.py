@@ -58,7 +58,7 @@ class EdgeMetadata(BaseModel):
     @field_validator("source_timestamp", "processing_timestamp")
     @classmethod
     def timestamp_has_timezone(cls, value: str) -> str:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError("Timestamp needs a UTC offset")
         return value

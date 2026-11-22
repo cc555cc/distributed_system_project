@@ -108,7 +108,7 @@ def system(tmp_path, monkeypatch):
         with sqlite3.connect(path) as connection:
             row = connection.execute(
                 "SELECT sequence_number, lamport, edge_metadata FROM bus_states WHERE bus_id = ?", (bus,)).fetchone()
-        return None if row is None else dict(sequence=row[0], lamport=row[1], metadata=json.loads(row[2]))
+        return None if row is None else {"sequence": row[0], "lamport": row[1], "metadata": json.loads(row[2])}
 
     return SimpleNamespace(to_edge=to_edge, edge_sequences=edge_sequences, outbox=outbox,
                            to_central=to_central, central_row=central_row)
@@ -116,12 +116,12 @@ def system(tmp_path, monkeypatch):
 
 def reading(bus, sequence):
     # Lamport stamps differ from sequences so a mix-up between them would show.
-    return dict(bus_id=bus, city_id="CITY-A", region_id="north", route_id="R1",
-                latitude=43.9 + sequence / 10000, longitude=-78.9, speed_kmh=30.0,
-                passengers=sequence % 40, capacity=50, sequence_number=sequence,
-                timestamp="2026-11-11T12:00:00Z", bus_status="travelling",
-                lamport_clock=sequence * 3 + 100, direction_id=0,
-                current_stop_id="S1", next_stop_id="S2", sensor_status="healthy")
+    return {"bus_id": bus, "city_id": "CITY-A", "region_id": "north", "route_id": "R1",
+                "latitude": 43.9 + sequence / 10000, "longitude": -78.9, "speed_kmh": 30.0,
+                "passengers": sequence % 40, "capacity": 50, "sequence_number": sequence,
+                "timestamp": "2026-11-11T12:00:00Z", "bus_status": "travelling",
+                "lamport_clock": sequence * 3 + 100, "direction_id": 0,
+                "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
 
 
 def faulty(messages, rng, delay):

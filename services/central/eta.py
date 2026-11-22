@@ -15,8 +15,6 @@ def eta_bus(conn, bus_id) -> list[dict] | None:
     if bus is None:
         return None
 
-    current_stop_id = bus[2]
-
     stops = conn.execute(
         "SELECT rs.stop_id, st.lat, st.lon FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = %s AND rs.direction_id = %s ORDER BY rs.position",
         (bus[3], bus[4])).fetchall()

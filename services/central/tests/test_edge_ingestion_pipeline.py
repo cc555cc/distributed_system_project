@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 
-from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
 from services.edge.communication.data_to_edge import TelemetrySubscriber
+from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.edge_server import EdgeIngress
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
@@ -82,9 +82,9 @@ class LocalTransport:
 @pytest.fixture
 def pipeline(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/offline")
+    from services.central.main import app
     from services.central.routers import bus_states
     from services.messaging import mqtt_client
-    from services.central.main import app
 
     path = tmp_path / "central.sqlite"
     with sqlite3.connect(path) as connection:
@@ -100,7 +100,7 @@ def pipeline(tmp_path, monkeypatch):
             INSERT INTO route_stops VALUES ('R1',0,0,'S1'),('R1',0,1,'S2');
         """)
     monkeypatch.setattr(bus_states.psycopg, "connect", lambda url, **kwargs: TestDatabase(path, **kwargs))
-    from services.edge.validation.bus_registry import BusRegistry, BusAssignment
+    from services.edge.validation.bus_registry import BusAssignment, BusRegistry
     registry = BusRegistry({bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in ("A1", "A2")})
     network = NetworkConfig(registry, (RouteDefinition("CITY-A", "north", "R1", ("S1", "S2")),))
     config = EdgeConfig("CITY-A", "north", "edge-a")
@@ -116,11 +116,11 @@ def pipeline(tmp_path, monkeypatch):
 
 
 def telemetry(bus="A1", sequence=1):
-    return dict(bus_id=bus, city_id="CITY-A", region_id="north", route_id="R1",
-                latitude=43.9, longitude=-78.9, speed_kmh=30.0, passengers=40,
-                capacity=50, sequence_number=sequence, timestamp="2026-11-11T12:00:00Z",
-                bus_status="travelling", lamport_clock=sequence + 10, direction_id=0,
-                current_stop_id="S1", next_stop_id="S2", sensor_status="healthy")
+    return {"bus_id": bus, "city_id": "CITY-A", "region_id": "north", "route_id": "R1",
+                "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "passengers": 40,
+                "capacity": 50, "sequence_number": sequence, "timestamp": "2026-11-11T12:00:00Z",
+                "bus_status": "travelling", "lamport_clock": sequence + 10, "direction_id": 0,
+                "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
 
 
 def deliver(pipeline, source):
@@ -275,8 +275,8 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
     from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/offline")
-    from services.central.routers import bus_states
     from services.central.main import app
+    from services.central.routers import bus_states
     from services.messaging import mqtt_client
 
     database = tmp_path / "configured-network.sqlite"
@@ -343,12 +343,12 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
 
 def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(tmp_path, monkeypatch):
     """Same processor/mapper/central SQL/API, with simulated ownership handoffs."""
-    from services.edge.main import EdgeClusterSimulation
     from services.data_simulation.export_routes import seed_sql
+    from services.edge.main import EdgeClusterSimulation
     from shared.schema.network import load_network
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/cluster")
-    from services.central.routers import bus_states
     from services.central.main import app
+    from services.central.routers import bus_states
     from services.messaging import mqtt_client
     path = tmp_path / "cluster-central.sqlite"
     with sqlite3.connect(path) as connection:

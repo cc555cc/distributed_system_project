@@ -9,11 +9,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from services.edge.edge_server import EdgeIngress
-from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
-from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
-from services.edge.validation.bus_registry import BusRegistry, BusAssignment
 from services.edge.communication.data_to_edge import TelemetrySubscriber
+from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
+from services.edge.edge_server import EdgeIngress
+from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
+from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 
 
 @dataclass

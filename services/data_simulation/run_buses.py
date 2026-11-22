@@ -2,21 +2,23 @@
 
 import argparse
 import json
-from multiprocessing import Process
-from threading import Event, Thread, RLock
-from datetime import datetime, timezone
-from uuid import uuid4
 import logging
 import os
+from datetime import UTC, datetime
+from multiprocessing import Process
+from threading import Event, RLock, Thread
+from uuid import uuid4
 
 from services.data_simulation import generate_data
-from services.edge.auth_edge_server import encode_bus_message, configure_mqtt_client
-from shared.schema.health import BusHeartbeat, policy_from_environment
+from services.edge.auth_edge_server import configure_mqtt_client, encode_bus_message
 from services.messaging import alerts, commands
 from services.messaging.lamport import LamportClock
 from services.messaging.publisher import ReliablePublisher
 from services.messaging.topics import bus_heartbeat
+from shared.schema.health import BusHeartbeat, policy_from_environment
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
+
+logger = logging.getLogger(__name__)
 
 
 class SimulatorHeartbeats:
@@ -38,7 +40,7 @@ class SimulatorHeartbeats:
             self.sequence += 1
             return BusHeartbeat(city_id=self.bus["city_id"], region_id=self.bus["region_id"],
                                 bus_id=self.bus["bus_id"], session_id=self.session_id,
-                                sequence_number=self.sequence, timestamp=datetime.now(timezone.utc).isoformat(),
+                                sequence_number=self.sequence, timestamp=datetime.now(UTC).isoformat(),
                                 sensors=self.sensors)
 
     def publish_until_stopped(self, client, stop, interval):
@@ -54,9 +56,9 @@ class SimulatorHeartbeats:
                 receipt = client.publish(topic, encode_bus_message(topic, heartbeat.model_dump(mode="json"), heartbeat.bus_id),
                                          qos=1, retain=False)
                 if receipt.rc != 0:
-                    logging.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
+                    logger.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
             except (OSError, RuntimeError):
-                logging.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
+                logger.warning("Sensor heartbeat delivery pending for bus=%s", heartbeat.bus_id)
             stop.wait(interval)
 
 
@@ -93,7 +95,7 @@ class SensorAlerts:
                                   clock=self.clock, bus_id=self.bus["bus_id"])
         topic, payload = alerts.encode(alert)
         outcome = self.publish(topic, payload)
-        logging.warning("Alert %s for bus=%s: %s", kind, self.bus["bus_id"], outcome)
+        logger.warning("Alert %s for bus=%s: %s", kind, self.bus["bus_id"], outcome)
 
 
 def run_bus(bus, network_path, updates, interval, publish, host, port):
@@ -134,7 +136,7 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
                 topic = f"transit/buses/{message['region_id']}/{message['bus_id']}/telemetry"
                 outcome = publisher.publish(topic, encode_bus_message(topic, message, bus["bus_id"]))
                 if outcome != "sent":
-                    logging.warning("Telemetry %s for bus=%s sequence=%s", outcome,
+                    logger.warning("Telemetry %s for bus=%s sequence=%s", outcome,
                                     message["bus_id"], message["sequence_number"])
             print(encoded, flush=True)
         generate_data.main(bus["route_id"], bus.get("direction_id", 0), bus["bus_id"],
@@ -148,7 +150,7 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             heartbeat_thread.join(timeout=3)
         if publisher is not None:
             publisher.close()
-            logging.info("Publisher totals for bus=%s: %s", bus["bus_id"], publisher.stats)
+            logger.info("Publisher totals for bus=%s: %s", bus["bus_id"], publisher.stats)
 
 
 def main(network_path=DEFAULT_NETWORK_PATH, *, updates=100, interval=1.0,

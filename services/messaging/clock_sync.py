@@ -28,7 +28,7 @@ receiver's clock.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 MAX_ASSUMED_SKEW_SECONDS = 2.0
 AUTH_MAX_AGE_SECONDS = 30.0
@@ -44,7 +44,7 @@ class SimulatedClock:
 
     def __init__(self, offset_seconds=0.0, drift_ppm=0.0, *, true_now=None):
         self.offset_seconds, self.drift_ppm = float(offset_seconds), float(drift_ppm)
-        self.true_now = true_now or (lambda: datetime.now(timezone.utc))
+        self.true_now = true_now or (lambda: datetime.now(UTC))
         self._start = self.true_now()
 
     def error_seconds(self, at=None):
@@ -61,7 +61,7 @@ class SimulatedClock:
 class ManualTime:
     """Controllable true time for deterministic tests."""
 
-    def __init__(self, start=datetime(2026, 11, 22, 12, 0, tzinfo=timezone.utc)):
+    def __init__(self, start=datetime(2026, 11, 22, 12, 0, tzinfo=UTC)):
         self.now = start
 
     def __call__(self):
@@ -94,7 +94,7 @@ def estimate_offset(request_sent: float, server_time: float, response_received: 
 
 
 def parse_timestamp(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value)
     if parsed.utcoffset() is None:
         raise ValueError("timestamp needs a UTC offset")
     return parsed
@@ -106,7 +106,7 @@ def timestamp_skew(timestamp: str, receiver_now: datetime | None = None) -> floa
     Includes network/queue delay, so a positive value larger than the delay
     means the sender's clock is fast.
     """
-    receiver_now = receiver_now or datetime.now(timezone.utc)
+    receiver_now = receiver_now or datetime.now(UTC)
     return (parse_timestamp(timestamp) - receiver_now).total_seconds()
 
 

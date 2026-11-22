@@ -1,11 +1,15 @@
 """Connect the validated-message queue to the local processing pipeline."""
 
+import logging
 from dataclasses import dataclass
+from datetime import UTC
 from queue import Empty
 
 from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.processing.processor import EdgeProcessor, ProcessingResult
 from services.edge.validation.validator import BusTelemetry
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,11 +53,15 @@ class EdgeServerInstance:
     """One running worker owns its queue, cache, sender and heartbeat reports."""
 
     def __init__(self, config, network, policy, occupancy_unit="passengers"):
+        from uuid import uuid4
+
         from services.edge.communication.data_to_edge import create_subscriber
-        from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
+        from services.edge.communication.edge_to_central import (
+            CentralForwarder,
+            EdgeToCentral,
+        )
         from services.edge.edge_server_health import EdgeMonitor
         from shared.schema.bus_state import BusStateUpdate
-        from uuid import uuid4
         self.config, self.policy = config, policy
         self.monitor = EdgeMonitor(config, network.registry, policy)
         self.subscriber = create_subscriber(config, network, monitor=self.monitor)
@@ -67,8 +75,8 @@ class EdgeServerInstance:
 
     def report_overload(self, *, interval_seconds=30.0, now=None):
         """Send at most one edge_overload alert per interval while readings are dropped."""
-        import logging
         import time
+
         from services.messaging.alerts import make_alert
         now = time.monotonic() if now is None else now
         if self._last_overload_alert is not None and now - self._last_overload_alert < interval_seconds:
@@ -80,29 +88,30 @@ class EdgeServerInstance:
         try:
             self.sender.publish_alert(alert)
         except (ConnectionError, OSError, RuntimeError, PermissionError):
-            logging.warning("Overload alert not sent: edge=%s", self.config.edge_id)
+            logger.warning("Overload alert not sent: edge=%s", self.config.edge_id)
             return False
         return True
 
     def heartbeat(self):
         """Build a checked health snapshot without touching bus ownership."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from shared.schema.health import EdgeHeartbeat
         self.heartbeat_sequence += 1
         active = self.receiver.processor.snapshot()["statistics"]["active_buses"]
         return EdgeHeartbeat(
             city_id=self.config.city_id, region_id=self.config.region_id, edge_id=self.config.edge_id,
             session_id=self.session_id, sequence_number=self.heartbeat_sequence,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             workload=self.monitor.workload(self.subscriber.messages, active, len(self.forwarder.pending)),
             buses=self.monitor.sensor_reports(),
         )
 
     def run(self, stop_event):
         """Keep health reporting independent of an idle or busy telemetry queue."""
-        import logging
         import os
         from threading import Event, Thread
+
         from services.edge.communication.data_to_edge import process_pending_messages
         heartbeat_stop = Event()
         def publish_health():
@@ -110,7 +119,7 @@ class EdgeServerInstance:
                 try:
                     self.sender.publish_heartbeat(self.heartbeat())
                 except (ConnectionError, OSError, RuntimeError):
-                    logging.warning("Edge heartbeat pending: edge=%s", self.config.edge_id)
+                    logger.warning("Edge heartbeat pending: edge=%s", self.config.edge_id)
                 heartbeat_stop.wait(self.policy.interval_seconds)
         thread = Thread(target=publish_health, name=self.config.edge_id + "-heartbeat", daemon=True)
         try:
@@ -142,6 +151,7 @@ class SimulatedEdge:
 
     def __post_init__(self):
         from collections import deque
+
         from services.messaging.lamport import LamportClock
         self.queue = deque()
         self.clock = LamportClock()  # same receive/send rules as a live worker
@@ -174,8 +184,8 @@ class SimulatedEdge:
     def snapshot(self):
         from shared.schema.health import load_band
         utilization = len(self.queue) / self.capacity * 100
-        return dict(edge_id=self.edge_id, region_id=self.region_id, city_id=self.city_id,
-                    active=self.active, state=self.state, queue_capacity=self.capacity, queue_size=len(self.queue),
-                    queue_utilization_percent=utilization, load_band=load_band(utilization),
-                    processing_ms=self.processing_ms, completed=self.completed,
-                    average_latency_ms=(self.latency_seconds / self.completed * 1000 if self.completed else None))
+        return {"edge_id": self.edge_id, "region_id": self.region_id, "city_id": self.city_id,
+                    "active": self.active, "state": self.state, "queue_capacity": self.capacity, "queue_size": len(self.queue),
+                    "queue_utilization_percent": utilization, "load_band": load_band(utilization),
+                    "processing_ms": self.processing_ms, "completed": self.completed,
+                    "average_latency_ms": (self.latency_seconds / self.completed * 1000 if self.completed else None)}

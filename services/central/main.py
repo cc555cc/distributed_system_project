@@ -1,16 +1,20 @@
-from pathlib import Path
-from dotenv import load_dotenv
 import logging
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from fastapi import FastAPI
-from services.central.routers import bus_states, stops, routes, eta, messaging
 from contextlib import asynccontextmanager
-from services.messaging import mqtt_client
+
+from fastapi import FastAPI
+
 from services.central.health import router as health_router
+from services.central.routers import bus_states, eta, messaging, routes, stops
+from services.messaging import mqtt_client
+
 
 @asynccontextmanager
 async def lifespan(app):

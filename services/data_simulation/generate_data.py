@@ -1,12 +1,12 @@
 """Generate Zach's movement/scenarios using the shared telemetry field names."""
 
 import argparse
-from datetime import datetime, timezone
 import json
 import math
 import random
 import sys
 import time
+from datetime import UTC, datetime
 
 from services.data_simulation import export_routes
 from services.messaging.lamport import LamportClock
@@ -59,9 +59,8 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
     if not buses:
         raise ValueError("Bus is not registered on the requested route")
     bus = buses[0]
-    route = next(route for route in network["routes"] if route["route_id"] == route_id)
     stops = load_stops(route_id, direction, network=network)
-    utc_now = utc_now or (lambda: datetime.now(timezone.utc))
+    utc_now = utc_now or (lambda: datetime.now(UTC))
     passengers = random.Random(42)
     sensors = random.Random(43)
     speed = SPEED_KMH * traffic_factor

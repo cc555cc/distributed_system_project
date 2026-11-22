@@ -22,8 +22,8 @@ import base64
 import hashlib
 import json
 import os
-from pathlib import Path
 import secrets
+from pathlib import Path
 
 from services.edge.auth_edge_server import mosquitto_acl
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network

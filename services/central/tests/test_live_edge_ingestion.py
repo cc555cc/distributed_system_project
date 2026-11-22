@@ -5,13 +5,13 @@ test services. This is skipped by default and never runs the destructive project
 schema against the database's public schema.
 """
 
-from datetime import datetime, timezone
 import json
 import os
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from queue import Empty
 from threading import Event
-import time
 from uuid import uuid4
 
 import pytest
@@ -21,22 +21,25 @@ import pytest
 def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
     import paho.mqtt.client as mqtt
     import psycopg
+    from fastapi.testclient import TestClient
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
-    from fastapi.testclient import TestClient
 
-    from services.edge.communication.edge_to_central import CentralForwarder, EdgeToCentral
     from services.edge.communication.data_to_edge import TelemetrySubscriber
+    from services.edge.communication.edge_to_central import (
+        CentralForwarder,
+        EdgeToCentral,
+    )
     from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
     from services.edge.edge_server import EdgeIngress
     from services.edge.processing.processor import EdgeProcessor
-    from services.edge.validation.bus_registry import BusRegistry, BusAssignment
+    from services.edge.validation.bus_registry import BusAssignment, BusRegistry
     from shared.schema.bus_state import BusStateUpdate
 
     url = os.environ["EDGE_LIVE_DATABASE_URL"]
     monkeypatch.setenv("DATABASE_URL", url)
-    from services.central.routers import bus_states
     from services.central.main import app
+    from services.central.routers import bus_states
     from services.messaging import mqtt_client
 
     identifier = uuid4().hex
@@ -93,11 +96,11 @@ def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
         while not sender._client.is_connected() and time.monotonic() < deadline:
             Event().wait(0.02)
         assert sender._client.is_connected()
-        source = dict(bus_id=bus_id, city_id=config.city_id, region_id=region, route_id="R1",
-                      latitude=43.9, longitude=-78.9, speed_kmh=30.0, passengers=40, capacity=50,
-                      timestamp=datetime.now(timezone.utc).isoformat(), sequence_number=1,
-                      bus_status="travelling", lamport_clock=10, direction_id=0,
-                      current_stop_id="S1", next_stop_id="S2", sensor_status="healthy")
+        source = {"bus_id": bus_id, "city_id": config.city_id, "region_id": region, "route_id": "R1",
+                      "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "passengers": 40, "capacity": 50,
+                      "timestamp": datetime.now(UTC).isoformat(), "sequence_number": 1,
+                      "bus_status": "travelling", "lamport_clock": 10, "direction_id": 0,
+                      "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
         sender._client.publish(f"transit/buses/{region}/{bus_id}/telemetry", json.dumps(source), qos=1).wait_for_publish(10)
         try:
             queued = subscriber.messages.get(timeout=10)
@@ -137,21 +140,23 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
     tests; this test does not certify an interprocess replication protocol.
     """
     from multiprocessing import get_context
+
     import paho.mqtt.client as mqtt
     import psycopg
+    from fastapi.testclient import TestClient
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
-    from fastapi.testclient import TestClient
+
     from services.central import health
-    from services.central.routers import bus_states
     from services.central.main import app
-    from services.messaging import mqtt_client
-    from services.messaging.topics import EDGE_HEARTBEAT_FILTER, bus_heartbeat
-    from services.edge.main import configured_instances, run_instance
+    from services.central.routers import bus_states
     from services.data_simulation.export_routes import seed_sql
     from services.data_simulation.generate_data import generate_messages
+    from services.edge.main import configured_instances, run_instance
+    from services.messaging import mqtt_client
+    from services.messaging.topics import EDGE_HEARTBEAT_FILTER, bus_heartbeat
+    from shared.schema.health import SENSORS, BusHeartbeat, HealthPolicy
     from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
-    from shared.schema.health import BusHeartbeat, HealthPolicy, SENSORS
 
     url = os.environ["EDGE_LIVE_DATABASE_URL"]
     host = os.getenv("EDGE_LIVE_MQTT_HOST", "127.0.0.1")
@@ -164,11 +169,11 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
     store = health.CentralHealthMonitor(network, policy)
     monkeypatch.setattr(health, "monitor", store)
     monkeypatch.setattr(bus_states, "db_url", scoped_url)
-    for key, value in dict(MQTT_HOST=host, MQTT_PORT=str(port), CENTRAL_MQTT_HOST=host,
-                           CENTRAL_MQTT_PORT=str(port), CENTRAL_OCCUPANCY_UNIT="passengers",
-                           EDGE_QUEUE_SIZE="50", HEARTBEAT_INTERVAL_SECONDS="0.2",
-                           SENSOR_HEARTBEAT_TIMEOUT_SECONDS="2", EDGE_HEARTBEAT_TIMEOUT_SECONDS="2",
-                           HEARTBEAT_RECOVERY_SECONDS="0.8", EDGE_OVERLOAD_SUSTAIN_SECONDS="1").items():
+    for key, value in {"MQTT_HOST": host, "MQTT_PORT": str(port), "CENTRAL_MQTT_HOST": host,
+                           "CENTRAL_MQTT_PORT": str(port), "CENTRAL_OCCUPANCY_UNIT": "passengers",
+                           "EDGE_QUEUE_SIZE": "50", "HEARTBEAT_INTERVAL_SECONDS": "0.2",
+                           "SENSOR_HEARTBEAT_TIMEOUT_SECONDS": "2", "EDGE_HEARTBEAT_TIMEOUT_SECONDS": "2",
+                           "HEARTBEAT_RECOVERY_SECONDS": "0.8", "EDGE_OVERLOAD_SUSTAIN_SECONDS": "1"}.items():
         monkeypatch.setenv(key, value)
     api = TestClient(app)
     context = get_context("spawn")
@@ -229,7 +234,7 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
                                             max_updates=1, update_seconds=0))
             sources.append(source)
             heartbeat = BusHeartbeat(city_id=bus["city_id"], region_id=bus["region_id"], bus_id=bus["bus_id"],
-                session_id=heartbeat_session, sequence_number=1, timestamp=datetime.now(timezone.utc).isoformat(),
+                session_id=heartbeat_session, sequence_number=1, timestamp=datetime.now(UTC).isoformat(),
                 sensors={sensor: "healthy" for sensor in SENSORS})
             publish(bus_heartbeat(bus["region_id"], bus["bus_id"]), heartbeat.model_dump_json())
 
@@ -268,7 +273,7 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
         # Exercise sensor evidence through the real publisher/edge/central path.
         bus = next(bus for bus in network["buses"] if bus["bus_id"] == "bus-302-1")
         sensor_report = BusHeartbeat(city_id=bus["city_id"], region_id=bus["region_id"], bus_id=bus["bus_id"],
-            session_id=heartbeat_session, sequence_number=2, timestamp=datetime.now(timezone.utc).isoformat(),
+            session_id=heartbeat_session, sequence_number=2, timestamp=datetime.now(UTC).isoformat(),
             sensors={sensor: "faulty" if sensor == "gps" else "healthy" for sensor in SENSORS})
         publish(bus_heartbeat(bus["region_id"], bus["bus_id"]), sensor_report.model_dump_json())
         def gps_status():

@@ -1,22 +1,27 @@
 """Publisher authentication, topic authorization, replay defense and MQTT credentials."""
 
-from copy import deepcopy
 import json
 import os
+import time
 from queue import Empty
 from threading import Event
-import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
-from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client, encode_bus_message, mosquitto_acl, sign_message
+from services.data_simulation.generate_data import generate_messages
+from services.edge.auth_edge_server import (
+    EdgeAuth,
+    configure_mqtt_client,
+    encode_bus_message,
+    mosquitto_acl,
+    sign_message,
+)
 from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.edge_server_health import EdgeMonitor
-from services.data_simulation.generate_data import generate_messages
-from shared.schema.health import BusHeartbeat, HealthPolicy, SENSORS
+from shared.schema.health import SENSORS, BusHeartbeat, HealthPolicy
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 SECRET = "test-key-only-" + "a" * 32
@@ -176,7 +181,7 @@ def test_signed_external_csv_converts_before_processing_and_payload_identity_mus
     writer = csv.DictWriter(output, fieldnames=list(source))
     writer.writeheader()
     writer.writerow(source)
-    body = dict(format="csv-v1", data=output.getvalue())
+    body = {"format": "csv-v1", "data": output.getvalue()}
     subscriber = TelemetrySubscriber("west", "edge-west-1", city_id="DURHAM", registry=registry, auth=auth)
     message = sign_message(TOPIC, body, "bus:bus-302-1", SECRET, timestamp=now[0])
     assert subscriber.handle_raw_message(TOPIC, json.dumps(message).encode())
@@ -210,9 +215,9 @@ def test_live_broker_authentication_acl_and_signed_ingress(monkeypatch):
         assert ready.wait(5)
         return client, results[0]
     try:
-        anonymous, rejected = connect(None, None)
+        _anonymous, rejected = connect(None, None)
         assert rejected
-        wrong, rejected = connect("bus-302-1", "incorrect-password")
+        _wrong, rejected = connect("bus-302-1", "incorrect-password")
         assert rejected
         edge, rejected = connect("edge-west-1", password)
         assert not rejected

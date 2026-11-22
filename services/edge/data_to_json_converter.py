@@ -1,11 +1,11 @@
 """Convert supported external formats into our validated shared telemetry JSON."""
 
 import csv
-from copy import deepcopy
-from datetime import datetime, timezone
 import io
 import json
 import math
+from copy import deepcopy
+from datetime import UTC, datetime
 
 from services.edge.validation.validator import BusTelemetry, parse_telemetry
 
@@ -46,17 +46,17 @@ def decode_json(raw):
 
 def _timestamp(value):
     if isinstance(value, bool):
-        raise ValueError("Timestamp cannot be a boolean")
+        raise TypeError("Timestamp cannot be a boolean")
     if isinstance(value, (float, int)):
         if not math.isfinite(value):
             raise ValueError("Timestamp must be finite Unix seconds")
-        return datetime.fromtimestamp(value, timezone.utc).isoformat()
+        return datetime.fromtimestamp(value, UTC).isoformat()
     if not isinstance(value, str):
-        raise ValueError("Expected Unix seconds or timezone-aware ISO timestamp")
-    timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        raise TypeError("Expected Unix seconds or timezone-aware ISO timestamp")
+    timestamp = datetime.fromisoformat(value)
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
         raise ValueError("Timestamp requires a timezone")
-    return timestamp.astimezone(timezone.utc).isoformat()
+    return timestamp.astimezone(UTC).isoformat()
 
 
 def _vendor(raw):
@@ -81,13 +81,13 @@ def _vendor(raw):
     sensors = {"ok": "healthy", "fault": "faulty", "offline": "offline"}
     if not isinstance(value["state"], str) or value["state"] not in states or not isinstance(value["sensorState"], str) or value["sensorState"] not in sensors:
         raise ValueError("Unsupported vendor-v1 state")
-    result = dict(schema_version="bus-telemetry-v1", bus_id=value["vehicleId"], city_id=value["city"],
-        region_id=value["area"], route_id=value["route"], latitude=value["location"]["lat"],
-        longitude=value["location"]["lng"], speed_kmh=speed * factors[unit],
-        passengers=value["load"]["passengers"], capacity=value["load"]["capacity"],
-        timestamp=_timestamp(value["observedAt"]), sequence_number=value["sequence"],
-        lamport_clock=value["lamport"], direction_id=value["direction"], bus_status=states[value["state"]],
-        sensor_status=sensors[value["sensorState"]], current_stop_id=value["currentStop"])
+    result = {"schema_version": "bus-telemetry-v1", "bus_id": value["vehicleId"], "city_id": value["city"],
+        "region_id": value["area"], "route_id": value["route"], "latitude": value["location"]["lat"],
+        "longitude": value["location"]["lng"], "speed_kmh": speed * factors[unit],
+        "passengers": value["load"]["passengers"], "capacity": value["load"]["capacity"],
+        "timestamp": _timestamp(value["observedAt"]), "sequence_number": value["sequence"],
+        "lamport_clock": value["lamport"], "direction_id": value["direction"], "bus_status": states[value["state"]],
+        "sensor_status": sensors[value["sensorState"]], "current_stop_id": value["currentStop"]}
     if "nextStop" in value:
         result["next_stop_id"] = value["nextStop"]
     return result

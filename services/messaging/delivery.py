@@ -55,13 +55,13 @@ class SequenceTracker:
             senders = {name: (state.arrivals, state.duplicates, state.late, len(state.seen))
                        for name, state in self._senders.items()}
         missing = {name: self.missing(name, sequences) for name, sequences in sent.items()}
-        return dict(
-            sent=sum(len(s) for s in sent.values()),
-            arrivals=sum(v[0] for v in senders.values()),
-            unique=sum(v[3] for v in senders.values()),
-            duplicates=sum(v[1] for v in senders.values()),
-            late=sum(v[2] for v in senders.values()),
-            lost=sum(len(m) for m in missing.values()),
-            missing={name: m for name, m in missing.items() if m},
-            unexpected=sorted(set(senders) - set(sent)),
-        )
+        return {
+            "sent": sum(len(s) for s in sent.values()),
+            "arrivals": sum(v[0] for v in senders.values()),
+            "unique": sum(v[3] for v in senders.values()),
+            "duplicates": sum(v[1] for v in senders.values()),
+            "late": sum(v[2] for v in senders.values()),
+            "lost": sum(len(m) for m in missing.values()),
+            "missing": {name: m for name, m in missing.items() if m},
+            "unexpected": sorted(set(senders) - set(sent)),
+        }

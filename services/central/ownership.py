@@ -1,6 +1,7 @@
 import time
 from threading import RLock
 
+
 class BusOwnership:
     def __init__(self, network: dict):
         self.home = {bus["bus_id"]: bus["edge_id"] for bus in network["buses"]}

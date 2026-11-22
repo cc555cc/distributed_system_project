@@ -43,9 +43,9 @@ def map_bus_update(output: dict, bus_id: str, occupancy_unit: OccupancyUnit, *,
     }
     if edge_lamport is not None:
         metadata["edge_lamport"] = edge_lamport
-    payload = dict(lat=bus["latitude"], lon=bus["longitude"], speed=bus["speed_kmh"],
-                   direction_id=bus["direction_id"], next_stop_id=bus["next_stop_id"],
-                   bus_status=bus["bus_status"], occupancy=occupancy,
-                   sequence_number=bus["sequence_number"], lamport=bus["lamport_clock"],
-                   edge_metadata=metadata)
+    payload = {"lat": bus["latitude"], "lon": bus["longitude"], "speed": bus["speed_kmh"],
+                   "direction_id": bus["direction_id"], "next_stop_id": bus["next_stop_id"],
+                   "bus_status": bus["bus_status"], "occupancy": occupancy,
+                   "sequence_number": bus["sequence_number"], "lamport": bus["lamport_clock"],
+                   "edge_metadata": metadata}
     return BusStateUpdate.model_validate(payload, strict=True).model_dump(mode="json", exclude_none=True)

@@ -32,8 +32,8 @@ def seed_sql(network: dict) -> str:
     for route in network["routes"]:
         for direction in (0, 1):
             for stop in route_stops(network, route["route_id"], direction):
-                ordered.append(dict(route_id=route["route_id"], direction_id=direction,
-                                    position=stop["position"], stop_id=stop["stop_id"]))
+                ordered.append({"route_id": route["route_id"], "direction_id": direction,
+                                    "position": stop["position"], "stop_id": stop["stop_id"]})
     insert("route_stops", ("route_id", "direction_id", "position", "stop_id"), ordered)
     insert("buses", ("bus_id", "route_id"), network["buses"])
     return "\n\n".join(statements) + "\n"

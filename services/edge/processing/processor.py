@@ -1,17 +1,16 @@
 """The single EDGE-02 entry point; local transactions are serialized by a lock."""
 
+import time
 from collections import Counter
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-import time
 
-from services.edge.cache.edge_state_cache import EdgeStateCache, CacheEntry
+from services.edge.cache.edge_state_cache import CacheEntry, EdgeStateCache
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.validation.validator import BusTelemetry
-
 
 # Small processing helpers stay here until they need their own modules.
 
@@ -78,9 +77,8 @@ class _RouteProcessor:
         for stop in (current, following):
             if stop is not None and stop not in positions:
                 raise ValueError("Reported stop does not belong to route")
-        if current is not None and following is not None:
-            if positions[following] != positions[current] + 1:
-                raise ValueError("Current and next stop must be adjacent in travel order")
+        if current is not None and following is not None and positions[following] != positions[current] + 1:
+            raise ValueError("Current and next stop must be adjacent in travel order")
         # GPS proximity does not prove arrival. Use the reported current stop only.
         progress = None
         if current is not None and len(route.stops) > 1:
@@ -118,7 +116,7 @@ class EdgeProcessor:
 
     def __init__(self, config: EdgeConfig, network: NetworkConfig, *,
                  clock: Callable[[], float] = time.monotonic,
-                 utc_now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
+                 utc_now: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.config = config
         self.registry = network.registry
         self.routes = _RouteProcessor(network.routes)

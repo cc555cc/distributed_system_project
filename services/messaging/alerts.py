@@ -10,7 +10,7 @@ rule to alerts exactly as it does to bus states.
 """
 
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import RLock
 from typing import Literal
 from uuid import uuid4
@@ -44,7 +44,7 @@ class Alert(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _has_offset(cls, value: str) -> str:
-        if datetime.fromisoformat(value.replace("Z", "+00:00")).utcoffset() is None:
+        if datetime.fromisoformat(value).utcoffset() is None:
             raise ValueError("timestamp needs a UTC offset")
         return value
 
@@ -52,7 +52,7 @@ class Alert(BaseModel):
 def make_alert(region_id, source_id, source_type, kind, severity, message, *, clock,
                bus_id=None, utc_now=None) -> Alert:
     """Build an alert, ticking the sender's Lamport clock (send rule)."""
-    now = (utc_now or (lambda: datetime.now(timezone.utc)))()
+    now = (utc_now or (lambda: datetime.now(UTC)))()
     return Alert(alert_id=uuid4().hex, region_id=region_id, source_id=source_id,
                  source_type=source_type, kind=kind, severity=severity, message=message,
                  timestamp=now.isoformat(), lamport_clock=clock.tick(), bus_id=bus_id)
@@ -89,7 +89,7 @@ class AlertStore:
                 self.duplicates += 1
                 return False
             record = alert.model_dump(mode="json", exclude_none=True)
-            record["received_at"] = datetime.now(timezone.utc).isoformat()
+            record["received_at"] = datetime.now(UTC).isoformat()
             if received_lamport is not None:
                 record["central_lamport"] = received_lamport
             self._alerts[alert.alert_id] = record

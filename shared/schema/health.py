@@ -1,11 +1,11 @@
 """Heartbeat messages and receipt-time tracking shared by edge and central."""
 
-from dataclasses import dataclass
-from datetime import datetime
 import math
 import os
-from threading import RLock
 import time
+from dataclasses import dataclass
+from datetime import datetime
+from threading import RLock
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -44,7 +44,7 @@ class Heartbeat(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def timestamp_has_timezone(cls, value):
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError("Heartbeat timestamp needs a timezone")
         return value
@@ -130,9 +130,9 @@ class HeartbeatTracker:
             gap = old is not None and now - old["received_at"] >= self.timeout
             recovering = now if gap or restarted else (old["recovering_since"] if old else None)
             count = 1 if gap or restarted else (old["recovery_count"] + 1 if old else 0)
-            self.entries[key] = dict(session=session, sequence=sequence, reported_state=state,
-                                     received_at=now, retired=retired,
-                                     recovering_since=recovering, recovery_count=count)
+            self.entries[key] = {"session": session, "sequence": sequence, "reported_state": state,
+                                     "received_at": now, "retired": retired,
+                                     "recovering_since": recovering, "recovery_count": count}
             return True
 
     def report(self, key) -> dict:
@@ -140,8 +140,8 @@ class HeartbeatTracker:
             now = self.clock()
             item = self.entries.get(key)
             if item is None:
-                return dict(status="unknown" if now - self.started_at < self.timeout else "unavailable",
-                            reported_state="unknown", age_seconds=None)
+                return {"status": "unknown" if now - self.started_at < self.timeout else "unavailable",
+                            "reported_state": "unknown", "age_seconds": None}
             age = max(0.0, now - item["received_at"])
             if age >= self.timeout:
                 status = "unavailable"
@@ -150,7 +150,7 @@ class HeartbeatTracker:
                 status = "recovering"
             else:
                 status = "healthy"
-            return dict(status=status, reported_state=item["reported_state"], age_seconds=age)
+            return {"status": status, "reported_state": item["reported_state"], "age_seconds": age}
 
 
 def load_band(utilization: float, overload: float = 80) -> str:
@@ -199,23 +199,23 @@ def classify_bus_health(bus, edge_status, timeout):
     the reason codes so the UI can explain a classification rather than guess.
     """
     if edge_status in ("unknown", "unavailable"):
-        return dict(status="unknown", reasons=["edge_" + edge_status])
+        return {"status": "unknown", "reasons": ["edge_" + edge_status]}
     states = {name: sensor_health_status(bus["sensors"][name], edge_status, timeout) for name in SENSORS}
     reasons = [name + "_" + state for name, state in states.items() if state != "healthy"]
     if all(state == "unavailable" for state in states.values()):
-        return dict(status="telemetry_unavailable", reasons=reasons)
+        return {"status": "telemetry_unavailable", "reasons": reasons}
     if any(state in ("faulty", "unavailable") for state in states.values()):
-        return dict(status="degraded", reasons=reasons)
+        return {"status": "degraded", "reasons": reasons}
     if edge_status == "recovering" or "recovering" in states.values():
-        return dict(status="recovering", reasons=reasons or ["edge_recovering"])
+        return {"status": "recovering", "reasons": reasons or ["edge_recovering"]}
     if "unknown" in states.values():
-        return dict(status="unknown", reasons=reasons)
+        return {"status": "unknown", "reasons": reasons}
     age = bus["valid_telemetry_age_seconds"]
     if age is None or age >= timeout:
-        return dict(status="data_stale", reasons=["no_recent_valid_telemetry"])
+        return {"status": "data_stale", "reasons": ["no_recent_valid_telemetry"]}
     if bus.get("last_speed_kmh") == 0:
-        return dict(status="stationary", reasons=["fresh_valid_speed_zero"])
-    return dict(status="healthy", reasons=["fresh_valid_telemetry_and_sensor_heartbeats"])
+        return {"status": "stationary", "reasons": ["fresh_valid_speed_zero"]}
+    return {"status": "healthy", "reasons": ["fresh_valid_telemetry_and_sensor_heartbeats"]}
 
 
 def edge_workload_status(edge_status, utilization, sustained_overload, threshold):

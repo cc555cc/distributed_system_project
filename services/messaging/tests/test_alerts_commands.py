@@ -7,8 +7,8 @@ MQTT transport replaced. The broker round trip is test_live_alerts_commands.py.
 import json
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from services.data_simulation.generate_data import generate_messages
 from services.data_simulation.run_buses import SensorAlerts

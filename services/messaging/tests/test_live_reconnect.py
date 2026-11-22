@@ -14,7 +14,6 @@ keeps running. Broker restarts are MQTT-10.
 import json
 import os
 import time
-from types import SimpleNamespace
 from uuid import uuid4
 
 import paho.mqtt.client as mqtt
@@ -56,11 +55,11 @@ def direct():
 
 
 def reading(region, sequence):
-    return dict(bus_id="L1", city_id="CITY-L", region_id=region, route_id="R1",
-                latitude=43.9, longitude=-78.9, speed_kmh=30.0, passengers=10, capacity=50,
-                sequence_number=sequence, timestamp="2026-11-11T12:00:00Z", bus_status="travelling",
-                lamport_clock=sequence, direction_id=0, current_stop_id="S1", next_stop_id="S2",
-                sensor_status="healthy")
+    return {"bus_id": "L1", "city_id": "CITY-L", "region_id": region, "route_id": "R1",
+                "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "passengers": 10, "capacity": 50,
+                "sequence_number": sequence, "timestamp": "2026-11-11T12:00:00Z", "bus_status": "travelling",
+                "lamport_clock": sequence, "direction_id": 0, "current_stop_id": "S1", "next_stop_id": "S2",
+                "sensor_status": "healthy"}
 
 
 # ==================== PUBLISHER LOSES ITS CONNECTION ====================
@@ -180,9 +179,9 @@ def test_central_reconnects_and_receives_states_queued_by_the_broker(link, regio
     monkeypatch.setenv("MQTT_PORT", str(link.port))
     monkeypatch.setenv("MQTT_TOPIC", f"transit/{region}/bus/+/state")
     topic = topics.state(region, "L1")
-    state = lambda sequence: json.dumps(dict(lat=43.9, lon=-78.9, speed=30.0, direction_id=0,
-                                             bus_status="travelling", occupancy=10,
-                                             sequence_number=sequence, lamport=sequence))
+    state = lambda sequence: json.dumps({"lat": 43.9, "lon": -78.9, "speed": 30.0, "direction_id": 0,
+                                             "bus_status": "travelling", "occupancy": 10,
+                                             "sequence_number": sequence, "lamport": sequence})
     mqtt_client.start()
     try:
         def subscribed():

@@ -11,8 +11,8 @@ from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.edge_server import EdgeServerInstance
 from services.edge.edge_server_health import EdgeMonitor
-from shared.schema.health import BusHeartbeat, HealthPolicy, SENSORS, load_band
-from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
+from shared.schema.health import SENSORS, BusHeartbeat, HealthPolicy, load_band
+from shared.schema.network import DEFAULT_NETWORK_PATH
 
 
 @pytest.fixture
@@ -148,8 +148,8 @@ def test_worker_heartbeat_and_outgoing_health_connection(setup, monkeypatch):
     assert json.loads(client.publish.call_args.args[1])["workload"]["queue_size"] == 4
 
 
-@pytest.mark.parametrize("values", [dict(interval_seconds=0),dict(sensor_timeout_seconds=1),
-                                    dict(overload_percent=101),dict(recovery_seconds=-1)])
+@pytest.mark.parametrize("values", [{"interval_seconds": 0},{"sensor_timeout_seconds": 1},
+                                    {"overload_percent": 101},{"recovery_seconds": -1}])
 def test_bad_thresholds_are_rejected(values):
     with pytest.raises(ValueError):
         HealthPolicy(**values)
@@ -208,8 +208,8 @@ def test_balancer_accounts_for_processing_speed_within_region():
     assert all(not w.queue for w in simulation.workers.values() if w.region_id == "east")
 
 
-@pytest.mark.parametrize("changes", [dict(capacity=51), dict(capacity=0), dict(capacity=True),
-                                    dict(processing_ms=float("nan")), dict(processing_ms=0)])
+@pytest.mark.parametrize("changes", [{"capacity": 51}, {"capacity": 0}, {"capacity": True},
+                                    {"processing_ms": float("nan")}, {"processing_ms": 0}])
 def test_simulated_characteristics_reject_invalid_values(changes):
     simulation = slow_simulation()
     with pytest.raises(ValueError):

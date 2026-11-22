@@ -1,19 +1,23 @@
 """Check the shared BUS-01 format and BUS-02 network without a running broker."""
 
-from copy import deepcopy
-from datetime import datetime, timezone
 import json
-from pathlib import Path
+from copy import deepcopy
+from datetime import UTC, datetime
 
 import pytest
 
-from services.data_simulation import export_routes, generate_data, run_buses
+from services.data_simulation import export_routes, generate_data
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.transformation.central_mapper import map_bus_update
 from services.edge.validation.validator import parse_telemetry
 from shared.schema.bus_state import BusStateUpdate
-from shared.schema.network import DEFAULT_NETWORK_PATH, load_network, route_stops, validate_network
+from shared.schema.network import (
+    DEFAULT_NETWORK_PATH,
+    load_network,
+    route_stops,
+    validate_network,
+)
 
 
 def messages(bus, **settings):
@@ -21,7 +25,7 @@ def messages(bus, **settings):
     return list(generate_data.generate_messages(
         bus["route_id"], bus.get("direction_id", 0), bus["bus_id"],
         max_updates=3, update_seconds=0,
-        utc_now=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc), **settings))
+        utc_now=lambda: datetime(2026, 1, 1, tzinfo=UTC), **settings))
 
 
 # ==================== CARSON'S DURHAM MAP AND REGISTERED BUSES ====================
@@ -78,7 +82,7 @@ def test_bus_cannot_claim_another_region():
 
 def test_local_route_cannot_silently_cross_cities():
     network = load_network()
-    network["cities"].append(dict(city_id="OTHER", name="Other"))
+    network["cities"].append({"city_id": "OTHER", "name": "Other"})
     network["stops"][0]["city_id"] = "OTHER"
     with pytest.raises(ValueError):
         validate_network(network)

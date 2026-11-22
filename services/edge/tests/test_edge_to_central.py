@@ -10,8 +10,8 @@ from services.edge.communication.edge_to_central import EdgeToCentral
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.processing.processor import EdgeProcessor
 from services.edge.transformation.central_mapper import map_bus_update
-from shared.schema.bus_state import BusStateUpdate
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
+from shared.schema.bus_state import BusStateUpdate
 
 
 @pytest.fixture
@@ -25,9 +25,9 @@ def sender():
 @pytest.fixture
 def payload():
     # Values are explicitly supplied; the sender must not invent status or clocks.
-    return dict(lat=43.9, lon=-78.9, speed=30.0, direction_id=0,
-                next_stop_id="166", bus_status="travelling", occupancy=40,
-                sequence_number=2, lamport=3)
+    return {"lat": 43.9, "lon": -78.9, "speed": 30.0, "direction_id": 0,
+                "next_stop_id": "166", "bus_status": "travelling", "occupancy": 40,
+                "sequence_number": 2, "lamport": 3}
 
 
 def connected_client():
@@ -122,11 +122,11 @@ def accepted_output(sender):
         RouteDefinition("DURHAM", "west", "302", ("166", "167")),
     ))
     processor = EdgeProcessor(sender.config, network)
-    source = dict(bus_id="bus-302-1", region_id="west", route_id="302",
-                  latitude=43.9, longitude=-78.9, speed_kmh=30.0,
-                  passengers=40, capacity=50, sequence_number=2,
-                  timestamp="2026-11-11T12:00:00Z", bus_status="travelling",
-                  lamport_clock=3, direction_id=0, next_stop_id="166")
+    source = {"bus_id": "bus-302-1", "region_id": "west", "route_id": "302",
+                  "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0,
+                  "passengers": 40, "capacity": 50, "sequence_number": 2,
+                  "timestamp": "2026-11-11T12:00:00Z", "bus_status": "travelling",
+                  "lamport_clock": 3, "direction_id": 0, "next_stop_id": "166"}
     return processor.process(source).output
 
 

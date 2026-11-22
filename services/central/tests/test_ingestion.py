@@ -68,8 +68,8 @@ def test_rejected_ingestion_does_not_write(bus_states):
 
 def test_mqtt_passes_region_to_central_ingestion(bus_states):
     from services.messaging import mqtt_client
-    payload = dict(lat=43.9, lon=-78.9, speed=20, direction_id=0,
-                   bus_status="travelling", occupancy=10, sequence_number=2, lamport=2)
+    payload = {"lat": 43.9, "lon": -78.9, "speed": 20, "direction_id": 0,
+                   "bus_status": "travelling", "occupancy": 10, "sequence_number": 2, "lamport": 2}
     import json
     message = SimpleNamespace(topic="transit/west/bus/bus-302-1/state", payload=json.dumps(payload).encode())
     with patch.object(mqtt_client, "apply_bus_state", return_value=(True, None)) as apply:

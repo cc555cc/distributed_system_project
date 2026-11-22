@@ -68,10 +68,10 @@ def broker_running():
 
 
 def reading(region, sequence):
-    return dict(bus_id="R1", city_id="CITY-R", region_id=region, route_id="RT", latitude=43.9, longitude=-78.9,
-                speed_kmh=30.0, passengers=10, capacity=50, sequence_number=sequence,
-                timestamp="2026-11-22T12:00:00Z", bus_status="moving", lamport_clock=sequence, direction_id=0,
-                current_stop_id="S1", next_stop_id="S2", sensor_status="healthy")
+    return {"bus_id": "R1", "city_id": "CITY-R", "region_id": region, "route_id": "RT", "latitude": 43.9, "longitude": -78.9,
+                "speed_kmh": 30.0, "passengers": 10, "capacity": 50, "sequence_number": sequence,
+                "timestamp": "2026-11-22T12:00:00Z", "bus_status": "moving", "lamport_clock": sequence, "direction_id": 0,
+                "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
 
 
 class CountingSubscriber(TelemetrySubscriber):
@@ -170,9 +170,9 @@ def test_persistent_session_queue_survives_a_broker_restart(monkeypatch):
     monkeypatch.setenv("MQTT_TOPIC", f"transit/{region}/bus/+/state")
     edge = ReliablePublisher("edge-sender-" + uuid4().hex[:6], HOST, PORT)
     topic = topics.state(region, "R1")
-    state = lambda sequence: json.dumps(dict(lat=43.9, lon=-78.9, speed=30.0, direction_id=0,
-                                             bus_status="moving", occupancy=10,
-                                             sequence_number=sequence, lamport=sequence))
+    state = lambda sequence: json.dumps({"lat": 43.9, "lon": -78.9, "speed": 30.0, "direction_id": 0,
+                                             "bus_status": "moving", "occupancy": 10,
+                                             "sequence_number": sequence, "lamport": sequence})
     edge.connect()
     mqtt_client.start()
     try:

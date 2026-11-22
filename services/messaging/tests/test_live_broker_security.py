@@ -17,9 +17,9 @@ dedicated broker.
 
 import json
 import os
+import time
 from pathlib import Path
 from threading import Event
-import time
 from uuid import uuid4
 
 import paho.mqtt.client as mqtt
@@ -152,10 +152,9 @@ def test_bus_cannot_read_other_buses_telemetry(clients, passwords):
 # ==================== AUTHORIZED SERVICES STILL COMMUNICATE ====================
 def test_authorized_services_communicate_normally(monkeypatch, passwords):
     """Bus -> edge -> central, central -> bus command, bus -> central alert, all authenticated."""
-    from services.edge.communication.data_to_edge import TelemetrySubscriber
-    from services.edge.validation.bus_registry import BusRegistry
-    from services.edge.config import NetworkConfig
     from services.data_simulation.generate_data import generate_messages
+    from services.edge.communication.data_to_edge import TelemetrySubscriber
+    from services.edge.config import NetworkConfig
     from shared.schema.network import DEFAULT_NETWORK_PATH
     monkeypatch.setenv("EDGE_ALLOW_INSECURE_MQTT", "true")
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/live-security")
@@ -184,7 +183,7 @@ def test_authorized_services_communicate_normally(monkeypatch, passwords):
     # Bus with its per-bus account, as run_buses selects it from MQTT_BUS_PASSWORDS_JSON.
     monkeypatch.delenv("MQTT_USERNAME")
     monkeypatch.delenv("MQTT_PASSWORD")
-    from services.data_simulation.run_buses import bus_credentials, SensorAlerts
+    from services.data_simulation.run_buses import SensorAlerts, bus_credentials
     monkeypatch.setenv("MQTT_BUS_PASSWORDS_JSON", json.dumps({"bus-302-1": passwords["bus-302-1"]}))
     credentials = bus_credentials("bus-302-1")
     bus = ReliablePublisher("bus-302-1-secure-" + uuid4().hex[:6], HOST, PORT,
@@ -205,8 +204,8 @@ def test_authorized_services_communicate_normally(monkeypatch, passwords):
                  what="telemetry at the authenticated edge", interval=0.5)
         assert edge.messages.get_nowait()["bus_id"] == "bus-302-1"
 
-        state = dict(lat=43.9, lon=-78.9, speed=30.0, direction_id=0, bus_status="moving", occupancy=10,
-                     sequence_number=reading["sequence_number"], lamport=reading["lamport_clock"])
+        state = {"lat": 43.9, "lon": -78.9, "speed": 30.0, "direction_id": 0, "bus_status": "moving", "occupancy": 10,
+                     "sequence_number": reading["sequence_number"], "lamport": reading["lamport_clock"]}
         wait_for(lambda: sender.publish(topics.state("west", "bus-302-1"), json.dumps(state)) and applied,
                  what="state at authenticated central", interval=0.5)
         assert applied[0][0] == "bus-302-1"

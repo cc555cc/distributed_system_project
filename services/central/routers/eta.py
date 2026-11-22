@@ -1,10 +1,9 @@
 #load data from database and call eta.py
 import os
+
 import psycopg
 from fastapi import APIRouter, HTTPException
-from psycopg.types.json import Jsonb
-from shared.schema.bus_state import BusStateUpdate
-from psycopg.rows import dict_row
+
 from services.central.eta import eta_bus
 
 router = APIRouter()

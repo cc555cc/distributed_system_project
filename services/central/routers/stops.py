@@ -1,7 +1,8 @@
 import os
+
 import psycopg
-from psycopg.rows import dict_row
 from fastapi import APIRouter, HTTPException
+from psycopg.rows import dict_row
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]

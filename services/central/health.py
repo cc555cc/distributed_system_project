@@ -1,14 +1,22 @@
 """Central watches edge heartbeats independently; failed edges cannot report themselves."""
 
+import time
 from copy import deepcopy
 from threading import RLock
-import time
 
 from fastapi import APIRouter
 
 from services.messaging.topics import edge_heartbeat
-from shared.schema.health import EdgeHeartbeat, HeartbeatTracker, HealthPolicy, SENSORS, policy_from_environment
-from shared.schema.health import classify_bus_health, sensor_health_status, edge_workload_status
+from shared.schema.health import (
+    SENSORS,
+    EdgeHeartbeat,
+    HealthPolicy,
+    HeartbeatTracker,
+    classify_bus_health,
+    edge_workload_status,
+    policy_from_environment,
+    sensor_health_status,
+)
 from shared.schema.network import load_network
 
 
@@ -83,9 +91,9 @@ class CentralHealthMonitor:
                             if status["status"] == "unavailable":
                                 sensor["status"] = "unknown"
                 reports = report["buses"] if report is not None else [
-                    dict(bus_id=bus_id, valid_telemetry_age_seconds=None, last_speed_kmh=None,
-                         sensors={name: dict(status="unknown", reported_state="unknown", age_seconds=None)
-                                  for name in SENSORS})
+                    {"bus_id": bus_id, "valid_telemetry_age_seconds": None, "last_speed_kmh": None,
+                         "sensors": {name: {"status": "unknown", "reported_state": "unknown", "age_seconds": None}
+                                  for name in SENSORS}}
                     for bus_id, owner in self.owners.items() if owner == (city, region, edge_id)]
                 for bus in reports:
                     bus["health"] = classify_bus_health(bus, status["status"], self.policy.sensor_timeout_seconds)
@@ -98,7 +106,7 @@ class CentralHealthMonitor:
                     since is not None and now - since >= self.policy.sustained_seconds, self.policy.overload_percent)
                 edges.append(dict(edge_id=edge_id, city_id=city, region_id=region, **status,
                                   workload_status=workload_status, last_report=report))
-            return dict(edges=edges, buses=buses, recommendations=self.recommendations(edges, now))
+            return {"edges": edges, "buses": buses, "recommendations": self.recommendations(edges, now)}
 
     def recommendations(self, edges, now):
         """Least-loaded healthy peer selection; no migration or instance creation."""
@@ -112,10 +120,10 @@ class CentralHealthMonitor:
                      and edge["status"] == "healthy" and edge["last_report"] is not None
                      and edge["last_report"]["workload"]["queue_utilization_percent"] < self.policy.overload_percent]
             target = min(peers, key=lambda edge: (edge["last_report"]["workload"]["queue_utilization_percent"], edge["edge_id"])) if peers else None
-            choices.append(dict(algorithm="least_queue_utilization", from_edge_id=source["edge_id"],
-                                to_edge_id=target["edge_id"] if target else None,
-                                action="consider_migration" if target else "additional_capacity_needed",
-                                migration_performed=False))
+            choices.append({"algorithm": "least_queue_utilization", "from_edge_id": source["edge_id"],
+                                "to_edge_id": target["edge_id"] if target else None,
+                                "action": "consider_migration" if target else "additional_capacity_needed",
+                                "migration_performed": False})
         return choices
 
 
@@ -133,6 +141,7 @@ def get_edge_health():
 # telemetry, start OS processes or alter the live ownership registry.
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+
 from services.edge.main import EdgeClusterSimulation
 
 simulation = EdgeClusterSimulation()

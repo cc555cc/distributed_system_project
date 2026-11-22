@@ -4,8 +4,9 @@ Offline tests. The bus -> edge -> central chain uses the real simulator,
 forwarder and central MQTT callback with an in-memory transport and no database.
 """
 
-from datetime import datetime, timedelta
 import json
+from datetime import datetime, timedelta
+from itertools import pairwise
 from threading import Thread
 from types import SimpleNamespace
 
@@ -76,7 +77,7 @@ def bus_messages(**settings):
 def test_every_bus_message_carries_increasing_ordering_metadata():
     messages = bus_messages(max_updates=25)
     assert len(messages) == 25
-    for earlier, later in zip(messages, messages[1:]):
+    for earlier, later in pairwise(messages):
         assert later["sequence_number"] == earlier["sequence_number"] + 1
         assert later["lamport_clock"] > earlier["lamport_clock"]
     for message in messages:
@@ -137,11 +138,11 @@ def chain(monkeypatch):
 
 
 def reading(bus="A1", sequence=1, lamport=1):
-    return dict(bus_id=bus, city_id="CITY-A", region_id="north", route_id="R1",
-                latitude=43.9, longitude=-78.9, speed_kmh=30.0, passengers=40, capacity=50,
-                sequence_number=sequence, timestamp="2026-11-11T12:00:00Z",
-                bus_status="travelling", lamport_clock=lamport, direction_id=0,
-                current_stop_id="S1", next_stop_id="S2", sensor_status="healthy")
+    return {"bus_id": bus, "city_id": "CITY-A", "region_id": "north", "route_id": "R1",
+                "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "passengers": 40, "capacity": 50,
+                "sequence_number": sequence, "timestamp": "2026-11-11T12:00:00Z",
+                "bus_status": "travelling", "lamport_clock": lamport, "direction_id": 0,
+                "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
 
 
 def forward(chain, source):

@@ -5,8 +5,8 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from shared.schema.network import NETWORK_VERSION, validate_network, direction_stop_ids
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
+from shared.schema.network import NETWORK_VERSION, direction_stop_ids, validate_network
 
 
 @dataclass(frozen=True)
@@ -85,13 +85,13 @@ class NetworkConfig:
             for route in data["routes"]:
                 for direction in (0, 1):
                     ordered = direction_stop_ids(route, direction)
-                    routes.append(dict(city_id=route["city_id"], region_id=route["region_id"],
-                                       route_id=route["route_id"], direction_id=direction,
-                                       stops=tuple(ordered), served_city_ids=tuple(route["served_city_ids"]),
-                                       stop_city_ids=tuple(stops[stop]["city_id"] for stop in ordered)))
+                    routes.append({"city_id": route["city_id"], "region_id": route["region_id"],
+                                       "route_id": route["route_id"], "direction_id": direction,
+                                       "stops": tuple(ordered), "served_city_ids": tuple(route["served_city_ids"]),
+                                       "stop_city_ids": tuple(stops[stop]["city_id"] for stop in ordered)})
             fields = ("bus_id", "city_id", "region_id", "route_id", "edge_id")
-            data = dict(schema_version="edge-network-proposal-v1", routes=routes,
-                        buses=[{field: bus[field] for field in fields} for bus in data["buses"]])
+            data = {"schema_version": "edge-network-proposal-v1", "routes": routes,
+                        "buses": [{field: bus[field] for field in fields} for bus in data["buses"]]}
         if data.get("schema_version") != "edge-network-proposal-v1":
             raise ValueError("Unsupported edge network schema")
         routes = tuple(RouteDefinition(**{**r, "stops": tuple(r["stops"])})

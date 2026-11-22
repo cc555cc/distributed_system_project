@@ -5,13 +5,15 @@
 
 import logging
 import os
+
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
+
+from services.central.routers.bus_states import BusStateUpdate, apply_bus_state
 from services.edge.auth_edge_server import configure_mqtt_client
 from services.messaging import alerts, commands, topics
 from services.messaging.lamport import LamportClock
 from services.messaging.topics import ALERT_FILTER, EDGE_HEARTBEAT_FILTER
-from services.central.routers.bus_states import BusStateUpdate, apply_bus_state
 
 logger = logging.getLogger(__name__)
 

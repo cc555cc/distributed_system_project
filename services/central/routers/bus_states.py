@@ -1,10 +1,12 @@
 import os
+
 import psycopg
 from fastapi import APIRouter, HTTPException
-from psycopg.types.json import Jsonb
-from shared.schema.bus_state import BusStateUpdate
 from psycopg.rows import dict_row
-from services.central.ingestion_check import check_update #ingestion check function
+from psycopg.types.json import Jsonb
+
+from services.central.ingestion_check import check_update  #ingestion check function
+from shared.schema.bus_state import BusStateUpdate
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]

@@ -12,8 +12,8 @@ Used by the live reconnection tests (MQTT-04) and the delivery benchmarks
 """
 
 import socket
-from threading import Lock, Thread
 import time
+from threading import Lock, Thread
 
 
 class Link:

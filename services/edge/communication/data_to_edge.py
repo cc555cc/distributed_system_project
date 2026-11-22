@@ -8,23 +8,22 @@ from __future__ import annotations
 
 # Import libuaries that will be used in the code
 import json
-import os
 import logging
+import os
 import time
 from queue import Empty, Full, Queue
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
-
-from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
+from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.data_to_json_converter import convert_to_telemetry, decode_json
 from services.edge.edge_server_health import EdgeMonitor
 from services.messaging.topics import bus_heartbeat_filter
 
 # So type checkers, now what classes i am refering to and what type of data it those class need
 if TYPE_CHECKING:
-    from services.edge.edge_server import EdgeIngress
     from services.edge.communication.edge_to_central import CentralForwarder
+    from services.edge.edge_server import EdgeIngress
 
 # This imports the existing default bus registry object and the BusRegistry class 
 # used to create custom registries for other buses.
@@ -294,7 +293,7 @@ def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngr
                       else receiver.process_telemetry(telemetry))
             if subscriber.monitor is not None and result.status.value == "ACCEPTED":
                 subscriber.monitor.mark_valid_data(telemetry["bus_id"], telemetry["speed_kmh"])
-            logging.info("Processing result=%s", result.status.value)
+            logger.info("Processing result=%s", result.status.value)
 
             # # If centeral server exists, then attempt to send one pending message.
             if forwarder is not None:
@@ -302,7 +301,7 @@ def process_pending_messages(subscriber: TelemetrySubscriber, receiver: EdgeIngr
 
         # If the telemetry is invalid, log a warning and continue to the next message.
         except ValueError as error:
-            logging.warning("Not forwarded: validation failed (%s)", type(error).__name__)
+            logger.warning("Not forwarded: validation failed (%s)", type(error).__name__)
 
         # Mark the message as processed in the queue, regardless of whether it was successfully processed or not.
         finally:

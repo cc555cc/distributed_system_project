@@ -22,15 +22,15 @@ Use a dedicated broker: the benchmark creates up to hundreds of clients.
 """
 
 import argparse
-from datetime import datetime, timezone
 import json
 import math
 import os
-from pathlib import Path
 import platform
 import statistics
-from threading import Event, Lock, Thread
 import time
+from datetime import UTC, datetime
+from pathlib import Path
+from threading import Event, Lock, Thread
 from uuid import uuid4
 
 import paho.mqtt.client as mqtt
@@ -46,12 +46,12 @@ SCENARIOS = ("normal", "delayed", "outage")
 
 def reading(region, bus_id, sequence, lamport):
     # Same size and fields as real telemetry, plus the generation time in ns.
-    return dict(schema_version="bus-telemetry-v1", bus_id=bus_id, city_id="BENCH", region_id=region,
-                route_id="R1", latitude=43.9, longitude=-78.9, speed_kmh=30.0, direction_id=0,
-                bus_status="moving", passengers=10, capacity=50, sequence_number=sequence,
-                lamport_clock=lamport, timestamp=datetime.now(timezone.utc).isoformat(),
-                sensor_status="healthy", current_stop_id="S1", next_stop_id="S2",
-                generated_ns=time.time_ns())
+    return {"schema_version": "bus-telemetry-v1", "bus_id": bus_id, "city_id": "BENCH", "region_id": region,
+                "route_id": "R1", "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "direction_id": 0,
+                "bus_status": "moving", "passengers": 10, "capacity": 50, "sequence_number": sequence,
+                "lamport_clock": lamport, "timestamp": datetime.now(UTC).isoformat(),
+                "sensor_status": "healthy", "current_stop_id": "S1", "next_stop_id": "S2",
+                "generated_ns": time.time_ns()}
 
 
 def percentile(values, fraction):
@@ -193,24 +193,24 @@ def run_once(host, port, buses, *, scenario="normal", rate=5.0, duration=10.0, d
     delays = receiver.delays_ms
     elapsed = ((receiver.last_ns or publish_end_ns) - started_ns) / 1e9
     stats = [bus.publisher.stats for bus in fleet]
-    return dict(
-        scenario=scenario, buses=buses, rate_per_bus_hz=rate, duration_s=duration,
-        offered_msgs_per_s=round(buses * rate, 1),
-        published=sum(bus.outcomes["sent"] + bus.outcomes["queued"] for bus in fleet),
-        queued_while_offline=sum(bus.outcomes["queued"] for bus in fleet),
-        dropped_by_publisher=sum(bus.outcomes["dropped"] for bus in fleet),
-        received=report["arrivals"], unique=report["unique"], duplicates=report["duplicates"],
-        lost=report["lost"], late=report["late"], unacknowledged_at_close=unacknowledged,
-        lost_messages={bus: seqs for bus, seqs in report["missing"].items()},
-        lamport_violations=receiver.lamport_violations,
-        per_bus_order_preserved=report["late"] == 0,
-        delay_ms=dict(p50=_round(percentile(delays, 0.50)), p95=_round(percentile(delays, 0.95)),
-                      p99=_round(percentile(delays, 0.99)), max=_round(max(delays) if delays else None),
-                      mean=_round(statistics.fmean(delays) if delays else None)),
-        throughput_msgs_per_s=round(report["unique"] / elapsed, 1) if elapsed > 0 else None,
-        reconnects=sum(s["reconnects"] for s in stats), disconnects=sum(s["disconnects"] for s in stats),
-        events=[(name, round(at, 2)) for name, at in events],
-    )
+    return {
+        "scenario": scenario, "buses": buses, "rate_per_bus_hz": rate, "duration_s": duration,
+        "offered_msgs_per_s": round(buses * rate, 1),
+        "published": sum(bus.outcomes["sent"] + bus.outcomes["queued"] for bus in fleet),
+        "queued_while_offline": sum(bus.outcomes["queued"] for bus in fleet),
+        "dropped_by_publisher": sum(bus.outcomes["dropped"] for bus in fleet),
+        "received": report["arrivals"], "unique": report["unique"], "duplicates": report["duplicates"],
+        "lost": report["lost"], "late": report["late"], "unacknowledged_at_close": unacknowledged,
+        "lost_messages": {bus: seqs for bus, seqs in report["missing"].items()},
+        "lamport_violations": receiver.lamport_violations,
+        "per_bus_order_preserved": report["late"] == 0,
+        "delay_ms": {"p50": _round(percentile(delays, 0.50)), "p95": _round(percentile(delays, 0.95)),
+                      "p99": _round(percentile(delays, 0.99)), "max": _round(max(delays) if delays else None),
+                      "mean": _round(statistics.fmean(delays) if delays else None)},
+        "throughput_msgs_per_s": round(report["unique"] / elapsed, 1) if elapsed > 0 else None,
+        "reconnects": sum(s["reconnects"] for s in stats), "disconnects": sum(s["disconnects"] for s in stats),
+        "events": [(name, round(at, 2)) for name, at in events],
+    }
 
 
 def _round(value):
@@ -251,11 +251,11 @@ def main(argv=None):
     print(table(results))
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.output).write_text(json.dumps(dict(
-            recorded_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            environment=dict(python=platform.python_version(), platform=platform.platform(),
-                             paho=getattr(mqtt, "__version__", None) or "2.x", broker=f"{args.host}:{args.port}"),
-            settings=vars(args), results=results), indent=2) + "\n", encoding="utf-8")
+        Path(args.output).write_text(json.dumps({
+            "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "environment": {"python": platform.python_version(), "platform": platform.platform(),
+                             "paho": getattr(mqtt, "__version__", None) or "2.x", "broker": f"{args.host}:{args.port}"},
+            "settings": vars(args), "results": results}, indent=2) + "\n", encoding="utf-8")
     return results
 
 

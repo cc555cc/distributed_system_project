@@ -1,18 +1,20 @@
 """Create configured edge instances; each runs in its own process and keeps its own state."""
 
 import argparse
-from copy import deepcopy
 import json
 import logging
 import math
-from multiprocessing import Event, Process
 import os
+from copy import deepcopy
+from multiprocessing import Event, Process
 
 from services.edge.communication.data_to_edge import load_edge_config
 from services.edge.config import NetworkConfig
 from services.edge.edge_server import EdgeServerInstance
 from shared.schema.health import policy_from_environment
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
+
+logger = logging.getLogger(__name__)
 
 
 def configured_instances(network_path):
@@ -41,9 +43,9 @@ def deployment_plan(network_path):
         buses = [bus for bus in network["buses"] if bus["edge_id"] == edge_id]
         if any((bus["city_id"], bus["region_id"]) != (city, region) for bus in buses):
             raise ValueError("Bus owner is outside its configured city/region")
-        plan.append(dict(edge_id=edge_id, city_id=city, region_id=region,
-                         route_ids=sorted({bus["route_id"] for bus in buses}),
-                         bus_ids=sorted(bus["bus_id"] for bus in buses)))
+        plan.append({"edge_id": edge_id, "city_id": city, "region_id": region,
+                         "route_ids": sorted({bus["route_id"] for bus in buses}),
+                         "bus_ids": sorted(bus["bus_id"] for bus in buses)})
     return plan
 
 
@@ -88,7 +90,7 @@ def launch_instances(network_path, edge_ids=None):
         while any(process.is_alive() for process in processes):
             for process in processes:
                 if process.exitcode is not None and process.name not in reported:
-                    logging.warning("Edge instance exited: %s code=%s", process.name, process.exitcode)
+                    logger.warning("Edge instance exited: %s code=%s", process.name, process.exitcode)
                     reported.add(process.name)
             stop.wait(0.5)
     except KeyboardInterrupt:
@@ -114,6 +116,7 @@ class EdgeLoadSimulation:
     def __init__(self, network_path=DEFAULT_NETWORK_PATH):
         from collections import deque
         from threading import RLock
+
         from services.edge.edge_server import SimulatedEdge
         self.lock = RLock()
         self.time = 0.0
@@ -171,8 +174,8 @@ class EdgeLoadSimulation:
             target.queue.append(source.queue.pop())
             if not source.queue:
                 source.credit_ms = 0.0
-            self.events.append(dict(time=self.time, action="move_synthetic_request",
-                                    source=source.edge_id, target=target.edge_id))
+            self.events.append({"time": self.time, "action": "move_synthetic_request",
+                                    "source": source.edge_id, "target": target.edge_id})
 
     def submit(self, bus_id, count):
         with self.lock:
@@ -194,7 +197,7 @@ class EdgeLoadSimulation:
             self.accepted += accepted
             self.rejected += count - accepted
             self._observe()
-            return dict(accepted=accepted, rejected=count - accepted, simulation=self.snapshot())
+            return {"accepted": accepted, "rejected": count - accepted, "simulation": self.snapshot()}
 
     def configure(self, edge_id, *, capacity=None, processing_ms=None, active=None):
         with self.lock:
@@ -239,7 +242,7 @@ class EdgeLoadSimulation:
                     third = self.workers["edge-" + region + "-3"]
                     if self.auto_scale and since is not None and self.time - since >= 6 and not third.active and third.state == "standby":
                         third.active = True
-                        self.events.append(dict(time=self.time, action="start_simulated_instance", edge_id=third.edge_id))
+                        self.events.append({"time": self.time, "action": "start_simulated_instance", "edge_id": third.edge_id})
                     self._balance(region)
                 self._observe()
                 remaining -= step
@@ -247,10 +250,10 @@ class EdgeLoadSimulation:
 
     def snapshot(self):
         with self.lock:
-            return dict(mode="simulation", live_workers_changed=False, virtual_seconds=self.time,
-                        auto_scale=self.auto_scale, overload_percent=80, sustained_seconds=6,
-                        accepted=self.accepted, rejected=self.rejected,
-                        workers=[worker.snapshot() for worker in self.workers.values()], events=list(self.events))
+            return {"mode": "simulation", "live_workers_changed": False, "virtual_seconds": self.time,
+                        "auto_scale": self.auto_scale, "overload_percent": 80, "sustained_seconds": 6,
+                        "accepted": self.accepted, "rejected": self.rejected,
+                        "workers": [worker.snapshot() for worker in self.workers.values()], "events": list(self.events)}
 
 
 class EdgeClusterSimulation(EdgeLoadSimulation):
@@ -262,7 +265,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
     """
 
     def __init__(self, network_path=DEFAULT_NETWORK_PATH, fleet_size=None):
-        from services.edge.validation.bus_registry import BusRegistry, BusAssignment
+        from services.edge.validation.bus_registry import BusAssignment, BusRegistry
         super().__init__(network_path)
         self.network_path = network_path
         self.network = NetworkConfig.load(network_path)
@@ -327,7 +330,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         if copies:
             return deepcopy(copies[0])
         if self.committed[bus_id] is None:
-            return dict(entry=None, floor=None)
+            return {"entry": None, "floor": None}
         raise ValueError("No synchronized surviving replica; bus remains unavailable")
 
     def _complete(self, worker, job):
@@ -358,6 +361,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
 
     def submit_telemetry(self, source):
         from copy import deepcopy
+
         from services.edge.validation.validator import parse_telemetry
         with self.lock:
             checked, errors = parse_telemetry(source,
@@ -365,24 +369,25 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 expected_bus=source.get("bus_id", "") if isinstance(source, dict) else "", registry=self.registry)
             if checked is None:
                 self.rejected += 1
-                return dict(accepted=False, reason="; ".join(errors))
+                return {"accepted": False, "reason": "; ".join(errors)}
             bus_id = checked["bus_id"]
             owner = self.registry.get(bus_id).edge_id
             worker = self.workers[owner]
             if worker.state != "healthy" or len(worker.queue) >= worker.capacity:
                 self.rejected += 1
-                return dict(accepted=False, reason="Owner unavailable or queue full")
+                return {"accepted": False, "reason": "Owner unavailable or queue full"}
             self.sequence += 1
             job = (self.sequence, bus_id, self.time, deepcopy(checked), self.epochs[bus_id])
             self.journal[job[0]] = job
             worker.queue.append(job)
             self.accepted += 1
             self._observe()
-            return dict(accepted=True, edge_id=owner, epoch=self.epochs[bus_id], request_id=job[0])
+            return {"accepted": True, "edge_id": owner, "epoch": self.epochs[bus_id], "request_id": job[0]}
 
     def generate(self, bus_id, count):
         """Generate repeated valid sensor readings on the actual configured route."""
         from copy import deepcopy
+
         from services.data_simulation.generate_data import generate_messages
         with self.lock:
             if bus_id not in self.bus_regions or isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 10000:
@@ -401,7 +406,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 source = deepcopy(self.message_templates[bus_id])
                 source["sequence_number"] = source["lamport_clock"] = sequence
                 accepted += self.submit_telemetry(source)["accepted"]
-            return dict(accepted=accepted, rejected=count - accepted, simulation=self.snapshot())
+            return {"accepted": accepted, "rejected": count - accepted, "simulation": self.snapshot()}
 
     def transfer(self, bus_id, target_id):
         """Synchronize state, fence the old owner, then move every pending update."""
@@ -433,8 +438,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 target.queue.append(updated)
             for old_processor in source.processors.values():
                 old_processor.cache.release_bus(self._key(bus_id))
-            self.events.append(dict(time=self.time, action="transfer_bus", bus_id=bus_id,
-                                    source=source_id, target=target_id, epoch=self.epochs[bus_id]))
+            self.events.append({"time": self.time, "action": "transfer_bus", "bus_id": bus_id,
+                                    "source": source_id, "target": target_id, "epoch": self.epochs[bus_id]})
 
     def _takeover(self):
         remaining = []
@@ -476,7 +481,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             self.low_since.pop(edge_id, None)
             for bus_id in self._assigned(edge_id):
                 self.epochs[bus_id] += 1
-            self.events.append(dict(time=self.time, action="fail_instance", edge_id=edge_id))
+            self.events.append({"time": self.time, "action": "fail_instance", "edge_id": edge_id})
             self._takeover()
             return self.snapshot()
 
@@ -520,7 +525,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 raise
             worker.on_telemetry = self._complete
             self._synchronize(worker)
-            self.events.append(dict(time=self.time, action="register_instance", edge_id=edge_id))
+            self.events.append({"time": self.time, "action": "register_instance", "edge_id": edge_id})
             return self.snapshot()
 
     def scale_down(self, edge_id):
@@ -549,7 +554,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             worker.queue.clear()
             self.auto_workers.discard(edge_id)
             self.low_since.pop(edge_id, None)
-            self.events.append(dict(time=self.time, action="scale_down", edge_id=edge_id))
+            self.events.append({"time": self.time, "action": "scale_down", "edge_id": edge_id})
             return self.snapshot()
 
     def configure(self, edge_id, **changes):
@@ -619,7 +624,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                         self._synchronize(worker)
                         worker.state, worker.active = "healthy", True
                         del self.recover_at[edge_id]
-                        self.events.append(dict(time=self.time, action="recovery_complete", edge_id=edge_id))
+                        self.events.append({"time": self.time, "action": "recovery_complete", "edge_id": edge_id})
                 self._takeover()
                 for region in sorted(self.regions):
                     self._balance(region)
@@ -644,8 +649,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 return result
             result.update(telemetry_mode=True, pending_telemetry=len(self.journal), pending_synthetic=len(self.orphaned_requests), outcomes=dict(self.outcomes),
                           central_states=deepcopy(self.central_states),
-                          ownership={bus_id: dict(edge_id=self.registry.get(bus_id).edge_id, epoch=self.epochs[bus_id],
-                              home_region=self.bus_regions[bus_id], available=self.workers[self.registry.get(bus_id).edge_id].state == "healthy")
+                          ownership={bus_id: {"edge_id": self.registry.get(bus_id).edge_id, "epoch": self.epochs[bus_id],
+                              "home_region": self.bus_regions[bus_id], "available": self.workers[self.registry.get(bus_id).edge_id].state == "healthy"}
                               for bus_id in self.bus_regions})
             for worker in result["workers"]:
                 worker["assigned_buses"] = self._assigned(worker["edge_id"])
@@ -676,15 +681,15 @@ def benchmark_cluster():
             cluster.advance(1)
         elapsed = perf_counter() - started
         completed = sum(w.completed for w in cluster.workers.values())
-        results.append(dict(buses=size, accepted=cluster.accepted, rejected=cluster.rejected,
-            processed=cluster.outcomes.get("ACCEPTED", 0), pending=len(cluster.journal), wall_seconds=round(elapsed, 4),
-            virtual_throughput_per_second=cluster.accepted / cluster.time,
-            wall_throughput_per_second=round(cluster.accepted / elapsed, 2),
-            average_virtual_latency_ms=round(sum(w.latency_seconds for w in cluster.workers.values()) / completed * 1000, 3),
-            normal_virtual_latency_ms=round(normal_latency / normal_completed * 1000, 3),
-            failover_virtual_latency_ms=round((sum(w.latency_seconds for w in cluster.workers.values()) - normal_latency) / (completed - normal_completed) * 1000, 3),
-            failover_decision_wall_ms=round(failover_ms, 3), normal_distribution=normal_distribution,
-            final_distribution={w.edge_id: len(cluster._assigned(w.edge_id)) for w in cluster.workers.values() if w.active}))
+        results.append({"buses": size, "accepted": cluster.accepted, "rejected": cluster.rejected,
+            "processed": cluster.outcomes.get("ACCEPTED", 0), "pending": len(cluster.journal), "wall_seconds": round(elapsed, 4),
+            "virtual_throughput_per_second": cluster.accepted / cluster.time,
+            "wall_throughput_per_second": round(cluster.accepted / elapsed, 2),
+            "average_virtual_latency_ms": round(sum(w.latency_seconds for w in cluster.workers.values()) / completed * 1000, 3),
+            "normal_virtual_latency_ms": round(normal_latency / normal_completed * 1000, 3),
+            "failover_virtual_latency_ms": round((sum(w.latency_seconds for w in cluster.workers.values()) - normal_latency) / (completed - normal_completed) * 1000, 3),
+            "failover_decision_wall_ms": round(failover_ms, 3), "normal_distribution": normal_distribution,
+            "final_distribution": {w.edge_id: len(cluster._assigned(w.edge_id)) for w in cluster.workers.values() if w.active}})
     return results
 
 

@@ -2,8 +2,8 @@
 
 import json
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from services.central.health import CentralHealthMonitor
 from services.edge.config import EdgeConfig, NetworkConfig
@@ -110,10 +110,11 @@ def test_bad_identity_or_metrics_cannot_refresh_health(monitor):
 
 def test_health_callback_and_api_use_the_same_central_monitor(monitor, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/health_test")
+    from types import SimpleNamespace
+
     from services.central import health
     from services.central.main import app
     from services.messaging import mqtt_client
-    from types import SimpleNamespace
     store, _, _ = monitor
     monkeypatch.setattr(health, "monitor", store)
     value = report()
@@ -126,15 +127,14 @@ def test_health_callback_and_api_use_the_same_central_monitor(monitor, monkeypat
 
 
 def test_sensor_publisher_to_edge_to_central_health_api(monitor, monkeypatch):
-    from services.data_simulation.run_buses import SimulatorHeartbeats
-    from services.edge.edge_server_health import EdgeMonitor
-    from services.edge.communication.data_to_edge import TelemetrySubscriber
-    from services.messaging import mqtt_client
+    from types import SimpleNamespace
+
     from services.central import health
     from services.central.main import app
+    from services.data_simulation.run_buses import SimulatorHeartbeats
+    from services.edge.edge_server_health import EdgeMonitor
+    from services.messaging import mqtt_client
     from shared.schema.health import SENSORS
-    from types import SimpleNamespace
-    from unittest.mock import Mock
     store, now, policy = monitor
     monkeypatch.setattr(health, "monitor", store)
     config = EdgeConfig("DURHAM", "west", "edge-west-1")
@@ -269,7 +269,7 @@ def test_missing_edge_overrides_old_bus_faults_with_unknown(monitor):
     receive(store, value)
     now[0] = 10
     bus = next(item for item in store.snapshot()["buses"] if item["bus_id"] == value["buses"][0]["bus_id"])
-    assert bus["health"] == dict(status="unknown", reasons=["edge_unavailable"])
+    assert bus["health"] == {"status": "unknown", "reasons": ["edge_unavailable"]}
     assert all(sensor["health_status"] == "unknown" for sensor in bus["sensors"].values())
 
 

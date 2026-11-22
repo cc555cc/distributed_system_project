@@ -73,7 +73,7 @@ def _valid_timestamp(value: object) -> bool:
     if not isinstance(value, str):
         return False
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         return False
     return parsed.tzinfo is not None and parsed.utcoffset() is not None

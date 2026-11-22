@@ -10,8 +10,8 @@ import json
 import math
 import os
 import re
-from threading import RLock
 import time
+from threading import RLock
 from uuid import uuid4
 
 from services.edge.data_to_json_converter import decode_json
@@ -37,13 +37,13 @@ def sign_message(topic, payload, principal, secret, *, timestamp=None, nonce=Non
     timestamp = time.time() if timestamp is None else timestamp
     nonce = uuid4().hex if nonce is None else nonce
     signature = hmac.new(_key(secret), _signed_bytes(topic, principal, timestamp, nonce, payload), hashlib.sha256).hexdigest()
-    return dict(auth=dict(principal=principal, timestamp=timestamp, nonce=nonce, signature=signature), payload=payload)
+    return {"auth": {"principal": principal, "timestamp": timestamp, "nonce": nonce, "signature": signature}, "payload": payload}
 
 
 def _environment_keys():
     keys = decode_json(os.getenv("EDGE_PUBLISHER_KEYS_JSON", "{}"))
     if not isinstance(keys, dict):
-        raise ValueError("EDGE_PUBLISHER_KEYS_JSON must be a principal-to-secret object")
+        raise TypeError("EDGE_PUBLISHER_KEYS_JSON must be a principal-to-secret object")
     for principal, secret in keys.items():
         if not isinstance(principal, str) or not principal.startswith("bus:") or not _segment(principal[4:]):
             raise ValueError("Publisher principals must use bus:<registered-id>")

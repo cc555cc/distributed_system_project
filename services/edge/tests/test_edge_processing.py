@@ -1,18 +1,19 @@
 """EDGE-02 acceptance cases; fake monotonic time and no broker/database needed."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from datetime import datetime, timezone
-import json
+from datetime import UTC, datetime
 
 import pytest
 
+from services.edge.communication.data_to_edge import TelemetrySubscriber
 from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
-from services.edge.processing.processor import EdgeProcessor, ProcessingStatus as Status
+from services.edge.edge_server import EdgeIngress
+from services.edge.processing.processor import EdgeProcessor
+from services.edge.processing.processor import ProcessingStatus as Status
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 from services.edge.validation.validator import parse_telemetry
-from services.edge.communication.data_to_edge import TelemetrySubscriber
-from services.edge.edge_server import EdgeIngress
 
 
 @pytest.fixture
@@ -42,7 +43,7 @@ def processor(network, clock):
     return EdgeProcessor(EdgeConfig("CITY-A", "north", "edge-a", max_buses=2,
                                    freshness_seconds=10, expire_seconds=20), network,
                          clock=lambda: clock[0],
-                         utc_now=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
+                         utc_now=lambda: datetime(2026, 1, 1, tzinfo=UTC))
 
 
 def message(bus="A1", sequence=1, **changes):
@@ -278,7 +279,7 @@ def test_multiple_routes_and_missing_progress(processor):
     {"freshness_seconds": float("nan")}, {"medium_threshold": 90},
 ])
 def test_invalid_cache_policy_rejected(settings):
-    values = dict(city_id="CITY-A", region_id="north", edge_id="edge-a", freshness_seconds=10)
+    values = {"city_id": "CITY-A", "region_id": "north", "edge_id": "edge-a", "freshness_seconds": 10}
     values.update(settings)
     with pytest.raises(ValueError):
         EdgeConfig(**values)

@@ -29,10 +29,10 @@ never holds its condition lock while calling into Paho. A separate send lock,
 never taken by Paho's network thread, keeps sends in order.
 """
 
-from collections import deque
 import logging
-from threading import Condition, Lock, Thread
 import time
+from collections import deque
+from threading import Condition, Lock, Thread
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class ReliablePublisher:
         self._early_acks = set()    # acks that arrived before publish() recorded the ID
         self._flusher = None
         self._subscriptions = {}    # topic filter -> handler(topic, payload)
-        self.stats = dict(sent=0, queued=0, dropped=0, acknowledged=0, disconnects=0, reconnects=0)
+        self.stats = {"sent": 0, "queued": 0, "dropped": 0, "acknowledged": 0, "disconnects": 0, "reconnects": 0}
 
     # ---- paho callbacks (network thread) ----
     def _on_connect(self, client, userdata, flags, reason_code, properties):

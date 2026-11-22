@@ -10,21 +10,19 @@ need direct database access.
 """
 
 # Import standard libraries for data handling, logging, and type annotations
-from collections import OrderedDict
 import json
 import logging
+from collections import OrderedDict
 from typing import Any
+
 from pydantic import BaseModel
 
+from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
 
 # Import the EdgeConfig, BusRegistry, EdgeIngress, ProcessingResult, ProcessingStatus,
 # OccupancyUnit, and map_bus_update classes from their respective modules
-
 # So import the Edge Server Config
 from services.edge.config import EdgeConfig
-
-# Import the Registry Information for the Buses
-from services.edge.validation.bus_registry import BusRegistry
 
 # Import the Edge Processing and Ingress Classes For Incombing Data
 from services.edge.edge_server import EdgeIngress
@@ -35,9 +33,11 @@ from services.edge.processing.processor import ProcessingResult, ProcessingStatu
 # Import the Central Mapper for Occupancy Unit and Mapping Bus Updates
 from services.edge.transformation.central_mapper import OccupancyUnit, map_bus_update
 
-
-from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
+# Import the Registry Information for the Buses
+from services.edge.validation.bus_registry import BusRegistry
 from services.messaging.lamport import LamportClock
+
+logger = logging.getLogger(__name__)
 
 
 class EdgeToCentral:
@@ -199,13 +199,13 @@ class CentralForwarder:
         bus_id, (payload, accepted_at) = self.pending.popitem(last=False)
         processor = self.receiver.processor
         if processor.clock() - accepted_at >= processor.config.freshness_seconds:
-            logging.warning("Discarded expired outgoing update for bus=%s", bus_id)
+            logger.warning("Discarded expired outgoing update for bus=%s", bus_id)
             return False
         try:
             self.sender.send(bus_id, payload)
         except (ConnectionError, TimeoutError, RuntimeError, OSError):
             # One slot per owned registered bus bounds memory. No event history.
             self.pending[bus_id] = (payload, accepted_at)
-            logging.warning("Central delivery pending for bus=%s", bus_id)
+            logger.warning("Central delivery pending for bus=%s", bus_id)
             return False
         return True

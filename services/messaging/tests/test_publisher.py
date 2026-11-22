@@ -57,7 +57,7 @@ def test_online_messages_are_sent_and_acknowledged(publisher):
     assert publisher.unacknowledged == 1
     publisher.client.acknowledge_all()
     assert publisher.unacknowledged == 0
-    assert publisher.stats == dict(sent=1, queued=0, dropped=0, acknowledged=1, disconnects=0, reconnects=0)
+    assert publisher.stats == {"sent": 1, "queued": 0, "dropped": 0, "acknowledged": 1, "disconnects": 0, "reconnects": 0}
 
 
 def test_offline_messages_are_queued_then_acknowledged_after_reconnect(publisher):
@@ -72,7 +72,7 @@ def test_offline_messages_are_queued_then_acknowledged_after_reconnect(publisher
     from services.messaging.relay import wait_for
     wait_for(lambda: len(client.kept) == 2, timeout=2, what="offline messages sent after reconnect")
     client.acknowledge_all()                        # broker acknowledges
-    assert publisher.stats == dict(sent=0, queued=2, dropped=0, acknowledged=2, disconnects=1, reconnects=1)
+    assert publisher.stats == {"sent": 0, "queued": 2, "dropped": 0, "acknowledged": 2, "disconnects": 1, "reconnects": 1}
     assert publisher.flush(0) == 0
 
 
