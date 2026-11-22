@@ -8,6 +8,11 @@ const eventsBox = document.getElementById("events");
 
 let loading = false;
 
+// Real edge status changes, detected by comparing /health/edges between refreshes.
+// Central has no event-history endpoint, so this only covers the time the page is open.
+let lastEdgeStatus = {};
+const statusChanges = [];
+
 function edgeKind(status) {
   if (status === "healthy") {
     return "good";
@@ -47,29 +52,24 @@ function crowdKind(crowding) {
   return "grey";
 }
 
-function eventText(event) {
-  if (event.action === "fail_instance") {
-    return event.edge_id + " failed";
+function recordStatusChanges(health) {
+  if (!health) {
+    return;
   }
-  if (event.action === "recovery_complete") {
-    return event.edge_id + " recovered";
+  const now = new Date().toLocaleTimeString();
+  health.edges.forEach(function (edge) {
+    const before = lastEdgeStatus[edge.edge_id];
+    if (before !== undefined && before !== edge.status) {
+      statusChanges.push({ time: now, edge_id: edge.edge_id, from: before, to: edge.status });
+    }
+    lastEdgeStatus[edge.edge_id] = edge.status;
+  });
+  while (statusChanges.length > 20) {
+    statusChanges.shift();
   }
-  if (event.action === "transfer_bus") {
-    return event.bus_id + " moved from " + event.source + " to " + event.target;
-  }
-  if (event.action === "register_instance") {
-    return event.edge_id + " was added";
-  }
-  if (event.action === "start_simulated_instance") {
-    return event.edge_id + " started to share the load";
-  }
-  if (event.action === "scale_down") {
-    return event.edge_id + " was removed";
-  }
-  return event.action;
 }
 
-function buildAlerts(buses, health, simulation) {
+function buildAlerts(buses, health) {
   const alerts = [];
 
   buses.forEach(function (bus) {
@@ -99,10 +99,12 @@ function buildAlerts(buses, health, simulation) {
     });
   }
 
-  if (simulation) {
-    simulation.workers.forEach(function (worker) {
-      if (worker.state === "failed") {
-        alerts.push({ kind: "bad", text: worker.edge_id + " failed (simulation)" });
+  if (health && health.recommendations) {
+    health.recommendations.forEach(function (rec) {
+      if (rec.to_edge_id) {
+        alerts.push({ kind: "warn", text: "Recommendation: move load from " + rec.from_edge_id + " to " + rec.to_edge_id + " (not done automatically)" });
+      } else {
+        alerts.push({ kind: "warn", text: "Recommendation: " + rec.from_edge_id + " needs extra capacity, no peer has room" });
       }
     });
   }
@@ -218,35 +220,40 @@ function showEdges(health) {
   }
   const rows = health.edges.map(function (edge) {
     let queue = "no report";
-    let assigned = "unknown";
     if (edge.last_report) {
       queue = Math.round(edge.last_report.workload.queue_utilization_percent) + "%";
-      assigned = edge.last_report.workload.assigned_buses;
     }
+    // Buses this edge reports owning (from its own heartbeat)
+    const owned = (health.buses || []).filter(function (bus) {
+      return bus.edge_id === edge.edge_id;
+    }).map(function (bus) {
+      return bus.bus_id;
+    });
+    const heartbeat = edge.age_seconds === null || edge.age_seconds === undefined
+      ? "never"
+      : Math.round(edge.age_seconds) + " s ago";
     return [
       edge.edge_id,
       edge.region_id,
       tag(edge.status, edgeKind(edge.status)),
+      heartbeat,
       tag(edge.workload_status, loadKind(edge.workload_status)),
       queue,
-      assigned
+      owned.length ? owned.join(", ") : "-"
     ];
   });
-  edgesBox.innerHTML = tableHtml(["Edge server", "Region", "Status", "Workload", "Queue", "Buses"], rows);
+  edgesBox.innerHTML = tableHtml(["Edge server", "Region", "Status", "Last heartbeat", "Workload", "Queue", "Buses"], rows);
 }
 
-function showEvents(simulation) {
-  if (simulation === null) {
-    eventsBox.innerHTML = "<p>Failover events are not available right now.</p>";
-    return;
-  }
-  if (simulation.events.length === 0) {
-    eventsBox.innerHTML = "<p>No failover events yet.</p>";
+function showEvents() {
+  if (statusChanges.length === 0) {
+    eventsBox.innerHTML = "<p>No edge status changes since this page was opened.</p>";
     return;
   }
   let html = "<ul class='plain'>";
-  simulation.events.slice(-10).reverse().forEach(function (event) {
-    html += "<li>t=" + event.time + "s: " + eventText(event) + "</li>";
+  statusChanges.slice(-10).reverse().forEach(function (change) {
+    html += "<li>" + change.time + ": " + change.edge_id + " " +
+      tag(change.from, edgeKind(change.from)) + " &rarr; " + tag(change.to, edgeKind(change.to)) + "</li>";
   });
   eventsBox.innerHTML = html + "</ul>";
 }
@@ -261,7 +268,6 @@ async function loadAll() {
     const problems = [];
     let routes = [];
     let health = null;
-    let simulation = null;
 
     try {
       routes = await getRoutes();
@@ -304,19 +310,14 @@ async function loadAll() {
       problems.push("edge health");
     }
 
-    try {
-      simulation = await getSimulation();
-    } catch (error) {
-      problems.push("failover events");
-    }
-
-    const alerts = buildAlerts(buses, health, simulation);
+    recordStatusChanges(health);
+    const alerts = buildAlerts(buses, health);
     showSummary(buses, health, alerts);
     showAlerts(alerts);
     showBuses(buses);
     showRoutes(routes, buses);
     showEdges(health);
-    showEvents(simulation);
+    showEvents();
 
     if (problems.length > 0) {
       updatedText.textContent = "Could not load: " + problems.join(", ") + ". Is the server running?";
