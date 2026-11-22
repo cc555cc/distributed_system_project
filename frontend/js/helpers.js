@@ -43,12 +43,14 @@ function hasValidPosition(bus) {
 }
 
 function ageSeconds(bus) {
+  if (bus.simulation_age_seconds !== undefined) return bus.simulation_age_seconds;
   return (Date.now() - new Date(bus.last_updated).getTime()) / 1000;
 }
 
 function isStale(bus) {
   const age = ageSeconds(bus);
-  return isNaN(age) || age > STALE_SECONDS || bus.bus_status === "idle";
+  return isNaN(age) || age > STALE_SECONDS || ["idle", "out_of_service"].includes(bus.bus_status) ||
+    ["unknown", "unavailable", "degraded", "paused"].includes(bus.simulation_status);
 }
 
 function crowdingOf(bus) {

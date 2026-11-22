@@ -407,6 +407,11 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         self.auto_workers = set()
         self.generated_sequences = {}
         self.message_templates = {}
+        self.demo = None
+        self.demo_running = False
+        self.central_available = True
+        self.central_pending, self.central_received_at, self.central_pending_at = {}, {}, {}
+        self.central_retry_at = 0.0
         for worker in self.workers.values():
             worker.on_telemetry = self._complete
 
@@ -499,9 +504,62 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                     self.outcomes.get("NOT_FORWARDABLE", 0) + 1
                 )
                 return
+            self.central_pending[bus_id] = payload
+            self.central_pending_at[bus_id] = self.time
+            self._deliver_central()
+
+    def _deliver_central(self):
+        """Model a delivery acknowledgement; an outage retains one latest state per bus."""
+        if not self.central_pending or self.time < self.central_retry_at:
+            return
+        if not self.central_available:
+            self.events.append(dict(time=self.time, action="central_retry", pending=len(self.central_pending),
+                                    reason="injected central outage; no acknowledgement"))
+            self.central_retry_at = self.time + 2
+            return
+        from shared.schema.bus_state import BusStateUpdate
+
+        for bus_id, payload in list(self.central_pending.items()):
+            expired = self.time - self.central_pending_at[bus_id] >= 30
+            fenced = payload["edge_metadata"]["edge_id"] != self.registry.get(bus_id).edge_id
+            if expired or fenced:
+                del self.central_pending[bus_id]
+                del self.central_pending_at[bus_id]
+                self.events.append(dict(time=self.time, action="central_expired" if expired else "central_fenced", bus_id=bus_id,
+                                        reason="pending reading is no longer fresh" if expired else "former owner cannot update central"))
+                continue
+            BusStateUpdate.model_validate(payload, strict=True)
+            # Sequence checks stand in for central's acknowledgement of this state.
             old = self.central_states.get(bus_id)
             if old is None or payload["sequence_number"] > old["sequence_number"]:
                 self.central_states[bus_id] = payload
+                self.central_received_at[bus_id] = self.time
+            del self.central_pending[bus_id]
+            del self.central_pending_at[bus_id]
+            if self.central_retry_at > 0 or old is None:
+                self.events.append(dict(time=self.time, action="central_ack", bus_id=bus_id,
+                                        sequence=payload["sequence_number"]))
+        self.central_retry_at = 0.0
+
+    def configure_demo(self, running=None, bus_id=None, condition=None, central_available=None):
+        from services.data_simulation.generate_data import DemoFleet
+
+        with self.lock:
+            if condition is not None and (bus_id not in self.bus_regions or condition not in DemoFleet.CONDITIONS):
+                raise ValueError("Choose a registered bus and supported condition")
+            if self.demo is None:
+                self.demo = DemoFleet(self.network_path, self.bus_definitions, self.time, self.events.append)
+                for name, bus in self.demo.buses.items():
+                    bus["sequence"] = max(self.generated_sequences.get(name, 0), self.committed[name] or 0)
+            if running is not None:
+                self.demo_running = running
+                self.events.append(dict(time=self.time, action="demo_started" if running else "demo_stopped"))
+            if condition is not None:
+                self.demo.configure(bus_id, condition, self.time)
+            if central_available is not None:
+                self.central_available = central_available
+                self.events.append(dict(time=self.time, action="central_available" if central_available else "central_unavailable"))
+            return self.snapshot()
 
     def submit_telemetry(self, source):
         from copy import deepcopy
@@ -879,7 +937,10 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             remaining = seconds
             while remaining > 1e-9:
                 step = min(1.0, remaining)
+                if self.demo is not None and self.demo_running:
+                    self.demo.step(step, self.time + step, self.submit_telemetry)
                 super().advance(step)
+                self._deliver_central()
                 for edge_id, ready_at in list(self.recover_at.items()):
                     if self.time >= ready_at:
                         worker = self.workers[edge_id]
@@ -920,6 +981,11 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 return result
             result.update(
                 telemetry_mode=True,
+                demo_running=self.demo_running,
+                demo_buses=self.demo.snapshot(self.time) if self.demo is not None else {},
+                central_available=self.central_available,
+                central_pending=len(self.central_pending),
+                central_received_at=dict(self.central_received_at),
                 pending_telemetry=len(self.journal),
                 pending_synthetic=len(self.orphaned_requests),
                 outcomes=dict(self.outcomes),

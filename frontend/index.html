@@ -19,6 +19,8 @@
 
   <main class="passenger-layout">
     <aside class="side-panel">
+      <label for="data-source">Data source</label>
+      <select id="data-source"><option value="live">Live MQTT</option><option value="demo">Controlled demonstration</option></select>
       <label for="region-select">City / Region</label>
       <select id="region-select"></select>
       <p id="status">Loading...</p>
@@ -35,8 +37,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=3"></script>
-  <script src="js/helpers.js?v=3"></script>
-  <script src="js/passenger.js"></script>
+  <script src="js/api.js?v=6"></script>
+  <script src="js/helpers.js?v=6"></script>
+  <script src="js/passenger.js?v=6"></script>
 </body>
 </html>

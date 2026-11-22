@@ -126,6 +126,7 @@ function busPopup(busId, bus, stale) {
   }
   text += "Status: " + bus.bus_status + "<br>";
   text += "Speed: " + Math.round(bus.speed) + " km/h<br>";
+  if (bus.distance_m !== undefined) text += "Local distance travelled: " + (bus.distance_m / 1000).toFixed(2) + " km<br>";
   text += "Passengers: " + occupancyText(bus) + "<br>";
   text += "Next stop: " + nextStop;
   return text;
@@ -157,7 +158,8 @@ function showBus(item, bus) {
   }
 
   const row = document.createElement("li");
-  row.textContent = item.id + ": " + (stale ? "not live" : occupancyText(bus));
+  row.textContent = item.id + ": " + (stale ? "last known position" : occupancyText(bus)) +
+    (bus.distance_m === undefined ? "" : " · " + Math.round(bus.distance_m) + " m travelled locally");
   row.addEventListener("click", function () {
     map.setView(busMarkers[item.id].getLatLng(), 15);
     busMarkers[item.id].openPopup();

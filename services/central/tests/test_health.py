@@ -534,3 +534,160 @@ def test_recovery_clock_runs_without_browser_steps_and_supports_pause_speed(monk
     now[0] = 21.5
     clock.tick()
     assert health.simulation.time == 1
+
+
+@pytest.fixture
+def demo_client(monkeypatch):
+    from services.central import health
+    from services.central.main import app
+    from services.edge.main import EdgeClusterSimulation
+
+    monkeypatch.setattr(health, "simulation", EdgeClusterSimulation())
+    monkeypatch.setattr(health, "simulation_clock", health.SimulationClock(clock=lambda: 0.0))
+    client = TestClient(app)
+    assert client.patch("/health/simulation/demo", json={"running": True}).status_code == 200
+    return client
+
+
+def demo_step(client, seconds=2):
+    response = client.post("/health/simulation/advance", json={"seconds": float(seconds)})
+    assert response.status_code == 200
+    return response.json()
+
+
+def demo_condition(client, condition):
+    response = client.patch("/health/simulation/demo", json={"bus_id": "bus-302-1", "condition": condition})
+    assert response.status_code == 200
+
+
+def test_demo_movement_stops_traffic_demand_and_runtime_controls(demo_client):
+    client = demo_client
+    state = demo_step(client)
+    assert len(state["central_states"]) == 20
+    original = state["demo_buses"]["bus-302-1"]["distance_m"]
+    demo_condition(client, "stopped")
+    state = demo_step(client, 3)
+    assert state["demo_buses"]["bus-302-1"]["distance_m"] == original
+    assert state["central_states"]["bus-302-1"]["speed"] == 0
+    assert state["demo_buses"]["bus-302-1"]["status"] == "healthy"
+    demo_condition(client, "traffic")
+    state = demo_step(client, 3)
+    assert state["central_states"]["bus-302-1"]["speed"] == 9
+    assert state["demo_buses"]["bus-302-1"]["distance_m"] - original == pytest.approx(7.5)
+    demo_condition(client, "peak")
+    state = demo_step(client)
+    assert state["central_states"]["bus-302-1"]["occupancy"] == 40
+    demo_condition(client, "out_of_service")
+    state = demo_step(client)
+    assert state["central_states"]["bus-302-1"]["occupancy"] == 0
+    assert state["central_states"]["bus-302-1"]["bus_status"] == "out_of_service"
+    demo_condition(client, "normal")
+    from services.central import health
+    from services.data_simulation.generate_data import distance_metres
+    bus = health.simulation.demo.buses["bus-302-1"]
+    a, b = bus["stops"][bus["segment"]:bus["segment"] + 2]
+    bus["metres"] = max(0.0, distance_metres(a, b) - 20)
+    phases = [demo_step(client, 1)["demo_buses"]["bus-302-1"]["phase"] for _ in range(7)]
+    assert all(phase in phases for phase in ("arriving", "stopped", "boarding", "departing", "travelling"))
+    state = client.get("/health/simulation").json()
+    client.patch("/health/simulation/demo", json={"running": False})
+    distance = state["demo_buses"]["bus-302-1"]["distance_m"]
+    assert demo_step(client)["demo_buses"]["bus-302-1"]["distance_m"] == distance
+    client.patch("/health/simulation/demo", json={"running": True})
+    assert demo_step(client)["demo_buses"]["bus-302-1"]["distance_m"] > distance
+
+
+def test_demo_sensor_fault_invalid_reading_silence_and_recovery(demo_client):
+    client = demo_client
+    state = demo_step(client)
+    accepted = state["central_states"]["bus-302-1"]["sequence_number"]
+    demo_condition(client, "sensor_fault")
+    state = demo_step(client, 3)
+    bus = state["demo_buses"]["bus-302-1"]
+    assert bus["sensors"]["occupancy"] == "faulty" and bus["sensors"]["gps"] == "healthy"
+    assert bus["status"] == "degraded"
+    assert state["central_states"]["bus-302-1"]["sequence_number"] == accepted
+    demo_condition(client, "invalid_reading")
+    state = demo_step(client, 3)
+    assert state["demo_buses"]["bus-302-1"]["rejected_readings"] > 0
+    assert "unconfirmed" in state["demo_buses"]["bus-302-1"]["evidence"]
+    assert state["central_states"]["bus-302-1"]["sequence_number"] == accepted
+    for condition in ("sensors_stopped", "silence"):
+        demo_condition(client, condition)
+        state = demo_step(client, 7)
+        assert state["demo_buses"]["bus-302-1"]["status"] == "unavailable"
+    assert "cause unknown" in state["demo_buses"]["bus-302-1"]["evidence"]
+    demo_condition(client, "normal")
+    assert client.get("/health/simulation").json()["demo_buses"]["bus-302-1"]["status"] != "healthy"
+    state = demo_step(client, 3)
+    assert state["demo_buses"]["bus-302-1"]["status"] == "healthy"
+    assert state["central_states"]["bus-302-1"]["sequence_number"] > accepted
+
+
+def test_demo_transport_process_outage_retries_takeover_and_recovery(demo_client):
+    client = demo_client
+    demo_step(client)
+    demo_condition(client, "connection_loss")
+    state = demo_step(client, 7)
+    bus = state["demo_buses"]["bus-302-1"]
+    assert bus["status"] == "unavailable" and bus["delivery_pending"]
+    assert bus["local"]["sequence_number"] > state["central_states"]["bus-302-1"]["sequence_number"]
+    attempts = [e["time"] for e in state["events"] if e["action"] == "delivery_attempt" and e.get("bus_id") == "bus-302-1"]
+    assert all(b - a >= 2 for a, b in zip(attempts, attempts[1:]))
+    demo_condition(client, "process_failure")
+    distance = bus["distance_m"]
+    assert demo_step(client, 7)["demo_buses"]["bus-302-1"]["distance_m"] == distance
+    demo_condition(client, "normal")
+    demo_step(client, 3)
+    client.patch("/health/simulation/demo", json={"central_available": False})
+    state = demo_step(client, 3)
+    assert state["central_pending"] == 20
+    delivered = state["central_states"]["bus-302-1"]["sequence_number"]
+    client.post("/health/simulation/instances/edge-west-1/fail")
+    state = demo_step(client, 3)
+    assert state["ownership"]["bus-302-1"]["edge_id"] == "edge-west-2"
+    client.patch("/health/simulation/demo", json={"central_available": True})
+    client.post("/health/simulation/instances/edge-west-1/recover")
+    state = demo_step(client, 3)
+    assert state["central_pending"] == 0
+    assert state["central_states"]["bus-302-1"]["sequence_number"] > delivered
+    assert next(w for w in state["workers"] if w["edge_id"] == "edge-west-1")["state"] == "healthy"
+    client.patch("/health/simulation/demo", json={"central_available": False})
+    demo_step(client, 3)
+    demo_condition(client, "process_failure")
+    state = demo_step(client, 35)
+    delivered = state["central_states"]["bus-302-1"]["sequence_number"]
+    client.patch("/health/simulation/demo", json={"central_available": True})
+    state = demo_step(client, 3)
+    assert state["central_states"]["bus-302-1"]["sequence_number"] == delivered
+    assert any(e["action"] == "central_expired" for e in state["events"])
+    # A delayed payload from the former owner must not bypass central's fence.
+    from services.edge.main import EdgeClusterSimulation
+    cluster = EdgeClusterSimulation()
+    cluster.configure_demo(central_available=False)
+    cluster.generate("bus-302-1", 1)
+    cluster.advance(1)
+    cluster.fail("edge-west-1")
+    cluster.configure_demo(central_available=True)
+    result = cluster.advance(3)
+    assert "bus-302-1" not in result["central_states"]
+    assert any(e["action"] == "central_fenced" for e in result["events"])
+
+
+def test_demo_api_rejects_invalid_controls_and_preserves_other_region(demo_client):
+    client = demo_client
+    routes = client.get("/health/simulation/routes").json()
+    assert {route["region_id"] for route in routes} == {"west", "east"}
+    assert client.get("/health/simulation/routes/302/stops").json()[0]["direction_id"] == 0
+    assert client.get("/health/simulation/routes/unknown/stops").status_code == 404
+    for body in ({}, {"bus_id": "bus-302-1"}, {"bus_id": "unknown", "condition": "normal"},
+                 {"bus_id": "bus-302-1", "condition": "guess_crash"}, {"running": "yes"}):
+        assert client.patch("/health/simulation/demo", json=body).status_code == 422
+    demo_step(client)
+    demo_condition(client, "process_failure")
+    state = demo_step(client, 7)
+    assert state["demo_buses"]["bus-302-1"]["status"] == "unavailable"
+    assert state["demo_buses"]["bus-407-1"]["status"] == "healthy"
+    from shared.schema.bus_state import BusStateUpdate
+    for payload in state["central_states"].values():
+        BusStateUpdate.model_validate(payload, strict=True)

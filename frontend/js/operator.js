@@ -65,7 +65,7 @@ function buildAlerts(buses, health) {
   if (health) {
     (health.buses || []).forEach(function (bus) {
       if (bus.health && bus.health.status !== "healthy") {
-        alerts.push({ kind: bus.health.status === "unknown" ? "grey" : "warn",
+        alerts.push({ kind: ["unknown", "paused"].includes(bus.health.status) ? "grey" : "warn",
           text: bus.bus_id + ": " + bus.health.status + " (" + (bus.health.reasons || []).join(", ") + ")" });
       }
     });
@@ -221,7 +221,7 @@ function showEdges(health) {
       return bus.bus_id;
     });
     const heartbeat = edge.age_seconds === null || edge.age_seconds === undefined
-      ? "never"
+      ? (demoView() ? "simulation clock" : "never")
       : Math.round(edge.age_seconds) + " s ago";
     return [
       edge.edge_id,
@@ -242,10 +242,12 @@ function showEvents(events) {
     return;
   }
   eventsBox.innerHTML = events.length ? "<ul class='plain'>" + events.slice(0, 10).map(function (event) {
-    const description = event.type === "bus_reassigned"
+    const description = event.action ? event.action + " " + (event.bus_id || event.edge_id || "") + " " +
+      (event.reason || event.condition || "") : event.type === "bus_reassigned"
       ? event.bus_id + ": " + event.from_edge + " -> " + event.to_edge
       : event.edge_id + ": " + event.from_status + " -> " + event.to_status;
-    return "<li>" + escapeHtml(new Date(event.time).toLocaleTimeString() + ": " + description) + "</li>";
+    const time = event.action ? event.time.toFixed(1) + " simulation s" : new Date(event.time).toLocaleTimeString();
+    return "<li>" + escapeHtml(time + ": " + description) + "</li>";
   }).join("") + "</ul>" : "<p>No central events yet.</p>";
 }
 

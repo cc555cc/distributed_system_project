@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Simulation Controls</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
   <header>
@@ -17,6 +18,38 @@
   </header>
 
   <main class="page">
+    <label for="data-source">Map and dashboard feed</label>
+    <select id="data-source"><option value="live">Live MQTT</option><option value="demo">Controlled demonstration</option></select>
+    <div class="card" id="demo-controls">
+      <h2>Bus conditions</h2>
+      <p class="note">Repeatable demonstration using the real validation and processing code. These conditions do not stop OS processes or change the live MQTT fleet.</p>
+      <div class="control-row">
+        <button id="demo-start">Start buses</button>
+        <button id="demo-stop">Stop buses</button>
+        <a href="index.html">Open passenger map</a>
+      </div>
+      <div class="control-row">
+        <label for="demo-bus">Bus</label><select id="demo-bus"></select>
+      </div>
+      <div class="control-row">
+        <label for="demo-condition">Condition</label>
+        <select id="demo-condition">
+          <option value="normal">Normal movement</option><option value="stopped">Stationary bus; heartbeats continue</option>
+          <option value="out_of_service">Out of service; no boarding</option>
+          <option value="traffic">Heavy traffic (9 km/h)</option><option value="peak">Peak passenger demand</option>
+          <option value="sensor_fault">Occupancy sensor faulty</option><option value="invalid_reading">Invalid GPS reading</option>
+          <option value="sensors_stopped">All sensors silent</option><option value="connection_loss">Connection lost; GPS still works locally</option>
+          <option value="process_failure">Bus process failure</option><option value="silence">No heartbeat; cause unknown</option>
+        </select>
+        <button id="demo-apply">Apply condition</button><button id="demo-restore">Restore bus</button>
+      </div>
+      <div class="control-row"><button id="central-fail">Simulate central outage</button><button id="central-restore">Restore central</button></div>
+      <p id="demo-summary">Start the buses to run a scenario.</p>
+      <p class="note">Heartbeat timeout: 6 simulation seconds. Retry interval: 2 seconds. Recovery window: 2 seconds. Blue markers show central's last received position; orange shows the selected bus's local GPS.</p>
+      <div id="demo-map" style="height:360px"></div>
+      <div id="demo-details" class="table-wrap"></div>
+      <p id="demo-result" role="status"></p>
+    </div>
     <div class="card">
       <h2>Edge server failures</h2>
       <p class="note">These instances use the real edge processing code inside a simulation. The Operator Dashboard shows this same simulation alongside live heartbeat reports.</p>
@@ -33,8 +66,8 @@
       <button id="reset-button">Reset simulation</button>
     </div>
 
-    <div class="card" id="bus-controls">
-      <h2>Bus simulation</h2>
+    <details class="card" id="bus-controls">
+      <summary>Advanced: live MQTT publisher controls</summary>
       <p class="note">Commands go through central and MQTT to running bus publishers. Resume continues a paused bus; it does not launch a stopped process. Demand and traffic apply at the next stop segment; sensor faults apply at the next reading.</p>
       <label for="bus-region">Region</label>
       <select id="bus-region"><option value="west">West</option><option value="east">East</option></select>
@@ -64,13 +97,14 @@
         <select id="bus-fault"><option value="0">Healthy</option><option value="0.5">50%</option><option value="1">All faulty</option></select>
         <button data-command="set_sensor_failure_rate">Apply faults</button>
       </div>
-    </div>
+    </details>
   </main>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=3"></script>
-  <script src="js/helpers.js?v=3"></script>
-  <script src="js/controls.js?v=3"></script>
+  <script src="js/api.js?v=6"></script>
+  <script src="js/helpers.js?v=6"></script>
+  <script src="js/controls.js?v=6"></script>
 </body>
 </html>

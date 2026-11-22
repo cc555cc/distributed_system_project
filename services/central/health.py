@@ -380,6 +380,13 @@ class SimulationTiming(SimulationInput):
     speed: float = Field(gt=0, le=10)
 
 
+class SimulationDemo(SimulationInput):
+    running: bool | None = None
+    bus_id: str | None = None
+    condition: str | None = None
+    central_available: bool | None = None
+
+
 class SimulationCharacteristics(SimulationInput):
     capacity: int | None = Field(default=None, ge=1, le=50)
     processing_ms: float | None = Field(default=None, ge=1, le=60000)
@@ -396,11 +403,39 @@ def get_simulation():
         return {**simulation.snapshot(), "clock": simulation_clock.snapshot()}
 
 
+@router.get("/simulation/routes")
+def simulation_routes():
+    return load_network(simulation.network_path)["routes"]
+
+
+@router.get("/simulation/routes/{route_id}/stops")
+def simulation_route_stops(route_id: str):
+    from shared.schema.network import route_stops
+
+    network = load_network(simulation.network_path)
+    try:
+        return route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
 @router.patch("/simulation/clock")
 def configure_simulation_clock(body: SimulationTiming):
     with simulation_clock.lock:
         simulation_clock.tick()
         simulation_clock.running, simulation_clock.speed = body.running, body.speed
+        return get_simulation()
+
+
+@router.patch("/simulation/demo")
+def configure_demo(body: SimulationDemo):
+    if (body.bus_id is None) != (body.condition is None):
+        raise HTTPException(422, "Provide both bus_id and condition")
+    if not body.model_dump(exclude_none=True):
+        raise HTTPException(422, "Provide a demo setting")
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_action(simulation.configure_demo, **body.model_dump(exclude_none=True))
         return get_simulation()
 
 
