@@ -276,7 +276,7 @@ def test_missing_edge_overrides_old_bus_faults_with_unknown(monitor):
 def test_unseen_buses_are_listed_as_unknown_without_inventing_breakdowns(monitor):
     store, _, _ = monitor
     buses = store.snapshot()["buses"]
-    assert len(buses) == 10
+    assert len(buses) == 20
     assert all(bus["health"]["status"] == "unknown" for bus in buses)
     assert all(bus["health"]["reasons"] == ["edge_unknown"] for bus in buses)
 

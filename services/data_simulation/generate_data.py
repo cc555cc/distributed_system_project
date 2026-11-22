@@ -33,8 +33,12 @@ def distance_metres(start, end):
 def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
                       traffic_factor=1.0, sensor_failure_rate=0.0, *,
                       network_path=DEFAULT_NETWORK_PATH, max_updates=MAX_UPDATES,
-                      update_seconds=UPDATE_SECONDS, utc_now=None, sensor_health=None):
-    """Yield standard messages so stdout, MQTT and tests use identical data."""
+                      update_seconds=UPDATE_SECONDS, utc_now=None, sensor_health=None,
+                      start_stop_index=0):
+    """Yield standard messages so stdout, MQTT and tests use identical data.
+
+    start_stop_index lets a second bus in the same direction begin partway along
+    the route instead of on top of the first one."""
     if demand not in ("peak", "off_peak"):
         raise ValueError("Demand must be peak or off_peak")
     if not 0 < traffic_factor <= 1 or not math.isfinite(traffic_factor):
@@ -53,6 +57,9 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
     bus = buses[0]
     route = next(route for route in network["routes"] if route["route_id"] == route_id)
     stops = load_stops(route_id, direction, network=network)
+    if isinstance(start_stop_index, bool) or not isinstance(start_stop_index, int) \
+            or not 0 <= start_stop_index < len(stops) - 1:
+        raise ValueError("start_stop_index must leave at least one stop ahead on the route")
     utc_now = utc_now or (lambda: datetime.now(timezone.utc))
     passengers = random.Random(42)
     sensors = random.Random(43)
@@ -60,7 +67,7 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
     occupancy = 0
     sequence = 0
     logical_clock = 0
-    for index in range(len(stops) - 1):
+    for index in range(start_stop_index, len(stops) - 1):
         start, end = stops[index:index + 2]
         occupancy -= passengers.randint(0, occupancy)
         boarding = passengers.randint(10, 20) if demand == "peak" else passengers.randint(0, 5)

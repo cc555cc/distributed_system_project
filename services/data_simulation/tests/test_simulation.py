@@ -31,7 +31,7 @@ def test_network_topology():
     assert len(network["stops"]) == 373
     assert {region["region_id"] for region in network["regions"]} == {"west", "east"}
     assert {route["route_id"] for route in network["routes"]} == {"302", "407", "409", "900", "901"}
-    assert len(network["buses"]) == 10
+    assert len(network["buses"]) == 20
     assert not any(route["intercity"] for route in network["routes"])
     assert all(len(route_stops(network, route["route_id"], direction)) >= 2
                for route in network["routes"] for direction in (0, 1))
@@ -90,6 +90,38 @@ def test_return_direction_uses_carsons_distinct_pattern():
     reverse = route_stops(network, "302", 1)
     assert len(forward) == 50 and len(reverse) == 53
     assert [stop["stop_id"] for stop in reverse] != list(reversed([stop["stop_id"] for stop in forward]))
+
+
+def test_each_direction_has_two_buses_on_different_edges_and_starts():
+    network = load_network()
+    edge_network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
+    for route in network["routes"]:
+        for direction in (0, 1):
+            buses = [bus for bus in network["buses"]
+                     if bus["route_id"] == route["route_id"] and bus["direction_id"] == direction]
+            assert len(buses) == 2
+            assert len({bus["edge_id"] for bus in buses}) == 2  # one bus per regional edge
+            starts = set()
+            for bus in buses:
+                start = bus.get("scenario", {}).get("start_stop_index", 0)
+                first = messages(bus, start_stop_index=start)[0]
+                assert first["current_stop_id"] == route_stops(network, route["route_id"], direction)[start]["stop_id"]
+                # a bus that starts partway is still accepted by the real edge validation/processing
+                processor = EdgeProcessor(EdgeConfig(bus["city_id"], bus["region_id"], bus["edge_id"]), edge_network)
+                valid, errors = parse_telemetry(json.loads(json.dumps(first)), expected_region=bus["region_id"],
+                                                expected_bus=bus["bus_id"], registry=edge_network.registry)
+                assert not errors and processor.process(valid).status == ProcessingStatus.ACCEPTED
+                starts.add(start)
+            assert len(starts) == 2  # the two buses do not start on top of each other
+
+
+def test_start_stop_index_must_leave_a_stop_ahead():
+    network = load_network()
+    bus = network["buses"][0]
+    last = len(route_stops(network, bus["route_id"], bus["direction_id"])) - 1
+    for bad in (-1, last, True):
+        with pytest.raises(ValueError):
+            messages(bus, start_stop_index=bad)
 
 
 # ==================== ZACH'S SCENARIOS STILL CHANGE REAL READINGS ====================
