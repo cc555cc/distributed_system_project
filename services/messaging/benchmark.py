@@ -46,12 +46,27 @@ SCENARIOS = ("normal", "delayed", "outage")
 
 def reading(region, bus_id, sequence, lamport):
     # Same size and fields as real telemetry, plus the generation time in ns.
-    return {"schema_version": "bus-telemetry-v1", "bus_id": bus_id, "city_id": "BENCH", "region_id": region,
-                "route_id": "R1", "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "direction_id": 0,
-                "bus_status": "moving", "passengers": 10, "capacity": 50, "sequence_number": sequence,
-                "lamport_clock": lamport, "timestamp": datetime.now(UTC).isoformat(),
-                "sensor_status": "healthy", "current_stop_id": "S1", "next_stop_id": "S2",
-                "generated_ns": time.time_ns()}
+    return {
+        "schema_version": "bus-telemetry-v1",
+        "bus_id": bus_id,
+        "city_id": "BENCH",
+        "region_id": region,
+        "route_id": "R1",
+        "latitude": 43.9,
+        "longitude": -78.9,
+        "speed_kmh": 30.0,
+        "direction_id": 0,
+        "bus_status": "moving",
+        "passengers": 10,
+        "capacity": 50,
+        "sequence_number": sequence,
+        "lamport_clock": lamport,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "sensor_status": "healthy",
+        "current_stop_id": "S1",
+        "next_stop_id": "S2",
+        "generated_ns": time.time_ns(),
+    }
 
 
 def percentile(values, fraction):
@@ -72,7 +87,9 @@ class Receiver:
         self.lamport_violations = 0
         self.first_ns = self.last_ns = None
         self._lock = Lock()
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="bench-sub-" + uuid4().hex[:8])
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2, client_id="bench-sub-" + uuid4().hex[:8]
+        )
         self.client.max_inflight_messages_set(100)
         self.client.on_message = self._on_message
         self._ready = Event()
@@ -109,7 +126,9 @@ class Bus:
         self.region, self.bus_id, self.link = region, bus_id, link
         self.clock = LamportClock()
         self.sent, self.outcomes = [], {"sent": 0, "queued": 0, "dropped": 0}
-        self.publisher = ReliablePublisher(f"bench-{bus_id}-{uuid4().hex[:6]}", "127.0.0.1", link.port)
+        self.publisher = ReliablePublisher(
+            f"bench-{bus_id}-{uuid4().hex[:6]}", "127.0.0.1", link.port
+        )
         self.publisher.connect()
 
     def run(self, count, interval, start_at):
@@ -119,15 +138,29 @@ class Bus:
             pause = target - time.monotonic()
             if pause > 0:
                 time.sleep(pause)
-            outcome = self.publisher.publish(topic, json.dumps(reading(self.region, self.bus_id, sequence,
-                                                                       self.clock.tick())))
+            outcome = self.publisher.publish(
+                topic,
+                json.dumps(
+                    reading(self.region, self.bus_id, sequence, self.clock.tick())
+                ),
+            )
             self.outcomes[outcome] += 1
             if outcome != "dropped":
                 self.sent.append(sequence)
 
 
-def run_once(host, port, buses, *, scenario="normal", rate=5.0, duration=10.0, delay_ms=200, outage_s=3.0,
-             drain_s=30.0):
+def run_once(
+    host,
+    port,
+    buses,
+    *,
+    scenario="normal",
+    rate=5.0,
+    duration=10.0,
+    delay_ms=200,
+    outage_s=3.0,
+    drain_s=30.0,
+):
     if scenario not in SCENARIOS:
         raise ValueError(f"scenario must be one of {SCENARIOS}")
     region = "bench" + uuid4().hex[:8]
@@ -140,8 +173,14 @@ def run_once(host, port, buses, *, scenario="normal", rate=5.0, duration=10.0, d
     try:
         start_at = time.monotonic() + 0.5
         # Stagger buses across one interval so they do not all publish at once.
-        threads = [Thread(target=bus.run, args=(count, interval, start_at + interval * i / buses), daemon=True)
-                   for i, bus in enumerate(fleet)]
+        threads = [
+            Thread(
+                target=bus.run,
+                args=(count, interval, start_at + interval * i / buses),
+                daemon=True,
+            )
+            for i, bus in enumerate(fleet)
+        ]
         started_ns = time.time_ns()
         for thread in threads:
             thread.start()
@@ -177,11 +216,14 @@ def run_once(host, port, buses, *, scenario="normal", rate=5.0, duration=10.0, d
         for bus in fleet:
             bus.publisher.flush(drain_s)
         try:
-            wait_for(lambda: receiver.tracker.report({}).get("unique", 0) >= expected, timeout=drain_s,
-                     what="all deliveries")
+            wait_for(
+                lambda: receiver.tracker.report({}).get("unique", 0) >= expected,
+                timeout=drain_s,
+                what="all deliveries",
+            )
         except AssertionError:
             pass
-        time.sleep(1.0)                      # late duplicates
+        time.sleep(1.0)  # late duplicates
     finally:
         unacknowledged = sum(bus.publisher.close(flush_timeout=1) for bus in fleet)
         receiver.close()
@@ -194,21 +236,37 @@ def run_once(host, port, buses, *, scenario="normal", rate=5.0, duration=10.0, d
     elapsed = ((receiver.last_ns or publish_end_ns) - started_ns) / 1e9
     stats = [bus.publisher.stats for bus in fleet]
     return {
-        "scenario": scenario, "buses": buses, "rate_per_bus_hz": rate, "duration_s": duration,
+        "scenario": scenario,
+        "buses": buses,
+        "rate_per_bus_hz": rate,
+        "duration_s": duration,
         "offered_msgs_per_s": round(buses * rate, 1),
-        "published": sum(bus.outcomes["sent"] + bus.outcomes["queued"] for bus in fleet),
+        "published": sum(
+            bus.outcomes["sent"] + bus.outcomes["queued"] for bus in fleet
+        ),
         "queued_while_offline": sum(bus.outcomes["queued"] for bus in fleet),
         "dropped_by_publisher": sum(bus.outcomes["dropped"] for bus in fleet),
-        "received": report["arrivals"], "unique": report["unique"], "duplicates": report["duplicates"],
-        "lost": report["lost"], "late": report["late"], "unacknowledged_at_close": unacknowledged,
+        "received": report["arrivals"],
+        "unique": report["unique"],
+        "duplicates": report["duplicates"],
+        "lost": report["lost"],
+        "late": report["late"],
+        "unacknowledged_at_close": unacknowledged,
         "lost_messages": {bus: seqs for bus, seqs in report["missing"].items()},
         "lamport_violations": receiver.lamport_violations,
         "per_bus_order_preserved": report["late"] == 0,
-        "delay_ms": {"p50": _round(percentile(delays, 0.50)), "p95": _round(percentile(delays, 0.95)),
-                      "p99": _round(percentile(delays, 0.99)), "max": _round(max(delays) if delays else None),
-                      "mean": _round(statistics.fmean(delays) if delays else None)},
-        "throughput_msgs_per_s": round(report["unique"] / elapsed, 1) if elapsed > 0 else None,
-        "reconnects": sum(s["reconnects"] for s in stats), "disconnects": sum(s["disconnects"] for s in stats),
+        "delay_ms": {
+            "p50": _round(percentile(delays, 0.50)),
+            "p95": _round(percentile(delays, 0.95)),
+            "p99": _round(percentile(delays, 0.99)),
+            "max": _round(max(delays) if delays else None),
+            "mean": _round(statistics.fmean(delays) if delays else None),
+        },
+        "throughput_msgs_per_s": round(report["unique"] / elapsed, 1)
+        if elapsed > 0
+        else None,
+        "reconnects": sum(s["reconnects"] for s in stats),
+        "disconnects": sum(s["disconnects"] for s in stats),
         "events": [(name, round(at, 2)) for name, at in events],
     }
 
@@ -218,15 +276,19 @@ def _round(value):
 
 
 def table(results):
-    header = ("| Scenario | Buses | Offered msg/s | Sent | Received | Duplicates | Lost | Late | "
-              "Lamport errors | p50 ms | p95 ms | p99 ms | Max ms | Throughput msg/s | Reconnects |")
+    header = (
+        "| Scenario | Buses | Offered msg/s | Sent | Received | Duplicates | Lost | Late | "
+        "Lamport errors | p50 ms | p95 ms | p99 ms | Max ms | Throughput msg/s | Reconnects |"
+    )
     lines = [header, "|" + "---|" * (header.count("|") - 1)]
     for r in results:
         d = r["delay_ms"]
-        lines.append(f"| {r['scenario']} | {r['buses']} | {r['offered_msgs_per_s']} | {r['published']} | "
-                     f"{r['received']} | {r['duplicates']} | {r['lost']} | {r['late']} | {r['lamport_violations']} | "
-                     f"{d['p50']} | {d['p95']} | {d['p99']} | {d['max']} | {r['throughput_msgs_per_s']} | "
-                     f"{r['reconnects']} |")
+        lines.append(
+            f"| {r['scenario']} | {r['buses']} | {r['offered_msgs_per_s']} | {r['published']} | "
+            f"{r['received']} | {r['duplicates']} | {r['lost']} | {r['late']} | {r['lamport_violations']} | "
+            f"{d['p50']} | {d['p95']} | {d['p99']} | {d['max']} | {r['throughput_msgs_per_s']} | "
+            f"{r['reconnects']} |"
+        )
     return "\n".join(lines)
 
 
@@ -236,8 +298,12 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", "1883")))
     parser.add_argument("--buses", type=int, nargs="+", default=[5, 10, 25, 50])
     parser.add_argument("--scenarios", nargs="+", choices=SCENARIOS, default=["normal"])
-    parser.add_argument("--rate", type=float, default=5.0, help="messages per second per bus")
-    parser.add_argument("--duration", type=float, default=10.0, help="seconds of publishing per run")
+    parser.add_argument(
+        "--rate", type=float, default=5.0, help="messages per second per bus"
+    )
+    parser.add_argument(
+        "--duration", type=float, default=10.0, help="seconds of publishing per run"
+    )
     parser.add_argument("--delay-ms", type=float, default=200.0)
     parser.add_argument("--outage-s", type=float, default=3.0)
     parser.add_argument("--output", help="write JSON results here")
@@ -246,16 +312,39 @@ def main(argv=None):
     for scenario in args.scenarios:
         for buses in args.buses:
             print(f"running {scenario} with {buses} buses ...", flush=True)
-            results.append(run_once(args.host, args.port, buses, scenario=scenario, rate=args.rate,
-                                    duration=args.duration, delay_ms=args.delay_ms, outage_s=args.outage_s))
+            results.append(
+                run_once(
+                    args.host,
+                    args.port,
+                    buses,
+                    scenario=scenario,
+                    rate=args.rate,
+                    duration=args.duration,
+                    delay_ms=args.delay_ms,
+                    outage_s=args.outage_s,
+                )
+            )
     print(table(results))
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.output).write_text(json.dumps({
-            "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "environment": {"python": platform.python_version(), "platform": platform.platform(),
-                             "paho": getattr(mqtt, "__version__", None) or "2.x", "broker": f"{args.host}:{args.port}"},
-            "settings": vars(args), "results": results}, indent=2) + "\n", encoding="utf-8")
+        Path(args.output).write_text(
+            json.dumps(
+                {
+                    "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "environment": {
+                        "python": platform.python_version(),
+                        "platform": platform.platform(),
+                        "paho": getattr(mqtt, "__version__", None) or "2.x",
+                        "broker": f"{args.host}:{args.port}",
+                    },
+                    "settings": vars(args),
+                    "results": results,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     return results
 
 

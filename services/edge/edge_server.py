@@ -34,7 +34,10 @@ class EdgeIngress:
         """Return outcomes to Python; never publish processed JSON."""
         if subscriber.region_id != self.region_id:
             raise ValueError("Subscriber and edge must belong to same region")
-        if subscriber.city_id is not None and subscriber.city_id != self.processor.config.city_id:
+        if (
+            subscriber.city_id is not None
+            and subscriber.city_id != self.processor.config.city_id
+        ):
             raise ValueError("Subscriber and edge must belong to same city")
         results = []
         while True:
@@ -62,6 +65,7 @@ class EdgeServerInstance:
         )
         from services.edge.edge_server_health import EdgeMonitor
         from shared.schema.bus_state import BusStateUpdate
+
         self.config, self.policy = config, policy
         self.monitor = EdgeMonitor(config, network.registry, policy)
         self.subscriber = create_subscriber(config, network, monitor=self.monitor)
@@ -78,13 +82,23 @@ class EdgeServerInstance:
         import time
 
         from services.messaging.alerts import make_alert
+
         now = time.monotonic() if now is None else now
-        if self._last_overload_alert is not None and now - self._last_overload_alert < interval_seconds:
+        if (
+            self._last_overload_alert is not None
+            and now - self._last_overload_alert < interval_seconds
+        ):
             return False
         self._last_overload_alert = now
-        alert = make_alert(self.config.region_id, self.config.edge_id, "edge", "edge_overload", "critical",
-                           f"Ingress queue full ({self.subscriber.messages.maxsize}); telemetry is being rejected",
-                           clock=self.forwarder.clock)
+        alert = make_alert(
+            self.config.region_id,
+            self.config.edge_id,
+            "edge",
+            "edge_overload",
+            "critical",
+            f"Ingress queue full ({self.subscriber.messages.maxsize}); telemetry is being rejected",
+            clock=self.forwarder.clock,
+        )
         try:
             self.sender.publish_alert(alert)
         except (ConnectionError, OSError, RuntimeError, PermissionError):
@@ -97,13 +111,19 @@ class EdgeServerInstance:
         from datetime import datetime
 
         from shared.schema.health import EdgeHeartbeat
+
         self.heartbeat_sequence += 1
         active = self.receiver.processor.snapshot()["statistics"]["active_buses"]
         return EdgeHeartbeat(
-            city_id=self.config.city_id, region_id=self.config.region_id, edge_id=self.config.edge_id,
-            session_id=self.session_id, sequence_number=self.heartbeat_sequence,
+            city_id=self.config.city_id,
+            region_id=self.config.region_id,
+            edge_id=self.config.edge_id,
+            session_id=self.session_id,
+            sequence_number=self.heartbeat_sequence,
             timestamp=datetime.now(UTC).isoformat(),
-            workload=self.monitor.workload(self.subscriber.messages, active, len(self.forwarder.pending)),
+            workload=self.monitor.workload(
+                self.subscriber.messages, active, len(self.forwarder.pending)
+            ),
             buses=self.monitor.sensor_reports(),
         )
 
@@ -113,21 +133,32 @@ class EdgeServerInstance:
         from threading import Event, Thread
 
         from services.edge.communication.data_to_edge import process_pending_messages
+
         heartbeat_stop = Event()
+
         def publish_health():
             while not heartbeat_stop.is_set() and not stop_event.is_set():
                 try:
                     self.sender.publish_heartbeat(self.heartbeat())
                 except (ConnectionError, OSError, RuntimeError):
-                    logger.warning("Edge heartbeat pending: edge=%s", self.config.edge_id)
+                    logger.warning(
+                        "Edge heartbeat pending: edge=%s", self.config.edge_id
+                    )
                 heartbeat_stop.wait(self.policy.interval_seconds)
-        thread = Thread(target=publish_health, name=self.config.edge_id + "-heartbeat", daemon=True)
+
+        thread = Thread(
+            target=publish_health, name=self.config.edge_id + "-heartbeat", daemon=True
+        )
         try:
-            self.sender.connect(os.getenv("CENTRAL_MQTT_HOST", os.getenv("MQTT_HOST", "127.0.0.1")),
-                                int(os.getenv("CENTRAL_MQTT_PORT", os.getenv("MQTT_PORT", "1883"))))
+            self.sender.connect(
+                os.getenv("CENTRAL_MQTT_HOST", os.getenv("MQTT_HOST", "127.0.0.1")),
+                int(os.getenv("CENTRAL_MQTT_PORT", os.getenv("MQTT_PORT", "1883"))),
+            )
             self.subscriber.start()
             thread.start()
-            process_pending_messages(self.subscriber, self.receiver, self.forwarder, stop_event=stop_event)
+            process_pending_messages(
+                self.subscriber, self.receiver, self.forwarder, stop_event=stop_event
+            )
         except KeyboardInterrupt:
             pass
         finally:
@@ -153,6 +184,7 @@ class SimulatedEdge:
         from collections import deque
 
         from services.messaging.lamport import LamportClock
+
         self.queue = deque()
         self.clock = LamportClock()  # same receive/send rules as a live worker
         self.credit_ms = 0.0
@@ -178,14 +210,28 @@ class SimulatedEdge:
             if len(job) > 3:
                 self.on_telemetry(self, job)
             self.completed += 1
-            self.latency_seconds += max(0.0, now - seconds + offset_ms / 1000 - received_at)
+            self.latency_seconds += max(
+                0.0, now - seconds + offset_ms / 1000 - received_at
+            )
         self.credit_ms = available if self.queue else 0.0
 
     def snapshot(self):
         from shared.schema.health import load_band
+
         utilization = len(self.queue) / self.capacity * 100
-        return {"edge_id": self.edge_id, "region_id": self.region_id, "city_id": self.city_id,
-                    "active": self.active, "state": self.state, "queue_capacity": self.capacity, "queue_size": len(self.queue),
-                    "queue_utilization_percent": utilization, "load_band": load_band(utilization),
-                    "processing_ms": self.processing_ms, "completed": self.completed,
-                    "average_latency_ms": (self.latency_seconds / self.completed * 1000 if self.completed else None)}
+        return {
+            "edge_id": self.edge_id,
+            "region_id": self.region_id,
+            "city_id": self.city_id,
+            "active": self.active,
+            "state": self.state,
+            "queue_capacity": self.capacity,
+            "queue_size": len(self.queue),
+            "queue_utilization_percent": utilization,
+            "load_band": load_band(utilization),
+            "processing_ms": self.processing_ms,
+            "completed": self.completed,
+            "average_latency_ms": (
+                self.latency_seconds / self.completed * 1000 if self.completed else None
+            ),
+        }

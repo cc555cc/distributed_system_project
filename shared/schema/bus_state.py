@@ -17,12 +17,17 @@ class RegionalStatistics(BaseModel):
 
     @model_validator(mode="after")
     def counts_are_consistent(self):
-        if self.crowded_buses > self.active_buses or self.occupancy_samples > self.active_buses:
+        if (
+            self.crowded_buses > self.active_buses
+            or self.occupancy_samples > self.active_buses
+        ):
             raise ValueError("Regional sample counts exceed active bus count")
         if sum(self.active_buses_per_route.values()) != self.active_buses:
             raise ValueError("Per-route counts differ from active bus count")
         if (self.occupancy_samples == 0) != (self.average_occupancy_percent is None):
-            raise ValueError("Occupancy average must be unavailable when there are no samples")
+            raise ValueError(
+                "Occupancy average must be unavailable when there are no samples"
+            )
         return self
 
 
@@ -91,7 +96,11 @@ class BusStateUpdate(BaseModel):
     def occupancy_uses_declared_unit(self):
         if self.edge_metadata is not None:
             meta = self.edge_metadata
-            expected = meta.passengers if meta.occupancy_unit == "passengers" else meta.occupancy_percent
+            expected = (
+                meta.passengers
+                if meta.occupancy_unit == "passengers"
+                else meta.occupancy_percent
+            )
             if self.occupancy != expected:
                 raise ValueError("Central occupancy differs from its declared unit")
             # The edge received the bus reading before forwarding it, so its

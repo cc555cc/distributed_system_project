@@ -18,16 +18,28 @@ from shared.schema.bus_state import BusStateUpdate
 def sender():
     # Use the shared contract directly. Edge tests do not import central services.
 
-    registry = BusRegistry({"bus-302-1": BusAssignment("west", "302", "DURHAM", "edge-west-1")})
-    return EdgeToCentral(EdgeConfig("DURHAM", "west", "edge-west-1"), registry, BusStateUpdate)
+    registry = BusRegistry(
+        {"bus-302-1": BusAssignment("west", "302", "DURHAM", "edge-west-1")}
+    )
+    return EdgeToCentral(
+        EdgeConfig("DURHAM", "west", "edge-west-1"), registry, BusStateUpdate
+    )
 
 
 @pytest.fixture
 def payload():
     # Values are explicitly supplied; the sender must not invent status or clocks.
-    return {"lat": 43.9, "lon": -78.9, "speed": 30.0, "direction_id": 0,
-                "next_stop_id": "166", "bus_status": "travelling", "occupancy": 40,
-                "sequence_number": 2, "lamport": 3}
+    return {
+        "lat": 43.9,
+        "lon": -78.9,
+        "speed": 30.0,
+        "direction_id": 0,
+        "next_stop_id": "166",
+        "bus_status": "travelling",
+        "occupancy": 40,
+        "sequence_number": 2,
+        "lamport": 3,
+    }
 
 
 def connected_client():
@@ -75,7 +87,9 @@ def test_unknown_bus_cannot_publish(sender, payload):
     sender._client.publish.assert_not_called()
 
 
-@pytest.mark.parametrize("changes", [{"latitude": 43.9}, {"city_id": "DURHAM"}, {"speed": float("nan")}])
+@pytest.mark.parametrize(
+    "changes", [{"latitude": 43.9}, {"city_id": "DURHAM"}, {"speed": float("nan")}]
+)
 def test_unsupported_fields_and_non_json_values_rejected(sender, payload, changes):
     sender._client = connected_client()
     payload.update(changes)
@@ -118,15 +132,26 @@ def test_connection_lifecycle(sender):
 # ==================== EDGE MAPPING ONLY: NO CENTRAL DATABASE OR API ====================
 @pytest.fixture
 def accepted_output(sender):
-    network = NetworkConfig(sender.registry, (
-        RouteDefinition("DURHAM", "west", "302", ("166", "167")),
-    ))
+    network = NetworkConfig(
+        sender.registry, (RouteDefinition("DURHAM", "west", "302", ("166", "167")),)
+    )
     processor = EdgeProcessor(sender.config, network)
-    source = {"bus_id": "bus-302-1", "region_id": "west", "route_id": "302",
-                  "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0,
-                  "passengers": 40, "capacity": 50, "sequence_number": 2,
-                  "timestamp": "2026-11-11T12:00:00Z", "bus_status": "travelling",
-                  "lamport_clock": 3, "direction_id": 0, "next_stop_id": "166"}
+    source = {
+        "bus_id": "bus-302-1",
+        "region_id": "west",
+        "route_id": "302",
+        "latitude": 43.9,
+        "longitude": -78.9,
+        "speed_kmh": 30.0,
+        "passengers": 40,
+        "capacity": 50,
+        "sequence_number": 2,
+        "timestamp": "2026-11-11T12:00:00Z",
+        "bus_status": "travelling",
+        "lamport_clock": 3,
+        "direction_id": 0,
+        "next_stop_id": "166",
+    }
     return processor.process(source).output
 
 

@@ -40,12 +40,12 @@ def compare(a: dict, b: dict) -> str:
 @dataclass(frozen=True)
 class Event:
     process: str
-    index: int                 # position on its process's timeline, from 1
-    kind: str                  # "local", "send" or "receive"
+    index: int  # position on its process's timeline, from 1
+    kind: str  # "local", "send" or "receive"
     label: str
     lamport: int
-    vector: tuple              # sorted (process, count) pairs
-    message: str | None = None # message id sent or received
+    vector: tuple  # sorted (process, count) pairs
+    message: str | None = None  # message id sent or received
 
     @property
     def vclock(self) -> dict:
@@ -74,8 +74,15 @@ class Process:
     events: list = field(default_factory=list)
 
     def _record(self, kind, label, lamport, message=None):
-        event = Event(self.name, len(self.events) + 1, kind, label, lamport,
-                      tuple(sorted(self.vector.items())), message)
+        event = Event(
+            self.name,
+            len(self.events) + 1,
+            kind,
+            label,
+            lamport,
+            tuple(sorted(self.vector.items())),
+            message,
+        )
         self.events.append(event)
         self.log.events.append(event)
         return event
@@ -88,7 +95,9 @@ class Process:
         self.vector[self.name] = self.vector.get(self.name, 0) + 1
         stamp = self.clock.tick()
         message_id = f"m{len(self.log.messages) + 1}"
-        message = Message(message_id, self.name, stamp, tuple(sorted(self.vector.items())), label)
+        message = Message(
+            message_id, self.name, stamp, tuple(sorted(self.vector.items())), label
+        )
         self.log.messages[message_id] = message
         return self._record("send", label, stamp, message_id), message
 
@@ -97,7 +106,9 @@ class Process:
             self.vector[process] = max(self.vector.get(process, 0), count)
         self.vector[self.name] = self.vector.get(self.name, 0) + 1
         stamp = self.clock.receive(message.lamport)
-        return self._record("receive", label or f"recv {message.label}", stamp, message.id)
+        return self._record(
+            "receive", label or f"recv {message.label}", stamp, message.id
+        )
 
 
 class EventLog:
@@ -133,13 +144,18 @@ class EventLog:
         """Text space-time diagram: one column per process, rows in Lamport total order."""
         names = list(self.processes)
         width = max(len(self._cell(e)) for e in self.events) + 2
-        lines = ["".join(name.ljust(width) for name in names).rstrip(),
-                 "".join(("-" * (width - 2)).ljust(width) for _ in names).rstrip()]
+        lines = [
+            "".join(name.ljust(width) for name in names).rstrip(),
+            "".join(("-" * (width - 2)).ljust(width) for _ in names).rstrip(),
+        ]
         for event in self.total_order():
             cells = ["|".ljust(width) for _ in names]
             cells[names.index(event.process)] = self._cell(event).ljust(width)
             lines.append("".join(cells).rstrip())
-        lines += ["", "(n) Lamport stamp; S send, R receive, L local event; [mN] links a send to its receive."]
+        lines += [
+            "",
+            "(n) Lamport stamp; S send, R receive, L local event; [mN] links a send to its receive.",
+        ]
         return "\n".join(lines)
 
     def relation_table(self, events) -> str:
@@ -147,27 +163,34 @@ class EventLog:
         width = max(len(e.name) for e in events) + 2
         rows = [" " * width + "".join(e.name.rjust(width) for e in events)]
         for a in events:
-            rows.append(a.name.rjust(width) + "".join(
-                (self.relation(a, b) if a is not b else "").rjust(width) for b in events))
+            rows.append(
+                a.name.rjust(width)
+                + "".join(
+                    (self.relation(a, b) if a is not b else "").rjust(width)
+                    for b in events
+                )
+            )
         return "\n".join(rows)
 
 
 def demo_scenario() -> EventLog:
     """Two buses, one edge, central. Bus B1's reading 1 is delayed and arrives after reading 2."""
     log = EventLog("bus-1", "bus-2", "edge", "central")
-    b1, b2, edge, central = (log[name] for name in ("bus-1", "bus-2", "edge", "central"))
+    b1, b2, edge, central = (
+        log[name] for name in ("bus-1", "bus-2", "edge", "central")
+    )
     _, r11 = b1.send("B1 seq 1")
-    _, r21 = b2.send("B2 seq 1")             # concurrent with B1 seq 1
+    _, r21 = b2.send("B2 seq 1")  # concurrent with B1 seq 1
     _, r12 = b1.send("B1 seq 2")
-    edge.receive(r12, "recv B1 seq 2")       # arrives first: B1 seq 1 is delayed
+    edge.receive(r12, "recv B1 seq 2")  # arrives first: B1 seq 1 is delayed
     _, s12 = edge.send("state B1 seq 2")
     edge.receive(r11, "recv B1 seq 1 (late: STALE)")
     edge.receive(r21, "recv B2 seq 1")
     _, s21 = edge.send("state B2 seq 1")
-    central.receive(s21, "recv state B2")    # edge-to-central also reordered
+    central.receive(s21, "recv state B2")  # edge-to-central also reordered
     central.receive(s12, "recv state B1")
     _, cmd = central.send("cmd pause bus-2")
-    b1.local("B1 sensor fault")              # concurrent with the command
+    b1.local("B1 sensor fault")  # concurrent with the command
     b2.receive(cmd, "recv cmd")
     b2.send("B2 seq 2 (after cmd)")
     return log
@@ -177,11 +200,25 @@ if __name__ == "__main__":
     log = demo_scenario()
     print(log.diagram())
     print()
-    picks = [e for e in log.events if e.label in ("B1 seq 1", "B2 seq 1", "B1 sensor fault", "cmd pause bus-2",
-                                                    "B2 seq 2 (after cmd)")]
+    picks = [
+        e
+        for e in log.events
+        if e.label
+        in (
+            "B1 seq 1",
+            "B2 seq 1",
+            "B1 sensor fault",
+            "cmd pause bus-2",
+            "B2 seq 2 (after cmd)",
+        )
+    ]
     print(log.relation_table(picks))
     print()
-    print("Concurrent pairs with different Lamport stamps (Lamport alone would order them):")
+    print(
+        "Concurrent pairs with different Lamport stamps (Lamport alone would order them):"
+    )
     for a, b in log.concurrent_pairs():
         if a.lamport != b.lamport:
-            print(f"  {a.name} '{a.label}' (L={a.lamport})  ||  {b.name} '{b.label}' (L={b.lamport})")
+            print(
+                f"  {a.name} '{a.label}' (L={a.lamport})  ||  {b.name} '{b.label}' (L={b.lamport})"
+            )

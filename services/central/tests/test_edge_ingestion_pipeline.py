@@ -36,8 +36,16 @@ class TestDatabase:
         self.connection.close()
 
     def execute(self, sql, parameters=()):
-        params = tuple(json.dumps(p.obj) if isinstance(p, Jsonb) else p for p in parameters)
-        cursor = self.connection.execute(sql.replace("%s", "?").replace("::integer", "").replace("now()", "CURRENT_TIMESTAMP").replace(" FOR UPDATE", ""), params)
+        params = tuple(
+            json.dumps(p.obj) if isinstance(p, Jsonb) else p for p in parameters
+        )
+        cursor = self.connection.execute(
+            sql.replace("%s", "?")
+            .replace("::integer", "")
+            .replace("now()", "CURRENT_TIMESTAMP")
+            .replace(" FOR UPDATE", ""),
+            params,
+        )
         dictionary_rows = self.dictionary_rows
 
         class Cursor:
@@ -75,8 +83,12 @@ class LocalTransport:
 
     def publish(self, topic, payload, **kwargs):
         self.sent.append((topic, json.loads(payload)))
-        self.callback(None, None, SimpleNamespace(topic=topic, payload=payload.encode()))
-        return SimpleNamespace(rc=0, wait_for_publish=lambda **kwargs: None, is_published=lambda: True)
+        self.callback(
+            None, None, SimpleNamespace(topic=topic, payload=payload.encode())
+        )
+        return SimpleNamespace(
+            rc=0, wait_for_publish=lambda **kwargs: None, is_published=lambda: True
+        )
 
 
 @pytest.fixture
@@ -99,10 +111,19 @@ def pipeline(tmp_path, monkeypatch):
             INSERT INTO buses VALUES ('A1','R1'), ('A2','R1');
             INSERT INTO route_stops VALUES ('R1',0,0,'S1'),('R1',0,1,'S2');
         """)
-    monkeypatch.setattr(bus_states.psycopg, "connect", lambda url, **kwargs: TestDatabase(path, **kwargs))
+    monkeypatch.setattr(
+        bus_states.psycopg,
+        "connect",
+        lambda url, **kwargs: TestDatabase(path, **kwargs),
+    )
     from services.edge.validation.bus_registry import BusAssignment, BusRegistry
-    registry = BusRegistry({bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in ("A1", "A2")})
-    network = NetworkConfig(registry, (RouteDefinition("CITY-A", "north", "R1", ("S1", "S2")),))
+
+    registry = BusRegistry(
+        {bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in ("A1", "A2")}
+    )
+    network = NetworkConfig(
+        registry, (RouteDefinition("CITY-A", "north", "R1", ("S1", "S2")),)
+    )
     config = EdgeConfig("CITY-A", "north", "edge-a")
     now = [0.0]
     receiver = EdgeIngress(EdgeProcessor(config, network, clock=lambda: now[0]))
@@ -110,22 +131,46 @@ def pipeline(tmp_path, monkeypatch):
     transport = LocalTransport(mqtt_client.on_message)
     sender._client = transport
     forwarder = CentralForwarder(receiver, sender, "passengers")
-    subscriber = TelemetrySubscriber("north", "edge-a", city_id="CITY-A", registry=registry)
-    return SimpleNamespace(subscriber=subscriber, forwarder=forwarder, transport=transport,
-                           api=TestClient(app), now=now, receiver=receiver)
+    subscriber = TelemetrySubscriber(
+        "north", "edge-a", city_id="CITY-A", registry=registry
+    )
+    return SimpleNamespace(
+        subscriber=subscriber,
+        forwarder=forwarder,
+        transport=transport,
+        api=TestClient(app),
+        now=now,
+        receiver=receiver,
+    )
 
 
 def telemetry(bus="A1", sequence=1):
-    return {"bus_id": bus, "city_id": "CITY-A", "region_id": "north", "route_id": "R1",
-                "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "passengers": 40,
-                "capacity": 50, "sequence_number": sequence, "timestamp": "2026-11-11T12:00:00Z",
-                "bus_status": "travelling", "lamport_clock": sequence + 10, "direction_id": 0,
-                "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
+    return {
+        "bus_id": bus,
+        "city_id": "CITY-A",
+        "region_id": "north",
+        "route_id": "R1",
+        "latitude": 43.9,
+        "longitude": -78.9,
+        "speed_kmh": 30.0,
+        "passengers": 40,
+        "capacity": 50,
+        "sequence_number": sequence,
+        "timestamp": "2026-11-11T12:00:00Z",
+        "bus_status": "travelling",
+        "lamport_clock": sequence + 10,
+        "direction_id": 0,
+        "current_stop_id": "S1",
+        "next_stop_id": "S2",
+        "sensor_status": "healthy",
+    }
 
 
 def deliver(pipeline, source):
     topic = f"transit/buses/north/{source['bus_id']}/telemetry"
-    accepted = pipeline.subscriber.handle_raw_message(topic, json.dumps(source).encode())
+    accepted = pipeline.subscriber.handle_raw_message(
+        topic, json.dumps(source).encode()
+    )
     if not accepted:
         return None
     item = pipeline.subscriber.messages.get_nowait()
@@ -153,7 +198,14 @@ def test_all_fields_survive_the_full_code_path(pipeline, bus):
     assert stored["sequence_number"] == source["sequence_number"]
     assert stored["bus_status"] == source["bus_status"]
     metadata = stored["edge_metadata"]
-    for key in ("city_id", "region_id", "route_id", "capacity", "passengers", "current_stop_id"):
+    for key in (
+        "city_id",
+        "region_id",
+        "route_id",
+        "capacity",
+        "passengers",
+        "current_stop_id",
+    ):
         assert metadata[key] == source[key]
     assert metadata["source_timestamp"] == source["timestamp"]
     assert metadata["occupancy_percent"] == 80.0
@@ -226,24 +278,32 @@ def test_percent_mapping_requires_exact_integer(pipeline):
 # ==================== THE ACTUAL AUTOMATIC RUNTIME LOOP ====================
 def test_runtime_loop_forwards_and_marks_queue_complete(pipeline, monkeypatch):
     from services.edge.communication.data_to_edge import process_pending_messages
+
     source = telemetry()
-    assert pipeline.subscriber.handle_raw_message("transit/buses/north/A1/telemetry", json.dumps(source).encode())
+    assert pipeline.subscriber.handle_raw_message(
+        "transit/buses/north/A1/telemetry", json.dumps(source).encode()
+    )
     original_get = pipeline.subscriber.messages.get
     calls = [0]
+
     def get_once(*args, **kwargs):
         calls[0] += 1
         if calls[0] > 1:
             raise KeyboardInterrupt
         return original_get(*args, **kwargs)
+
     monkeypatch.setattr(pipeline.subscriber.messages, "get", get_once)
     with pytest.raises(KeyboardInterrupt):
-        process_pending_messages(pipeline.subscriber, pipeline.receiver, pipeline.forwarder)
+        process_pending_messages(
+            pipeline.subscriber, pipeline.receiver, pipeline.forwarder
+        )
     assert pipeline.subscriber.messages.unfinished_tasks == 0
     assert pipeline.api.get("/bus_states/A1").status_code == 200
 
 
 def test_central_rechecks_region_route_and_types(pipeline):
     from shared.schema.bus_state import BusStateUpdate
+
     deliver(pipeline, telemetry())
     valid = pipeline.transport.sent[-1][1]
     wrong_region = json.loads(json.dumps(valid))
@@ -293,21 +353,38 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
                 sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
         """)
         connection.executescript(seed_sql(network))
-    monkeypatch.setattr(bus_states.psycopg, "connect", lambda url, **kwargs: TestDatabase(database, **kwargs))
+    monkeypatch.setattr(
+        bus_states.psycopg,
+        "connect",
+        lambda url, **kwargs: TestDatabase(database, **kwargs),
+    )
     edge_network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
     api = TestClient(app)
     processors = {}
     for bus in network["buses"]:
         owner = (bus["city_id"], bus["region_id"], bus["edge_id"])
         if owner not in processors:
-            processors[owner] = EdgeIngress(EdgeProcessor(EdgeConfig(*owner), edge_network))
+            processors[owner] = EdgeIngress(
+                EdgeProcessor(EdgeConfig(*owner), edge_network)
+            )
         receiver = processors[owner]
-        sender = EdgeToCentral(receiver.processor.config, edge_network.registry, BusStateUpdate)
+        sender = EdgeToCentral(
+            receiver.processor.config, edge_network.registry, BusStateUpdate
+        )
         transport = LocalTransport(mqtt_client.on_message)
         sender._client = transport
         forwarder = CentralForwarder(receiver, sender, "passengers")
-        subscriber = TelemetrySubscriber(bus["region_id"], bus["edge_id"], city_id=bus["city_id"], registry=edge_network.registry)
-        readings = list(generate_messages(bus["route_id"], 0, bus["bus_id"], max_updates=3, update_seconds=0))
+        subscriber = TelemetrySubscriber(
+            bus["region_id"],
+            bus["edge_id"],
+            city_id=bus["city_id"],
+            registry=edge_network.registry,
+        )
+        readings = list(
+            generate_messages(
+                bus["route_id"], 0, bus["bus_id"], max_updates=3, update_seconds=0
+            )
+        )
         for source in readings:
             topic = f"transit/buses/{bus['region_id']}/{bus['bus_id']}/telemetry"
             assert subscriber.handle_raw_message(topic, json.dumps(source).encode())
@@ -324,32 +401,43 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
             assert stored["occupancy"] == source["passengers"]
             assert stored["lat"] == source["latitude"]
             assert stored["edge_metadata"]["city_id"] == bus["city_id"]
-            assert stored["edge_metadata"]["current_stop_city_id"] == source["current_stop_city_id"]
+            assert (
+                stored["edge_metadata"]["current_stop_city_id"]
+                == source["current_stop_city_id"]
+            )
 
     # Carson's direction filter must return the actual stop patterns, not an
     # assumed reverse order or duplicate endpoints registered by two routers.
     from shared.schema.network import route_stops
+
     for route in network["routes"]:
         for direction in (0, 1):
-            response = api.get(f"/routes/{route['route_id']}/stops", params={"direction": direction})
+            response = api.get(
+                f"/routes/{route['route_id']}/stops", params={"direction": direction}
+            )
             assert response.status_code == 200
             actual = response.json()
             expected = route_stops(network, route["route_id"], direction)
-            assert [stop["stop_id"] for stop in actual] == [stop["stop_id"] for stop in expected]
+            assert [stop["stop_id"] for stop in actual] == [
+                stop["stop_id"] for stop in expected
+            ]
             assert all(stop["direction_id"] == direction for stop in actual)
     assert api.get("/routes/302/stops", params={"direction": 2}).status_code == 422
 
 
-
-def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(tmp_path, monkeypatch):
+def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(
+    tmp_path, monkeypatch
+):
     """Same processor/mapper/central SQL/API, with simulated ownership handoffs."""
     from services.data_simulation.export_routes import seed_sql
     from services.edge.main import EdgeClusterSimulation
     from shared.schema.network import load_network
+
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/cluster")
     from services.central.main import app
     from services.central.routers import bus_states
     from services.messaging import mqtt_client
+
     path = tmp_path / "cluster-central.sqlite"
     with sqlite3.connect(path) as connection:
         connection.executescript("""
@@ -363,11 +451,16 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(tmp_path
                 sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
         """)
         connection.executescript(seed_sql(load_network()))
-    monkeypatch.setattr(bus_states.psycopg, "connect", lambda url, **kwargs: TestDatabase(path, **kwargs))
+    monkeypatch.setattr(
+        bus_states.psycopg,
+        "connect",
+        lambda url, **kwargs: TestDatabase(path, **kwargs),
+    )
     transport = LocalTransport(mqtt_client.on_message)
     api = TestClient(app)
     cluster = EdgeClusterSimulation()
     bus_id = "bus-302-1"
+
     def flush_and_read():
         cluster.advance(1)
         payload = cluster.central_states[bus_id]
@@ -377,10 +470,13 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(tmp_path
         assert response.json()["sequence_number"] == payload["sequence_number"]
         assert response.json()["edge_metadata"] == payload["edge_metadata"]
         return response.json()
+
     cluster.generate(bus_id, 1)
     assert flush_and_read()["sequence_number"] == 1
     cluster.generate(bus_id, 1)
-    old_job = next(job for job in cluster.workers["edge-west-1"].queue if job[1] == bus_id)
+    old_job = next(
+        job for job in cluster.workers["edge-west-1"].queue if job[1] == bus_id
+    )
     cluster.fail("edge-west-1")
     cluster._complete(cluster.workers["edge-west-1"], old_job)
     state = flush_and_read()

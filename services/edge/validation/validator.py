@@ -115,9 +115,13 @@ def parse_telemetry(
         if not isinstance(value, str) or not value.strip():
             errors.append(f"{key} must be a non-empty string")
 
-    if "bus_status" in payload and (not isinstance(payload["bus_status"], str) or not payload["bus_status"].strip()):
+    if "bus_status" in payload and (
+        not isinstance(payload["bus_status"], str) or not payload["bus_status"].strip()
+    ):
         errors.append("bus_status must be a non-empty string")
-    if "city_id" in payload and (not isinstance(payload["city_id"], str) or not payload["city_id"].strip()):
+    if "city_id" in payload and (
+        not isinstance(payload["city_id"], str) or not payload["city_id"].strip()
+    ):
         errors.append("city_id must be a non-empty string")
     if "direction_id" in payload and not _valid_integer(payload["direction_id"], 0):
         errors.append("direction_id must be a non-negative integer")
@@ -157,9 +161,7 @@ def parse_telemetry(
     if not _valid_timestamp(payload["timestamp"]):
         errors.append("timestamp must be an ISO 8601 datetime with timezone")
 
-    if "lamport_clock" in payload and not _valid_integer(
-        payload["lamport_clock"], 0
-    ):
+    if "lamport_clock" in payload and not _valid_integer(payload["lamport_clock"], 0):
         errors.append("lamport_clock must be a non-negative integer")
     if "heading_degrees" in payload and not _valid_number(
         payload["heading_degrees"], 0, 359.999999
@@ -167,13 +169,20 @@ def parse_telemetry(
         errors.append("heading_degrees must be between 0 and less than 360")
     if "schema_version" in payload and payload["schema_version"] != "bus-telemetry-v1":
         errors.append("Unsupported telemetry schema version")
-    for key in ("current_stop_id", "next_stop_id", "current_stop_city_id", "next_stop_city_id"):
+    for key in (
+        "current_stop_id",
+        "next_stop_id",
+        "current_stop_city_id",
+        "next_stop_city_id",
+    ):
         if key in payload and (
             not isinstance(payload[key], str) or not payload[key].strip()
         ):
             errors.append(f"{key} must be a non-empty string")
     if "sensor_status" in payload and payload["sensor_status"] not in (
-        "healthy", "faulty", "offline"
+        "healthy",
+        "faulty",
+        "offline",
     ):
         errors.append("sensor_status is not recognized")
 
@@ -184,7 +193,10 @@ def parse_telemetry(
     ):
         errors.extend(
             registry.check_identity(
-                payload["bus_id"], payload["region_id"], payload["route_id"], payload.get("city_id")
+                payload["bus_id"],
+                payload["region_id"],
+                payload["route_id"],
+                payload.get("city_id"),
             )
         )
 

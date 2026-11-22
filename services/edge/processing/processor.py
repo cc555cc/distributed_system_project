@@ -14,6 +14,7 @@ from services.edge.validation.validator import BusTelemetry
 
 # Small processing helpers stay here until they need their own modules.
 
+
 def calculate_occupancy(telemetry: dict, medium: float, high: float) -> dict:
     """Use reported counts only; conservatively suppress faulty sensor results."""
     # Keep faulty sensor information unavailable rather than guessing a count.
@@ -27,16 +28,23 @@ def calculate_occupancy(telemetry: dict, medium: float, high: float) -> dict:
 def aggregate(states: list[dict]) -> dict:
     """Exclude stale/offline readings; keep unknown occupancy out of the mean."""
     # Old or offline readings must not make the region look busier than it is.
-    active = [s for s in states if s["freshness"] == "current"
-              and s.get("sensor_status", "healthy") != "offline"]
+    active = [
+        s
+        for s in states
+        if s["freshness"] == "current"
+        and s.get("sensor_status", "healthy") != "offline"
+    ]
     # Unavailable readings stay out of the average; they are not zero occupancy.
-    occupancy = [s["occupancy_percent"] for s in active
-                 if s["occupancy_percent"] is not None]
+    occupancy = [
+        s["occupancy_percent"] for s in active if s["occupancy_percent"] is not None
+    ]
     return {
         "scope": "edge_assigned_buses",
         "active_buses": len(active),
         "crowded_buses": sum(s["crowding_status"] == "high" for s in active),
-        "average_occupancy_percent": sum(occupancy) / len(occupancy) if occupancy else None,
+        "average_occupancy_percent": sum(occupancy) / len(occupancy)
+        if occupancy
+        else None,
         "occupancy_samples": len(occupancy),
         "active_buses_per_route": dict(Counter(s["route_id"] for s in active)),
     }
@@ -48,9 +56,14 @@ OUTPUT_SCHEMA_VERSION = "edge-state-proposal-v1"
 def build_output(config: EdgeConfig, states: list[dict]) -> dict:
     """Return a JSON-serializable per-bus snapshot and explicitly scoped totals."""
     # These totals cover this edge server, not every server in the region.
-    return {"schema_version": OUTPUT_SCHEMA_VERSION,
-            "city_id": config.city_id, "region_id": config.region_id,
-            "edge_id": config.edge_id, "buses": states, "statistics": aggregate(states)}
+    return {
+        "schema_version": OUTPUT_SCHEMA_VERSION,
+        "city_id": config.city_id,
+        "region_id": config.region_id,
+        "edge_id": config.edge_id,
+        "buses": states,
+        "statistics": aggregate(states),
+    }
 
 
 class _RouteProcessor:
@@ -73,25 +86,46 @@ class _RouteProcessor:
         if route is None:
             raise ValueError("Route/city/region/direction is not configured")
         positions = self.positions[key]
-        current, following = telemetry.get("current_stop_id"), telemetry.get("next_stop_id")
+        current, following = (
+            telemetry.get("current_stop_id"),
+            telemetry.get("next_stop_id"),
+        )
         for stop in (current, following):
             if stop is not None and stop not in positions:
                 raise ValueError("Reported stop does not belong to route")
-        if current is not None and following is not None and positions[following] != positions[current] + 1:
+        if (
+            current is not None
+            and following is not None
+            and positions[following] != positions[current] + 1
+        ):
             raise ValueError("Current and next stop must be adjacent in travel order")
         # GPS proximity does not prove arrival. Use the reported current stop only.
         progress = None
         if current is not None and len(route.stops) > 1:
             progress = positions[current] / (len(route.stops) - 1) * 100
-        cities = dict(zip(route.stops, route.stop_city_ids or (route.city_id,) * len(route.stops)))
-        for field, stop in (("current_stop_city_id", current), ("next_stop_city_id", following)):
+        cities = dict(
+            zip(route.stops, route.stop_city_ids or (route.city_id,) * len(route.stops))
+        )
+        for field, stop in (
+            ("current_stop_city_id", current),
+            ("next_stop_city_id", following),
+        ):
             if field in telemetry and telemetry[field] != cities.get(stop):
-                raise ValueError("Reported stop city does not match the configured route")
-        return {"served_city_ids": list(route.served_city_ids or (route.city_id,)),
-                "current_stop_city_id": cities.get(current), "next_stop_city_id": cities.get(following),
-                "direction_id": direction, "current_stop_id": current,
-                "next_stop_id": following, "route_progress_percent": progress,
-                "progress_basis": "reported_current_stop" if progress is not None else "unavailable"}
+                raise ValueError(
+                    "Reported stop city does not match the configured route"
+                )
+        return {
+            "served_city_ids": list(route.served_city_ids or (route.city_id,)),
+            "current_stop_city_id": cities.get(current),
+            "next_stop_city_id": cities.get(following),
+            "direction_id": direction,
+            "current_stop_id": current,
+            "next_stop_id": following,
+            "route_progress_percent": progress,
+            "progress_basis": "reported_current_stop"
+            if progress is not None
+            else "unavailable",
+        }
 
 
 class ProcessingStatus(str, Enum):
@@ -114,9 +148,14 @@ class ProcessingResult:
 class EdgeProcessor:
     """Process validated telemetry without MQTT, databases or cross-server work."""
 
-    def __init__(self, config: EdgeConfig, network: NetworkConfig, *,
-                 clock: Callable[[], float] = time.monotonic,
-                 utc_now: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
+    def __init__(
+        self,
+        config: EdgeConfig,
+        network: NetworkConfig,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        utc_now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         self.config = config
         self.registry = network.registry
         self.routes = _RouteProcessor(network.routes)
@@ -129,8 +168,11 @@ class EdgeProcessor:
         for _key, entry in self.cache.values():
             state = deepcopy(entry.processed)
             # Work out age when reading too, even if no new messages arrive.
-            state["freshness"] = ("current" if now - entry.accepted_at <
-                                  self.config.freshness_seconds else "stale")
+            state["freshness"] = (
+                "current"
+                if now - entry.accepted_at < self.config.freshness_seconds
+                else "stale"
+            )
             states.append(state)
         return states
 
@@ -143,10 +185,16 @@ class EdgeProcessor:
         """Check which city, region and edge server should handle this bus."""
         cfg = self.config
         assignment = self.registry.get(telemetry["bus_id"])
-        if assignment is None or (assignment.city_id, assignment.region_id, assignment.edge_id) != (
-                cfg.city_id, cfg.region_id, cfg.edge_id):
+        if assignment is None or (
+            assignment.city_id,
+            assignment.region_id,
+            assignment.edge_id,
+        ) != (cfg.city_id, cfg.region_id, cfg.edge_id):
             return ProcessingStatus.NOT_ASSIGNED
-        if telemetry["region_id"] != cfg.region_id or telemetry.get("city_id", assignment.city_id) != cfg.city_id:
+        if (
+            telemetry["region_id"] != cfg.region_id
+            or telemetry.get("city_id", assignment.city_id) != cfg.city_id
+        ):
             return ProcessingStatus.NOT_ASSIGNED
         if telemetry["route_id"] != assignment.route_id:
             return ProcessingStatus.INVALID_ROUTE
@@ -155,12 +203,16 @@ class EdgeProcessor:
     def _prepare_source(self, telemetry: BusTelemetry) -> dict:
         """Copy the checked fields so the caller cannot change our cached data."""
         fields = BusTelemetry.__required_keys__ | BusTelemetry.__optional_keys__
-        source = deepcopy({key: value for key, value in telemetry.items() if key in fields})
+        source = deepcopy(
+            {key: value for key, value in telemetry.items() if key in fields}
+        )
         source["city_id"] = self.config.city_id
         source.setdefault("direction_id", 0)
         return source
 
-    def _check_sequence(self, key: tuple[str, str, str], source: dict) -> ProcessingStatus | None:
+    def _check_sequence(
+        self, key: tuple[str, str, str], source: dict
+    ) -> ProcessingStatus | None:
         """Reject old or repeated readings before doing the calculations."""
         existing = self.cache.get(key)
         floor = self.cache.sequence_floor(key)
@@ -180,7 +232,9 @@ class EdgeProcessor:
         """Check the route, calculate occupancy and keep the source timestamp."""
         cfg = self.config
         route = self.routes.process(source, cfg.city_id, cfg.region_id)
-        occupancy = calculate_occupancy(source, cfg.medium_threshold, cfg.high_threshold)
+        occupancy = calculate_occupancy(
+            source, cfg.medium_threshold, cfg.high_threshold
+        )
         state = {**source, **route, **occupancy}
         state["source_timestamp"] = state.pop("timestamp")
         state["processing_timestamp"] = self.utc_now().isoformat()
@@ -207,12 +261,16 @@ class EdgeProcessor:
 
             # A full cache can still update buses already stored in it.
             is_new_bus = self.cache.get(key) is None
-            if is_new_bus and not self.cache.has_capacity(cfg.max_buses, now, cfg.expire_seconds):
+            if is_new_bus and not self.cache.has_capacity(
+                cfg.max_buses, now, cfg.expire_seconds
+            ):
                 return ProcessingResult(ProcessingStatus.CAPACITY_EXCEEDED)
             try:
                 state = self._build_state(source)
             except ValueError as error:
-                return ProcessingResult(ProcessingStatus.INVALID_ROUTE, reason=str(error))
+                return ProcessingResult(
+                    ProcessingStatus.INVALID_ROUTE, reason=str(error)
+                )
 
             # Nothing above changes accepted state. Save only after all checks pass.
             entry = CacheEntry(source, state, now)

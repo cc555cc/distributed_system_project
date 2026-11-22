@@ -7,14 +7,18 @@ from psycopg.rows import dict_row
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
-#get all stops
+
+# get all stops
 @router.get("/stops")
 def get_all_stops():
     with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        row = connection.execute("SELECT stop_id, name, lat, lon FROM stops ORDER BY stop_id").fetchall()
+        row = connection.execute(
+            "SELECT stop_id, name, lat, lon FROM stops ORDER BY stop_id"
+        ).fetchall()
     return row
 
-#get a stop's latitude and longitude by stop_id
+
+# get a stop's latitude and longitude by stop_id
 @router.get("/stops/{stop_id}")
 def get_stop_loc(stop_id: str):
     with psycopg.connect(db_url, row_factory=dict_row) as connection:

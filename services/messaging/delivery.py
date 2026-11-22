@@ -52,9 +52,13 @@ class SequenceTracker:
     def report(self, sent: dict[str, list[int]]) -> dict:
         """Totals across senders, given what each sender actually sent."""
         with self._lock:
-            senders = {name: (state.arrivals, state.duplicates, state.late, len(state.seen))
-                       for name, state in self._senders.items()}
-        missing = {name: self.missing(name, sequences) for name, sequences in sent.items()}
+            senders = {
+                name: (state.arrivals, state.duplicates, state.late, len(state.seen))
+                for name, state in self._senders.items()
+            }
+        missing = {
+            name: self.missing(name, sequences) for name, sequences in sent.items()
+        }
         return {
             "sent": sum(len(s) for s in sent.values()),
             "arrivals": sum(v[0] for v in senders.values()),

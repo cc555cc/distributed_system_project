@@ -47,13 +47,15 @@ class EdgeStateCache:
             now - entry.accepted_at >= expiry for entry in self._entries.values()
         )
 
-    def put(self, key: CacheKey, entry: CacheEntry, maximum: int,
-            now: float, expiry: float) -> None:
+    def put(
+        self, key: CacheKey, entry: CacheEntry, maximum: int, now: float, expiry: float
+    ) -> None:
         """Commit only after validation/calculations have succeeded, under lock."""
         if key not in self._entries and len(self._entries) >= maximum:
             # Never remove a bus that is still inside its expiry timeout.
-            expired = next(k for k, v in self._entries.items()
-                           if now - v.accepted_at >= expiry)
+            expired = next(
+                k for k, v in self._entries.items() if now - v.accepted_at >= expiry
+            )
             del self._entries[expired]
         self._entries[key] = entry
         self._sequence_floors[key] = entry.telemetry["sequence_number"]
@@ -62,11 +64,13 @@ class EdgeStateCache:
         """Internal iterator; use under lock only."""
         return self._entries.items()
 
-
     def export_bus(self, key):
         """Copy both state and replay protection; an empty cache still has a floor."""
         with self.lock:
-            return {"entry": deepcopy(self._entries.get(key)), "floor": self._sequence_floors.get(key)}
+            return {
+                "entry": deepcopy(self._entries.get(key)),
+                "floor": self._sequence_floors.get(key),
+            }
 
     def restore_bus(self, key, state):
         """Install a synchronized replica without allowing its sequence to go back."""

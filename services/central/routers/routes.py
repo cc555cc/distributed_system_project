@@ -7,16 +7,22 @@ from psycopg.rows import dict_row
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
-#list all
+
+# list all
 @router.get("/routes")
 def get_all_route():
     with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        rows = connection.execute("SELECT route_id, name, region_id FROM routes ORDER BY route_id").fetchall()
+        rows = connection.execute(
+            "SELECT route_id, name, region_id FROM routes ORDER BY route_id"
+        ).fetchall()
     return rows
 
-#get all stops on a route in order, optionally filtered by direction
+
+# get all stops on a route in order, optionally filtered by direction
 @router.get("/routes/{route_id}/stops")
-def get_route_stops(route_id: str, direction: int | None = Query(default=None, ge=0, le=1)):
+def get_route_stops(
+    route_id: str, direction: int | None = Query(default=None, ge=0, le=1)
+):
     with psycopg.connect(db_url, row_factory=dict_row) as connection:
         rows = connection.execute(
             """
@@ -30,15 +36,19 @@ def get_route_stops(route_id: str, direction: int | None = Query(default=None, g
             (route_id, direction, direction),
         ).fetchall()
     if not rows:
-        raise HTTPException(status_code=404, detail="No stops found for this route and direction")
+        raise HTTPException(
+            status_code=404, detail="No stops found for this route and direction"
+        )
     return rows
 
-#get a route's name and region by id
+
+# get a route's name and region by id
 @router.get("/routes/{route_id}")
 def get_route_info(route_id: str):
     with psycopg.connect(db_url, row_factory=dict_row) as connection:
         row = connection.execute(
-            "SELECT route_id, name, region_id FROM routes WHERE route_id = %s", (route_id,)
+            "SELECT route_id, name, region_id FROM routes WHERE route_id = %s",
+            (route_id,),
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Route not found")

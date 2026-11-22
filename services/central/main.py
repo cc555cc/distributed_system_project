@@ -19,8 +19,9 @@ from services.messaging import mqtt_client
 @asynccontextmanager
 async def lifespan(app):
     mqtt_client.start()
-    yield #server pause here and handle request
-    mqtt_client.stop() #execute on ctrl+C input or shutdown
+    yield  # server pause here and handle request
+    mqtt_client.stop()  # execute on ctrl+C input or shutdown
+
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(bus_states.router)
@@ -29,6 +30,3 @@ app.include_router(routes.router)
 app.include_router(health_router)
 app.include_router(eta.router)
 app.include_router(messaging.router)
-
-
-

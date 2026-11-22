@@ -22,7 +22,9 @@ from services.messaging import topics
 SCHEMA_VERSION = "transit-alert-v1"
 SEGMENT = r"^[A-Za-z0-9_.:-]+$"
 
-AlertKind = Literal["sensor_failure", "sensor_recovered", "edge_overload", "edge_unavailable", "other"]
+AlertKind = Literal[
+    "sensor_failure", "sensor_recovered", "edge_overload", "edge_unavailable", "other"
+]
 Severity = Literal["info", "warning", "critical"]
 
 
@@ -49,18 +51,39 @@ class Alert(BaseModel):
         return value
 
 
-def make_alert(region_id, source_id, source_type, kind, severity, message, *, clock,
-               bus_id=None, utc_now=None) -> Alert:
+def make_alert(
+    region_id,
+    source_id,
+    source_type,
+    kind,
+    severity,
+    message,
+    *,
+    clock,
+    bus_id=None,
+    utc_now=None,
+) -> Alert:
     """Build an alert, ticking the sender's Lamport clock (send rule)."""
     now = (utc_now or (lambda: datetime.now(UTC)))()
-    return Alert(alert_id=uuid4().hex, region_id=region_id, source_id=source_id,
-                 source_type=source_type, kind=kind, severity=severity, message=message,
-                 timestamp=now.isoformat(), lamport_clock=clock.tick(), bus_id=bus_id)
+    return Alert(
+        alert_id=uuid4().hex,
+        region_id=region_id,
+        source_id=source_id,
+        source_type=source_type,
+        kind=kind,
+        severity=severity,
+        message=message,
+        timestamp=now.isoformat(),
+        lamport_clock=clock.tick(),
+        bus_id=bus_id,
+    )
 
 
 def encode(alert: Alert) -> tuple[str, str]:
     """Return (topic, payload) for publishing."""
-    return topics.alert(alert.region_id, alert.source_id), alert.model_dump_json(exclude_none=True)
+    return topics.alert(alert.region_id, alert.source_id), alert.model_dump_json(
+        exclude_none=True
+    )
 
 
 def parse(topic: str, payload: bytes) -> Alert:
@@ -99,10 +122,13 @@ class AlertStore:
 
     def list(self, *, region_id=None, severity=None, limit=100) -> list[dict]:
         with self._lock:
-            alerts = [dict(a) for a in self._alerts.values()
-                      if (region_id is None or a["region_id"] == region_id)
-                      and (severity is None or a["severity"] == severity)]
-        return alerts[-limit:][::-1]          # newest first
+            alerts = [
+                dict(a)
+                for a in self._alerts.values()
+                if (region_id is None or a["region_id"] == region_id)
+                and (severity is None or a["severity"] == severity)
+            ]
+        return alerts[-limit:][::-1]  # newest first
 
     def clear(self) -> None:
         with self._lock:

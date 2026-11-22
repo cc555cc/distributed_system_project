@@ -30,12 +30,15 @@ def test_send_rule_increments_by_one():
     assert clock.value == 3
 
 
-@pytest.mark.parametrize("local, received, expected", [
-    (0, 0, 1),    # equal clocks still move forward
-    (5, 2, 6),    # receiver ahead: local + 1
-    (2, 9, 10),   # sender ahead: jump past the sender
-    (7, 7, 8),
-])
+@pytest.mark.parametrize(
+    "local, received, expected",
+    [
+        (0, 0, 1),  # equal clocks still move forward
+        (5, 2, 6),  # receiver ahead: local + 1
+        (2, 9, 10),  # sender ahead: jump past the sender
+        (7, 7, 8),
+    ],
+)
 def test_receive_rule_is_max_plus_one(local, received, expected):
     clock = LamportClock(local)
     assert clock.receive(received) == expected
@@ -95,13 +98,15 @@ def test_dropped_sensor_readings_leave_gaps_but_never_reorder():
 
 def test_message_received_by_the_bus_raises_its_later_send_stamps():
     clock = LamportClock()
-    stream = generate_messages("302", 0, "bus-302-1", update_seconds=0, max_updates=4, clock=clock)
+    stream = generate_messages(
+        "302", 0, "bus-302-1", update_seconds=0, max_updates=4, clock=clock
+    )
     assert [next(stream)["lamport_clock"], next(stream)["lamport_clock"]] == [1, 2]
     # A command stamped 50 arrives on this bus (the consumer is MQTT-05).
     assert clock.receive(50) == 51
     after = next(stream)
     assert after["lamport_clock"] == 52
-    assert after["sequence_number"] == 3   # sequence counts readings only
+    assert after["sequence_number"] == 3  # sequence counts readings only
 
 
 # ==================== BUS -> EDGE -> CENTRAL ====================
@@ -116,33 +121,63 @@ class Transport:
 
     def publish(self, topic, payload, **kwargs):
         self.sent.append(json.loads(payload))
-        self.callback(None, None, SimpleNamespace(topic=topic, payload=payload.encode()))
-        return SimpleNamespace(rc=0, wait_for_publish=lambda **kwargs: None, is_published=lambda: True)
+        self.callback(
+            None, None, SimpleNamespace(topic=topic, payload=payload.encode())
+        )
+        return SimpleNamespace(
+            rc=0, wait_for_publish=lambda **kwargs: None, is_published=lambda: True
+        )
 
 
 @pytest.fixture
 def chain(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused/offline")
     from services.messaging import mqtt_client
+
     monkeypatch.setattr(mqtt_client, "clock", LamportClock())
-    monkeypatch.setattr(mqtt_client, "apply_bus_state", lambda bus, region, state: (True, None))
-    registry = BusRegistry({bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in ("A1", "A2")})
+    monkeypatch.setattr(
+        mqtt_client, "apply_bus_state", lambda bus, region, state: (True, None)
+    )
+    registry = BusRegistry(
+        {bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in ("A1", "A2")}
+    )
     config = EdgeConfig("CITY-A", "north", "edge-a")
-    network = NetworkConfig(registry, (RouteDefinition("CITY-A", "north", "R1", ("S1", "S2")),))
+    network = NetworkConfig(
+        registry, (RouteDefinition("CITY-A", "north", "R1", ("S1", "S2")),)
+    )
     sender = EdgeToCentral(config, registry, BusStateUpdate)
     transport = Transport(mqtt_client.on_message)
     sender._client = transport
-    forwarder = CentralForwarder(EdgeIngress(EdgeProcessor(config, network, clock=lambda: 0.0)),
-                                 sender, "passengers")
-    return SimpleNamespace(forwarder=forwarder, transport=transport, central=mqtt_client)
+    forwarder = CentralForwarder(
+        EdgeIngress(EdgeProcessor(config, network, clock=lambda: 0.0)),
+        sender,
+        "passengers",
+    )
+    return SimpleNamespace(
+        forwarder=forwarder, transport=transport, central=mqtt_client
+    )
 
 
 def reading(bus="A1", sequence=1, lamport=1):
-    return {"bus_id": bus, "city_id": "CITY-A", "region_id": "north", "route_id": "R1",
-                "latitude": 43.9, "longitude": -78.9, "speed_kmh": 30.0, "passengers": 40, "capacity": 50,
-                "sequence_number": sequence, "timestamp": "2026-11-11T12:00:00Z",
-                "bus_status": "travelling", "lamport_clock": lamport, "direction_id": 0,
-                "current_stop_id": "S1", "next_stop_id": "S2", "sensor_status": "healthy"}
+    return {
+        "bus_id": bus,
+        "city_id": "CITY-A",
+        "region_id": "north",
+        "route_id": "R1",
+        "latitude": 43.9,
+        "longitude": -78.9,
+        "speed_kmh": 30.0,
+        "passengers": 40,
+        "capacity": 50,
+        "sequence_number": sequence,
+        "timestamp": "2026-11-11T12:00:00Z",
+        "bus_status": "travelling",
+        "lamport_clock": lamport,
+        "direction_id": 0,
+        "current_stop_id": "S1",
+        "next_stop_id": "S2",
+        "sensor_status": "healthy",
+    }
 
 
 def forward(chain, source):
@@ -154,9 +189,9 @@ def forward(chain, source):
 def test_stamps_increase_along_bus_edge_central(chain):
     assert forward(chain, reading(lamport=7)).status == ProcessingStatus.ACCEPTED
     sent = chain.transport.sent[-1]
-    assert sent["lamport"] == 7                             # bus's stamp is preserved
-    assert sent["edge_metadata"]["edge_lamport"] == 9       # receive -> 8, send -> 9
-    assert chain.central.clock.value == 10                  # receive: max(0, 9) + 1
+    assert sent["lamport"] == 7  # bus's stamp is preserved
+    assert sent["edge_metadata"]["edge_lamport"] == 9  # receive -> 8, send -> 9
+    assert chain.central.clock.value == 10  # receive: max(0, 9) + 1
 
 
 def test_receiver_ahead_of_sender_keeps_its_own_clock(chain):
@@ -176,7 +211,7 @@ def test_stale_and_duplicate_deliveries_advance_the_edge_clock_but_are_not_sent(
     before = chain.forwarder.clock.value
     for repeat in (reading(sequence=5, lamport=5), reading(sequence=4, lamport=4)):
         assert forward(chain, repeat).status != ProcessingStatus.ACCEPTED
-    assert chain.forwarder.clock.value == before + 2        # two receive events
+    assert chain.forwarder.clock.value == before + 2  # two receive events
     assert len(chain.transport.sent) == 1
     forward(chain, reading(sequence=6, lamport=6))
     stamps = [sent["edge_metadata"]["edge_lamport"] for sent in chain.transport.sent]
@@ -191,13 +226,22 @@ def test_retried_delivery_keeps_its_original_stamp(chain):
     chain.transport.fail = False
     assert chain.forwarder.flush_one()
     assert chain.transport.sent[-1]["edge_metadata"]["edge_lamport"] == stamped
-    assert chain.forwarder.clock.value == stamped           # the retry is not a new event
+    assert chain.forwarder.clock.value == stamped  # the retry is not a new event
 
 
-def test_central_applies_the_receive_rule_even_when_it_rejects_the_update(chain, monkeypatch):
-    monkeypatch.setattr(chain.central, "apply_bus_state", lambda bus, region, state: (False, "stale update"))
+def test_central_applies_the_receive_rule_even_when_it_rejects_the_update(
+    chain, monkeypatch
+):
+    monkeypatch.setattr(
+        chain.central,
+        "apply_bus_state",
+        lambda bus, region, state: (False, "stale update"),
+    )
     forward(chain, reading(lamport=20))
-    assert chain.central.clock.value == chain.transport.sent[-1]["edge_metadata"]["edge_lamport"] + 1
+    assert (
+        chain.central.clock.value
+        == chain.transport.sent[-1]["edge_metadata"]["edge_lamport"] + 1
+    )
 
 
 def test_central_falls_back_to_the_bus_stamp_for_senders_without_an_edge_stamp(chain):
@@ -205,14 +249,24 @@ def test_central_falls_back_to_the_bus_stamp_for_senders_without_an_edge_stamp(c
     payload = chain.transport.sent[-1]
     del payload["edge_metadata"]["edge_lamport"]
     chain.central.clock = LamportClock(4)
-    chain.central.on_message(None, None, SimpleNamespace(
-        topic="transit/north/bus/A1/state", payload=json.dumps(payload).encode()))
+    chain.central.on_message(
+        None,
+        None,
+        SimpleNamespace(
+            topic="transit/north/bus/A1/state", payload=json.dumps(payload).encode()
+        ),
+    )
     assert chain.central.clock.value == 31
 
 
 def test_invalid_payload_does_not_move_the_central_clock(chain):
-    chain.central.on_message(None, None, SimpleNamespace(
-        topic="transit/north/bus/A1/state", payload=b'{"lamport": 999}'))
+    chain.central.on_message(
+        None,
+        None,
+        SimpleNamespace(
+            topic="transit/north/bus/A1/state", payload=b'{"lamport": 999}'
+        ),
+    )
     assert chain.central.clock.value == 0
 
 

@@ -11,6 +11,7 @@ from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 def slow_simulation():
     from services.edge.main import EdgeLoadSimulation
+
     simulation = EdgeLoadSimulation()
     for edge_id in ("edge-west-1", "edge-west-2"):
         simulation.configure(edge_id, processing_ms=60000)
@@ -20,12 +21,17 @@ def slow_simulation():
 @pytest.fixture
 def cluster():
     from services.edge.main import EdgeClusterSimulation
+
     return EdgeClusterSimulation()
 
 
 def test_main_uses_four_configured_instances():
     assert set(configured_instances(DEFAULT_NETWORK_PATH)) == {
-        "edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"}
+        "edge-west-1",
+        "edge-west-2",
+        "edge-east-1",
+        "edge-east-2",
+    }
 
 
 def test_single_instance_checks_environment(monkeypatch):
@@ -37,9 +43,13 @@ def test_single_instance_checks_environment(monkeypatch):
 
 def test_main_deployment_has_two_disjoint_owners_per_region():
     from services.edge.main import deployment_plan
+
     plan = deployment_plan(DEFAULT_NETWORK_PATH)
     all_buses = []
-    for region, routes, count in (("west", {"302", "900"}, 2), ("east", {"407", "409", "901"}, 3)):
+    for region, routes, count in (
+        ("west", {"302", "900"}, 2),
+        ("east", {"407", "409", "901"}, 3),
+    ):
         workers = [worker for worker in plan if worker["region_id"] == region]
         assert len(workers) == 2
         assert all(set(worker["route_ids"]) == routes for worker in workers)
@@ -52,14 +62,17 @@ def test_main_deployment_has_two_disjoint_owners_per_region():
 
 def test_main_constructs_independent_workers(monkeypatch):
     import services.edge.main as launcher
+
     monkeypatch.setenv("CENTRAL_OCCUPANCY_UNIT", "passengers")
     workers = []
     real_worker = EdgeServerInstance
+
     def capture(*args):
         worker = real_worker(*args)
         worker.run = Mock()
         workers.append(worker)
         return worker
+
     monkeypatch.setattr(launcher, "EdgeServerInstance", capture)
     stop = Mock()
     for identity in launcher.configured_instances(DEFAULT_NETWORK_PATH).values():
@@ -73,6 +86,7 @@ def test_main_constructs_independent_workers(monkeypatch):
 
 def test_launcher_rejects_unknown_instance_before_starting_process(monkeypatch):
     import services.edge.main as launcher
+
     process = Mock()
     monkeypatch.setattr(launcher, "Process", process)
     with pytest.raises(ValueError, match="unregistered"):
@@ -101,12 +115,15 @@ def test_sustained_load_starts_third_and_preserves_every_synthetic_request():
 
 def test_short_burst_drains_without_starting_third_instance():
     from services.edge.main import EdgeLoadSimulation
+
     simulation = EdgeLoadSimulation()
     simulation.submit("bus-302-1", 80)
     report = simulation.advance(1)
     assert sum(w["completed"] for w in report["workers"]) == 80
     assert not simulation.workers["edge-west-3"].active
-    assert simulation.workers["edge-west-1"].snapshot()["average_latency_ms"] == pytest.approx(102.5)
+    assert simulation.workers["edge-west-1"].snapshot()[
+        "average_latency_ms"
+    ] == pytest.approx(102.5)
 
 
 def test_disabled_autoscale_keeps_third_stopped():
@@ -168,6 +185,7 @@ def test_new_instance_registration_and_snapshot_are_isolated(cluster):
 
 def test_advance_chunking_does_not_change_recovery_or_processing():
     from services.edge.main import EdgeClusterSimulation
+
     large, small = EdgeClusterSimulation(), EdgeClusterSimulation()
     for cluster in (large, small):
         cluster.generate("bus-302-1", 1)
@@ -180,7 +198,9 @@ def test_advance_chunking_does_not_change_recovery_or_processing():
         small.advance(1)
     assert large.snapshot()["ownership"] == small.snapshot()["ownership"]
     assert large.outcomes == small.outcomes
-    assert [w.state for w in large.workers.values()] == [w.state for w in small.workers.values()]
+    assert [w.state for w in large.workers.values()] == [
+        w.state for w in small.workers.values()
+    ]
 
 
 def test_autoscaling_cannot_resurrect_a_failed_third_instance(cluster):

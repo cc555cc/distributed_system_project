@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 SCHEMA_VERSION = "transit-command-v1"
 SEGMENT = r"^[A-Za-z0-9_.:-]+$"
 
-Action = Literal["pause", "resume", "set_traffic", "set_demand", "set_sensor_failure_rate"]
+Action = Literal[
+    "pause", "resume", "set_traffic", "set_demand", "set_sensor_failure_rate"
+]
 
 # Required parameters per action; anything else is rejected.
 PARAMETERS = {
@@ -41,13 +43,23 @@ PARAMETERS = {
 
 
 def _check_traffic(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 < value <= 1:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not 0 < value <= 1
+    ):
         raise ValueError("traffic_factor must be greater than 0 and at most 1")
     return float(value)
 
 
 def _check_rate(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not 0 <= value <= 1
+    ):
         raise ValueError("sensor_failure_rate must be between 0 and 1")
     return float(value)
 
@@ -64,7 +76,7 @@ class Command(BaseModel):
     schema_version: Literal["transit-command-v1"] = SCHEMA_VERSION
     command_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
     region_id: str = Field(pattern=SEGMENT, max_length=64)
-    target: str = Field(pattern=SEGMENT, max_length=64)     # a bus ID, or "all"
+    target: str = Field(pattern=SEGMENT, max_length=64)  # a bus ID, or "all"
     action: Action
     params: dict[str, Any] = Field(default_factory=dict)
     issued_by: str = Field(default="central", pattern=SEGMENT, max_length=64)
@@ -74,19 +86,40 @@ class Command(BaseModel):
     @model_validator(mode="after")
     def _params_match_action(self):
         if set(self.params) != PARAMETERS[self.action]:
-            raise ValueError(f"{self.action} takes parameters {sorted(PARAMETERS[self.action])}")
-        checks = {"traffic_factor": _check_traffic, "sensor_failure_rate": _check_rate, "demand": _check_demand}
+            raise ValueError(
+                f"{self.action} takes parameters {sorted(PARAMETERS[self.action])}"
+            )
+        checks = {
+            "traffic_factor": _check_traffic,
+            "sensor_failure_rate": _check_rate,
+            "demand": _check_demand,
+        }
         self.params = {name: checks[name](value) for name, value in self.params.items()}
         return self
 
 
-def make_command(region_id, action, params=None, *, target=topics.ALL_BUSES, clock, issued_by="central",
-                 utc_now=None) -> Command:
+def make_command(
+    region_id,
+    action,
+    params=None,
+    *,
+    target=topics.ALL_BUSES,
+    clock,
+    issued_by="central",
+    utc_now=None,
+) -> Command:
     """Build a command, ticking the sender's Lamport clock (send rule)."""
     now = (utc_now or (lambda: datetime.now(UTC)))()
-    return Command(command_id=uuid4().hex, region_id=region_id, target=target, action=action,
-                   params=params or {}, issued_by=issued_by, timestamp=now.isoformat(),
-                   lamport_clock=clock.tick())
+    return Command(
+        command_id=uuid4().hex,
+        region_id=region_id,
+        target=target,
+        action=action,
+        params=params or {},
+        issued_by=issued_by,
+        timestamp=now.isoformat(),
+        lamport_clock=clock.tick(),
+    )
 
 
 def encode(command: Command) -> tuple[str, str]:
@@ -105,7 +138,9 @@ class BusControls:
     blocks the simulator without busy-waiting.
     """
 
-    def __init__(self, *, demand="off_peak", traffic_factor=1.0, sensor_failure_rate=0.0):
+    def __init__(
+        self, *, demand="off_peak", traffic_factor=1.0, sensor_failure_rate=0.0
+    ):
         self._changed = Condition()
         self._paused = False
         self._stopped = False
@@ -162,7 +197,7 @@ class CommandConsumer:
         self.controls, self.clock = controls, clock
         self._seen: OrderedDict[str, None] = OrderedDict()
         self._memory = memory
-        self.history: list[tuple[str, str]] = []       # (command_id or "?", outcome)
+        self.history: list[tuple[str, str]] = []  # (command_id or "?", outcome)
 
     def handle(self, topic: str, payload: bytes) -> str:
         try:
@@ -170,14 +205,22 @@ class CommandConsumer:
                 raise ValueError("command payload too large")
             command = Command.model_validate_json(payload)
         except ValueError as error:
-            logger.warning("Rejected command on %s for bus=%s: invalid (%s)", topic, self.bus_id, type(error).__name__)
+            logger.warning(
+                "Rejected command on %s for bus=%s: invalid (%s)",
+                topic,
+                self.bus_id,
+                type(error).__name__,
+            )
             self.history.append(("?", REJECTED))
             return REJECTED
         # Receive rule on every valid delivery, even one this bus ignores.
         self.clock.receive(command.lamport_clock)
         if topic != topics.command(command.region_id, command.target):
             outcome = REJECTED
-        elif command.region_id != self.region_id or command.target not in (self.bus_id, topics.ALL_BUSES):
+        elif command.region_id != self.region_id or command.target not in (
+            self.bus_id,
+            topics.ALL_BUSES,
+        ):
             outcome = IGNORED
         elif command.command_id in self._seen:
             outcome = DUPLICATE
@@ -189,5 +232,11 @@ class CommandConsumer:
             outcome = APPLIED
         self.history.append((command.command_id, outcome))
         log = logger.info if outcome == APPLIED else logger.warning
-        log("Command %s %s for bus=%s: %s", command.command_id, command.action, self.bus_id, outcome)
+        log(
+            "Command %s %s for bus=%s: %s",
+            command.command_id,
+            command.action,
+            self.bus_id,
+            outcome,
+        )
         return outcome

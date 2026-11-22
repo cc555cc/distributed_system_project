@@ -40,18 +40,33 @@ SENT, QUEUED, DROPPED = "sent", "queued", "dropped"
 
 
 class ReliablePublisher:
-    def __init__(self, client_id, host="127.0.0.1", port=1883, *, max_queued=1000,
-                 configure=None, client_factory=None):
-        if isinstance(max_queued, bool) or not isinstance(max_queued, int) or max_queued < 1:
+    def __init__(
+        self,
+        client_id,
+        host="127.0.0.1",
+        port=1883,
+        *,
+        max_queued=1000,
+        configure=None,
+        client_factory=None,
+    ):
+        if (
+            isinstance(max_queued, bool)
+            or not isinstance(max_queued, int)
+            or max_queued < 1
+        ):
             raise ValueError("max_queued must be a positive integer")
         import paho.mqtt.client as mqtt
+
         self._mqtt = mqtt
         self.client_id = client_id
         self.host, self.port, self.max_queued = host, port, max_queued
-        factory = client_factory or (lambda: mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id))
+        factory = client_factory or (
+            lambda: mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
+        )
         self.client = factory()
         if configure is not None:
-            configure(self.client)   # credentials/TLS, e.g. configure_mqtt_client
+            configure(self.client)  # credentials/TLS, e.g. configure_mqtt_client
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_publish = self._on_publish
@@ -59,18 +74,27 @@ class ReliablePublisher:
         self.client.reconnect_delay_set(min_delay=1, max_delay=10)
         self.client.max_queued_messages_set(max_queued)
         self._changed = Condition()
-        self._send_lock = Lock()    # serialises sends; never taken by the network thread
+        self._send_lock = Lock()  # serialises sends; never taken by the network thread
         self._connected = False
         self._connections = 0
         self._closing = False
-        self._outstanding = set()   # message IDs accepted but not yet acknowledged
-        self._resend_pending = False  # Paho holds messages it will resend after reconnecting
-        self._backlog = deque()     # (topic, payload) waiting for the gate to clear
+        self._outstanding = set()  # message IDs accepted but not yet acknowledged
+        self._resend_pending = (
+            False  # Paho holds messages it will resend after reconnecting
+        )
+        self._backlog = deque()  # (topic, payload) waiting for the gate to clear
         self._sending = False
-        self._early_acks = set()    # acks that arrived before publish() recorded the ID
+        self._early_acks = set()  # acks that arrived before publish() recorded the ID
         self._flusher = None
-        self._subscriptions = {}    # topic filter -> handler(topic, payload)
-        self.stats = {"sent": 0, "queued": 0, "dropped": 0, "acknowledged": 0, "disconnects": 0, "reconnects": 0}
+        self._subscriptions = {}  # topic filter -> handler(topic, payload)
+        self.stats = {
+            "sent": 0,
+            "queued": 0,
+            "dropped": 0,
+            "acknowledged": 0,
+            "disconnects": 0,
+            "reconnects": 0,
+        }
 
     # ---- paho callbacks (network thread) ----
     def _on_connect(self, client, userdata, flags, reason_code, properties):
@@ -82,7 +106,10 @@ class ReliablePublisher:
             self._connections += 1
             if self._connections > 1:
                 self.stats["reconnects"] += 1
-                logger.info("MQTT reconnected; resending %d unacknowledged message(s)", len(self._outstanding))
+                logger.info(
+                    "MQTT reconnected; resending %d unacknowledged message(s)",
+                    len(self._outstanding),
+                )
             filters = list(self._subscriptions)
             self._changed.notify_all()
         # A clean session forgets subscriptions, so restore them on every connect.
@@ -100,7 +127,10 @@ class ReliablePublisher:
             self._changed.notify_all()
             expected = self._closing
         if not expected:
-            logger.warning("MQTT disconnected (%s); publishing continues into the offline queue", reason_code)
+            logger.warning(
+                "MQTT disconnected (%s); publishing continues into the offline queue",
+                reason_code,
+            )
 
     def _on_publish(self, client, userdata, mid, reason_code, properties):
         with self._changed:
@@ -115,8 +145,11 @@ class ReliablePublisher:
 
     def _on_message(self, client, userdata, message):
         with self._changed:
-            handlers = [handler for topic_filter, handler in self._subscriptions.items()
-                        if self._mqtt.topic_matches_sub(topic_filter, message.topic)]
+            handlers = [
+                handler
+                for topic_filter, handler in self._subscriptions.items()
+                if self._mqtt.topic_matches_sub(topic_filter, message.topic)
+            ]
         for handler in handlers:
             try:
                 handler(message.topic, message.payload)
@@ -146,7 +179,9 @@ class ReliablePublisher:
                 self.stats["dropped"] += 1
                 return DROPPED
             if info.rc not in (mqtt.MQTT_ERR_SUCCESS, mqtt.MQTT_ERR_NO_CONN):
-                raise ConnectionError(f"MQTT publish failed: {mqtt.error_string(info.rc)}")
+                raise ConnectionError(
+                    f"MQTT publish failed: {mqtt.error_string(info.rc)}"
+                )
             if acknowledged_early:
                 self.stats["acknowledged"] += 1
             else:
@@ -170,7 +205,11 @@ class ReliablePublisher:
                         return
                     topic, payload = self._backlog.popleft()
                 if self._send(topic, payload) == DROPPED:
-                    logger.error("Dropped message for %s: offline queue of %d is full", topic, self.max_queued)
+                    logger.error(
+                        "Dropped message for %s: offline queue of %d is full",
+                        topic,
+                        self.max_queued,
+                    )
 
     def _flush_backlog_forever(self):
         while True:
@@ -225,8 +264,11 @@ class ReliablePublisher:
                         self.stats["queued"] += 1
                         outcome = QUEUED
                         if self._flusher is None:
-                            self._flusher = Thread(target=self._flush_backlog_forever, daemon=True,
-                                                   name=f"{self.client_id}-backlog")
+                            self._flusher = Thread(
+                                target=self._flush_backlog_forever,
+                                daemon=True,
+                                name=f"{self.client_id}-backlog",
+                            )
                             self._flusher.start()
                         self._changed.notify_all()
             if not held_back:
@@ -235,22 +277,31 @@ class ReliablePublisher:
                     with self._changed:
                         self.stats[outcome] += 1
         if outcome == DROPPED:
-            logger.error("Dropped message for %s: offline queue of %d is full", topic, self.max_queued)
+            logger.error(
+                "Dropped message for %s: offline queue of %d is full",
+                topic,
+                self.max_queued,
+            )
         return outcome
 
     def flush(self, timeout=5.0):
         """Wait for broker acknowledgements. Return the number still missing."""
         deadline = time.monotonic() + timeout
         with self._changed:
-            self._changed.wait_for(lambda: not self._outstanding and not self._backlog,
-                                   max(0.0, deadline - time.monotonic()))
+            self._changed.wait_for(
+                lambda: not self._outstanding and not self._backlog,
+                max(0.0, deadline - time.monotonic()),
+            )
             return len(self._outstanding) + len(self._backlog)
 
     def close(self, flush_timeout=5.0):
         """Disconnect. Return how many accepted messages were never acknowledged."""
         missing = self.flush(flush_timeout)
         if missing:
-            logger.warning("%d message(s) were not acknowledged by the broker before shutdown", missing)
+            logger.warning(
+                "%d message(s) were not acknowledged by the broker before shutdown",
+                missing,
+            )
         with self._changed:
             self._closing = True
             self._changed.notify_all()

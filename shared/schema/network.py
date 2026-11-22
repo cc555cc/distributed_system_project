@@ -23,7 +23,12 @@ def validate_network(data: dict) -> dict:
             raise ValueError("Stop belongs to an unknown city")
         for field, bound in (("lat", 90), ("lon", 180)):
             value = stop[field]
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not -bound <= value <= bound or not math.isfinite(value):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not -bound <= value <= bound
+                or not math.isfinite(value)
+            ):
                 raise ValueError("Stop coordinates are invalid")
     regions = {region["region_id"]: region for region in data["regions"]}
     if len(regions) != len(data["regions"]):
@@ -37,9 +42,13 @@ def validate_network(data: dict) -> dict:
         owner = regions.get(route["region_id"])
         if owner is None or owner["city_id"] != route["city_id"]:
             raise ValueError("Route processing owner does not match its city/region")
-        directions = route.get("directions", {"0": route["stops"], "1": list(reversed(route["stops"]))})
+        directions = route.get(
+            "directions", {"0": route["stops"], "1": list(reversed(route["stops"]))}
+        )
         if set(directions) != {"0", "1"} or route["stops"] != directions["0"]:
-            raise ValueError("Provide both travel directions with stops matching direction 0")
+            raise ValueError(
+                "Provide both travel directions with stops matching direction 0"
+            )
         all_stops = []
         for ordered in directions.values():
             if len(ordered) < 2 or len(set(ordered)) != len(ordered):
@@ -60,12 +69,21 @@ def validate_network(data: dict) -> dict:
         raise ValueError("Bus IDs must be globally unique")
     for bus in buses.values():
         route = routes.get(bus["route_id"])
-        if route is None or (bus["city_id"], bus["region_id"]) != (route["city_id"], route["region_id"]):
-            raise ValueError("Bus must use its route's configured processing assignment")
+        if route is None or (bus["city_id"], bus["region_id"]) != (
+            route["city_id"],
+            route["region_id"],
+        ):
+            raise ValueError(
+                "Bus must use its route's configured processing assignment"
+            )
         region = regions[bus["region_id"]]
         if bus["edge_id"] not in (region["primary_edge"], region["backup_edge"]):
             raise ValueError("Bus has an unregistered regional edge owner")
-        if isinstance(bus["capacity"], bool) or not isinstance(bus["capacity"], int) or bus["capacity"] < 1:
+        if (
+            isinstance(bus["capacity"], bool)
+            or not isinstance(bus["capacity"], int)
+            or bus["capacity"] < 1
+        ):
             raise ValueError("Bus capacity must be a positive integer")
         if bus.get("direction_id", 0) not in (0, 1):
             raise ValueError("Bus direction must be 0 or 1")
@@ -90,10 +108,14 @@ def route_stops(network: dict, route_id: str, direction: int = 0) -> list[dict]:
     """Return the configured stop order, including explicit intercity stops."""
     if direction not in (0, 1):
         raise ValueError("Direction must be 0 or 1")
-    route = next((route for route in network["routes"] if route["route_id"] == route_id), None)
+    route = next(
+        (route for route in network["routes"] if route["route_id"] == route_id), None
+    )
     if route is None:
         raise ValueError("Unknown route ID")
     stops = {stop["stop_id"]: stop for stop in network["stops"]}
     ids = direction_stop_ids(route, direction)
-    return [dict(stops[stop], direction_id=direction, position=position)
-            for position, stop in enumerate(ids)]
+    return [
+        dict(stops[stop], direction_id=direction, position=position)
+        for position, stop in enumerate(ids)
+    ]

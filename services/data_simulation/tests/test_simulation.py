@@ -22,10 +22,17 @@ from shared.schema.network import (
 
 def messages(bus, **settings):
     """Use deterministic reporting time; zero interval skips real waiting only."""
-    return list(generate_data.generate_messages(
-        bus["route_id"], bus.get("direction_id", 0), bus["bus_id"],
-        max_updates=3, update_seconds=0,
-        utc_now=lambda: datetime(2026, 1, 1, tzinfo=UTC), **settings))
+    return list(
+        generate_data.generate_messages(
+            bus["route_id"],
+            bus.get("direction_id", 0),
+            bus["bus_id"],
+            max_updates=3,
+            update_seconds=0,
+            utc_now=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+            **settings,
+        )
+    )
 
 
 # ==================== CARSON'S DURHAM MAP AND REGISTERED BUSES ====================
@@ -34,11 +41,20 @@ def test_network_topology():
     assert {city["city_id"] for city in network["cities"]} == {"DURHAM"}
     assert len(network["stops"]) == 373
     assert {region["region_id"] for region in network["regions"]} == {"west", "east"}
-    assert {route["route_id"] for route in network["routes"]} == {"302", "407", "409", "900", "901"}
+    assert {route["route_id"] for route in network["routes"]} == {
+        "302",
+        "407",
+        "409",
+        "900",
+        "901",
+    }
     assert len(network["buses"]) == 10
     assert not any(route["intercity"] for route in network["routes"])
-    assert all(len(route_stops(network, route["route_id"], direction)) >= 2
-               for route in network["routes"] for direction in (0, 1))
+    assert all(
+        len(route_stops(network, route["route_id"], direction)) >= 2
+        for route in network["routes"]
+        for direction in (0, 1)
+    )
     assert len({bus["bus_id"] for bus in network["buses"]}) == len(network["buses"])
 
 
@@ -48,13 +64,19 @@ def test_simulator_to_edge_to_central_contract(bus_id):
     network = load_network()
     edge_network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
     bus = next(bus for bus in network["buses"] if bus["bus_id"] == bus_id)
-    processor = EdgeProcessor(EdgeConfig(bus["city_id"], bus["region_id"], bus["edge_id"]), edge_network)
+    processor = EdgeProcessor(
+        EdgeConfig(bus["city_id"], bus["region_id"], bus["edge_id"]), edge_network
+    )
     readings = messages(bus)
     assert len(readings) == 3
     for source in readings:
         decoded = json.loads(json.dumps(source, allow_nan=False))
-        valid, errors = parse_telemetry(decoded, expected_region=bus["region_id"],
-                                        expected_bus=bus_id, registry=edge_network.registry)
+        valid, errors = parse_telemetry(
+            decoded,
+            expected_region=bus["region_id"],
+            expected_bus=bus_id,
+            registry=edge_network.registry,
+        )
         assert not errors
         assert valid is not None
         result = processor.process(valid)
@@ -75,8 +97,12 @@ def test_bus_cannot_claim_another_region():
     edge_network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
     source = messages(bus)[0]
     source["region_id"] = "east" if bus["region_id"] == "west" else "west"
-    valid, errors = parse_telemetry(source, expected_region=source["region_id"],
-                                    expected_bus=bus["bus_id"], registry=edge_network.registry)
+    valid, errors = parse_telemetry(
+        source,
+        expected_region=source["region_id"],
+        expected_bus=bus["bus_id"],
+        registry=edge_network.registry,
+    )
     assert valid is None and errors
 
 
@@ -93,7 +119,9 @@ def test_return_direction_uses_carsons_distinct_pattern():
     forward = route_stops(network, "302", 0)
     reverse = route_stops(network, "302", 1)
     assert len(forward) == 50 and len(reverse) == 53
-    assert [stop["stop_id"] for stop in reverse] != list(reversed([stop["stop_id"] for stop in forward]))
+    assert [stop["stop_id"] for stop in reverse] != list(
+        reversed([stop["stop_id"] for stop in forward])
+    )
 
 
 # ==================== ZACH'S SCENARIOS STILL CHANGE REAL READINGS ====================
@@ -119,7 +147,9 @@ def test_repeatable_measurements_except_report_time():
 
 def test_sql_seed_is_generated_from_the_same_network():
     import sqlite3
+
     seed = DEFAULT_NETWORK_PATH.parent / "schema/seed.sql"
+
     def records(script):
         with sqlite3.connect(":memory:") as connection:
             connection.executescript("""CREATE TABLE regions(region_id TEXT,name TEXT,primary_edge TEXT,backup_edge TEXT);
@@ -128,12 +158,19 @@ def test_sql_seed_is_generated_from_the_same_network():
                 CREATE TABLE route_stops(route_id TEXT,direction_id INTEGER,position INTEGER,stop_id TEXT);
                 CREATE TABLE buses(bus_id TEXT,route_id TEXT);""")
             connection.executescript(script)
-            return {table: sorted(connection.execute("SELECT * FROM " + table).fetchall())
-                    for table in ("regions", "routes", "stops", "route_stops", "buses")}
-    assert records(seed.read_text(encoding="utf-8")) == records(export_routes.seed_sql(load_network()))
+            return {
+                table: sorted(connection.execute("SELECT * FROM " + table).fetchall())
+                for table in ("regions", "routes", "stops", "route_stops", "buses")
+            }
+
+    assert records(seed.read_text(encoding="utf-8")) == records(
+        export_routes.seed_sql(load_network())
+    )
 
 
-@pytest.mark.parametrize("change", ["duplicate_bus", "unknown_stop", "wrong_region", "wrong_edge"])
+@pytest.mark.parametrize(
+    "change", ["duplicate_bus", "unknown_stop", "wrong_region", "wrong_edge"]
+)
 def test_invalid_assignments_are_rejected(change):
     network = load_network()
     if change == "duplicate_bus":

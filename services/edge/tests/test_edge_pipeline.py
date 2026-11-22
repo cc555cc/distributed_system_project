@@ -14,6 +14,7 @@ from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 @pytest.fixture
 def cluster():
     from services.edge.main import EdgeClusterSimulation
+
     return EdgeClusterSimulation()
 
 
@@ -28,21 +29,43 @@ def test_simulator_four_logical_channels_and_shared_sequence():
 
 def test_other_workers_telemetry_never_fills_our_queue():
     from services.data_simulation.generate_data import generate_messages
+
     network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
-    source = next(generate_messages("302", 1, "bus-302-2", max_updates=1, update_seconds=0))
-    subscriber = TelemetrySubscriber("west", "edge-west-1", registry=network.registry,
-                                     city_id="DURHAM", monitor=None)
-    assert not subscriber.handle_raw_message("transit/buses/west/bus-302-2/telemetry", json.dumps(source).encode())
+    source = next(
+        generate_messages("302", 1, "bus-302-2", max_updates=1, update_seconds=0)
+    )
+    subscriber = TelemetrySubscriber(
+        "west", "edge-west-1", registry=network.registry, city_id="DURHAM", monitor=None
+    )
+    assert not subscriber.handle_raw_message(
+        "transit/buses/west/bus-302-2/telemetry", json.dumps(source).encode()
+    )
     assert subscriber.messages.empty()
 
 
 def test_generator_reports_fault_without_inventing_telemetry():
     from services.data_simulation.generate_data import generate_messages
+
     health = []
-    assert list(generate_messages("302", 0, "bus-302-1", max_updates=2, update_seconds=0,
-                                  sensor_failure_rate=1.0, sensor_health=health.append)) == []
+    assert (
+        list(
+            generate_messages(
+                "302",
+                0,
+                "bus-302-1",
+                max_updates=2,
+                update_seconds=0,
+                sensor_failure_rate=1.0,
+                sensor_health=health.append,
+            )
+        )
+        == []
+    )
     assert len(health) == 2
-    assert all(set(states) == set(SENSORS) and set(states.values()) == {"faulty"} for states in health)
+    assert all(
+        set(states) == set(SENSORS) and set(states.values()) == {"faulty"}
+        for states in health
+    )
 
 
 def test_05_replication_takeover_pending_fifo_and_old_owner_fencing(cluster):
@@ -59,7 +82,13 @@ def test_05_replication_takeover_pending_fifo_and_old_owner_fencing(cluster):
     assert cluster.registry.get(bus).edge_id == "edge-west-2"
     assert cluster.epochs[bus] > old_epoch
     target = cluster.workers["edge-west-2"]
-    assert [job[3]["sequence_number"] for job in target.queue if job[1] == bus] == [2, 3, 4, 5, 6]
+    assert [job[3]["sequence_number"] for job in target.queue if job[1] == bus] == [
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
     cluster._complete(cluster.workers[owner], old_job)
     assert cluster.central_states[bus]["sequence_number"] == 1
     assert cluster.outcomes["FENCED"] == 1
@@ -72,6 +101,7 @@ def test_05_replication_takeover_pending_fifo_and_old_owner_fencing(cluster):
 
 def test_06_replays_conflicts_invalid_data_after_takeover_are_not_accepted(cluster):
     from copy import deepcopy
+
     bus = "bus-302-1"
     cluster.generate(bus, 2)
     cluster.advance(1)
@@ -110,10 +140,15 @@ def test_08_assignment_balancing_and_12_new_instance_gets_synchronized_state(clu
     cluster.advance(1)
     for bus in moved:
         assert cluster.central_states[bus]["sequence_number"] == 2
-        assert cluster.central_states[bus]["edge_metadata"]["edge_id"] == "edge-west-dynamic"
+        assert (
+            cluster.central_states[bus]["edge_metadata"]["edge_id"]
+            == "edge-west-dynamic"
+        )
 
 
-def test_09_cross_region_takeover_preserves_home_route_then_synchronized_recovery(cluster):
+def test_09_cross_region_takeover_preserves_home_route_then_synchronized_recovery(
+    cluster,
+):
     bus = "bus-302-1"
     cluster.generate(bus, 1)
     cluster.advance(1)
@@ -161,7 +196,9 @@ def test_loss_of_all_replicas_does_not_reset_sequence_protection(cluster):
     cluster.advance(1)
     for edge_id in ("edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"):
         cluster.fail(edge_id)
-    assert not cluster.submit_telemetry(cluster.message_templates["bus-302-1"])["accepted"]
+    assert not cluster.submit_telemetry(cluster.message_templates["bus-302-1"])[
+        "accepted"
+    ]
     with pytest.raises(ValueError, match="replica"):
         cluster.recover("edge-west-1")
     assert cluster.workers["edge-west-1"].state == "failed"
@@ -196,6 +233,7 @@ def test_replica_includes_sequence_floor_after_state_expiry(cluster):
 @pytest.mark.parametrize("size", [5, 10, 25, 50])
 def test_10_fleet_performance_and_failover_have_no_lost_accepted_updates(size):
     from services.edge.main import EdgeClusterSimulation
+
     cluster = EdgeClusterSimulation(fleet_size=size)
     for bus in cluster.bus_regions:
         assert cluster.generate(bus, 2)["accepted"] == 2
@@ -205,7 +243,9 @@ def test_10_fleet_performance_and_failover_have_no_lost_accepted_updates(size):
         assert cluster.generate(bus, 1)["accepted"] == 1
     cluster.advance(1)
     assert len(cluster.central_states) == size
-    assert all(state["sequence_number"] == 3 for state in cluster.central_states.values())
+    assert all(
+        state["sequence_number"] == 3 for state in cluster.central_states.values()
+    )
     assert cluster.outcomes["ACCEPTED"] == size * 3
     assert not cluster.journal
     assert sum(w.completed for w in cluster.workers.values()) == size * 3
@@ -220,7 +260,11 @@ def test_08_queue_pressure_moves_whole_bus_without_ownership_oscillation(cluster
     cluster.advance(1)
     workers = cluster._eligible("west")
     assert sorted(len(worker.queue) for worker in workers) == [20, 25]
-    assert max(len(cluster._assigned(w.edge_id)) for w in workers) - min(len(cluster._assigned(w.edge_id)) for w in workers) <= 1
+    assert (
+        max(len(cluster._assigned(w.edge_id)) for w in workers)
+        - min(len(cluster._assigned(w.edge_id)) for w in workers)
+        <= 1
+    )
     assert len(cluster.journal) == 45
     assert not cluster.workers["edge-west-3"].active
 

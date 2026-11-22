@@ -74,12 +74,14 @@ class ManualTime:
 
 @dataclass(frozen=True)
 class OffsetEstimate:
-    offset_seconds: float     # add to the local clock to get the server's clock
+    offset_seconds: float  # add to the local clock to get the server's clock
     error_bound_seconds: float
     round_trip_seconds: float
 
 
-def estimate_offset(request_sent: float, server_time: float, response_received: float) -> OffsetEstimate:
+def estimate_offset(
+    request_sent: float, server_time: float, response_received: float
+) -> OffsetEstimate:
     """Cristian's algorithm. All values are seconds (epoch or any shared origin).
 
     The server's reading is assumed to be taken halfway through the round trip,
@@ -110,8 +112,13 @@ def timestamp_skew(timestamp: str, receiver_now: datetime | None = None) -> floa
     return (parse_timestamp(timestamp) - receiver_now).total_seconds()
 
 
-def classify_timestamp(timestamp: str, receiver_now: datetime | None = None, *,
-                       tolerance=MAX_ASSUMED_SKEW_SECONDS, max_delay=AUTH_MAX_AGE_SECONDS) -> str:
+def classify_timestamp(
+    timestamp: str,
+    receiver_now: datetime | None = None,
+    *,
+    tolerance=MAX_ASSUMED_SKEW_SECONDS,
+    max_delay=AUTH_MAX_AGE_SECONDS,
+) -> str:
     """'ok', 'ahead' (sender clock fast) or 'behind' (old or sender clock slow). For reporting only."""
     skew = timestamp_skew(timestamp, receiver_now)
     if skew > tolerance:
@@ -119,4 +126,3 @@ def classify_timestamp(timestamp: str, receiver_now: datetime | None = None, *,
     if skew < -(max_delay + tolerance):
         return "behind"
     return "ok"
-
