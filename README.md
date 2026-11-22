@@ -111,7 +111,7 @@ Put service tests in that service's `tests/` directory, end-to-end tests in root
 
 ## Backend implementation currently on `main`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **292 passing tests with MQTT/PostgreSQL and authenticated-broker checks enabled (no skips)**: 289 offline checks plus three opt-in live tests. EDGE-03 is verified against the current shared model and central ingestion code. All changes, including compatible central receiver support, are on `ali`; they have not been deployed to `main` or confirmed by Carson.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **292 passing tests with MQTT/PostgreSQL and authenticated-broker checks enabled (no skips)**: 289 offline checks plus three opt-in live tests. EDGE-03 is verified against the current shared model and central ingestion code. All changes, including compatible central receiver support, were developed on `ali` and are now merged into `main` through `carson`.
 
 ### Follow the data
 
