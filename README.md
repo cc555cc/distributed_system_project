@@ -446,6 +446,14 @@ The current map uses logical route boundaries: west owns routes 302/900 (four bu
 
 ### UI-controlled edge cluster simulation
 
+Central advances the simulation automatically from elapsed monotonic real time, including when no browser is open. At 1×, one real second represents one simulation second; Controls supports 2×, 5× and 10×, plus clock pause/resume. Recovery completes after two simulation seconds. Browser polling only reads state, so opening another page does not speed it up. Keep one central API process because the simulation remains in memory. `/advance` is still available for deterministic tests; pause the clock before manually stepping a demonstration.
+
+Controls and the Operator Dashboard show the same simulated instance states, assignments and recent events. Recovering is amber, healthy is green, failed is red and standby is grey. The dashboard also shows separately labelled live heartbeat reports, per-bus sensor health and central's live failure/reassignment event history. Simulated failures do not stop live OS processes or write simulated bus states into PostgreSQL.
+
+Bus controls publish the existing `/commands` API through MQTT to running publishers: pause/resume, peak/off-peak demand, traffic factor and sensor failure rate, scoped to west or east. A published command is not an application acknowledgement. Pause/resume and sensor faults apply before the next reading; demand and traffic apply at the next stop segment. Resume does not start a stopped publisher process. Clock speed affects the edge model only; live bus publishers keep their configured update interval.
+
+Verification covered real-time modeled recovery on both pages, west-only bus pause while east continued, sensor fault/restoration in the dashboard, and live worker failure/takeover/recovery. After handback, all four live workers stayed healthy beyond the heartbeat timeout. Handed-back cache entries retain replay protection but no longer inflate their former owner's active/pending heartbeat counts. The current BUS-02 map has two verified regions within Durham; its original separate-two-city requirement remains partial. BUS-05 still needs start/stop lifecycle support, and operator authorization remains separate work.
+
 Each edge queue holds at most 50 waiting messages; the default modeled processing delay is 5 ms. `EdgeClusterSimulation` in `main.py` starts two active instances per region and a standby third instance in each region. It uses actual shared-route telemetry with the existing validator, processor, cache and central mapper. Its central-shaped output is visible in `central_states`; it does not publish experiments into the live database or change running MQTT workers. Use one central API process: simulation state and replicas are in memory and reset on restart. Existing `/requests` remains a synthetic queue-only experiment; use `/telemetry` or `/telemetry/generate` to exercise bus processing and stateful handoffs.
 
 | Method | Path (prefix `/health/simulation`) | Purpose / body |
@@ -455,6 +463,7 @@ Each edge queue holds at most 50 waiting messages; the default modeled processin
 | POST | `/telemetry` | Submit a complete shared-format telemetry object |
 | POST | `/telemetry/generate` | `{"bus_id":"bus-302-1","count":20}` generates valid repeated sensor readings from a shared-route sample |
 | POST | `/advance` | `{"seconds":6}` advances virtual time; no real sleeping |
+| PATCH | `/clock` | `{"running":true,"speed":2.0}` controls automatic real-time progression (speed greater than 0, at most 10) |
 | POST | `/instances/{edge_id}/fail` | Lose the worker's local cache/queue and trigger takeover using surviving replicas and the coordinator's journal |
 | POST | `/instances/{edge_id}/recover` | Synchronize before a 2-second modeled recovery window; no assignments while recovering |
 | POST | `/instances` | Register `edge_id`, `region_id`, optional `capacity` and `processing_ms` |

@@ -222,6 +222,32 @@ def test_queue_capacity_metrics_and_distribution():
 
 
 def test_heartbeat_transport_and_instance_report():
+    # A takeover cache survives handback, but only currently owned buses count.
+    from services.data_simulation.generate_data import generate_messages
+    from shared.schema.network import load_network
+
+    setup = make_setup()
+    instance = EdgeServerInstance(setup.config, setup.network, setup.policy)
+    west = [bus for bus in load_network()["buses"] if bus["region_id"] == "west"]
+    owners = {bus["bus_id"]: bus["edge_id"] for bus in west}
+    instance.subscriber.apply_assignment(json.dumps({
+        "region_id": "west", "epoch": 1,
+        "owners": dict.fromkeys(owners, "edge-west-1"),
+    }).encode())
+    for bus in west:
+        source = next(generate_messages(bus["route_id"], bus.get("direction_id", 0),
+                                        bus["bus_id"], max_updates=1, update_seconds=0))
+        instance.forwarder.process(source)
+    assert instance.heartbeat().workload.active_buses == 8
+    instance.subscriber.apply_assignment(json.dumps({
+        "region_id": "west", "epoch": 2, "owners": owners,
+    }).encode())
+    report = instance.heartbeat()
+    assert report.workload.active_buses == report.workload.assigned_buses == 4
+    assert report.workload.pending_updates == 4
+    assert len(report.buses) == 4
+    assert len(instance.receiver.accepted) == 8  # replay protection stays intact
+
     # Subscriber handles heartbeat outside the telemetry queue.
     setup = make_setup()
     subscriber = TelemetrySubscriber(

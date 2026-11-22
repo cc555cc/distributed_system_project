@@ -112,8 +112,21 @@ class EdgeServerInstance:
 
         from shared.schema.health import EdgeHeartbeat
 
+        # Take one ownership snapshot. Old cached readings still protect against
+        # replay, but handed-back buses must not count as this worker's workload.
+        with self.monitor.lock:
+            owned = set(self.monitor.bus_ids)
+            states = self.receiver.processor.snapshot()["buses"]
+            active = sum(
+                state["bus_id"] in owned
+                and state["freshness"] == "current"
+                and state.get("sensor_status", "healthy") != "offline"
+                for state in states
+            )
+            pending = sum(bus in self.forwarder.pending for bus in owned)
+            workload = self.monitor.workload(self.subscriber.messages, active, pending)
+            buses = self.monitor.sensor_reports()
         self.heartbeat_sequence += 1
-        active = self.receiver.processor.snapshot()["statistics"]["active_buses"]
         return EdgeHeartbeat(
             city_id=self.config.city_id,
             region_id=self.config.region_id,
@@ -121,10 +134,8 @@ class EdgeServerInstance:
             session_id=self.session_id,
             sequence_number=self.heartbeat_sequence,
             timestamp=datetime.now(UTC).isoformat(),
-            workload=self.monitor.workload(
-                self.subscriber.messages, active, len(self.forwarder.pending)
-            ),
-            buses=self.monitor.sensor_reports(),
+            workload=workload,
+            buses=buses,
         )
 
     def run(self, stop_event):
@@ -144,6 +155,8 @@ class EdgeServerInstance:
                     logger.warning(
                         "Edge heartbeat pending: edge=%s", self.config.edge_id
                     )
+                except ValueError:
+                    logger.exception("Invalid edge heartbeat: edge=%s", self.config.edge_id)
                 heartbeat_stop.wait(self.policy.interval_seconds)
 
         thread = Thread(

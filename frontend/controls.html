@@ -19,47 +19,58 @@
   <main class="page">
     <div class="card">
       <h2>Edge server failures</h2>
-      <p class="note"><strong>Simulation only.</strong> These buttons control a model of the edge cluster inside central. They do not stop or start the real edge servers; see the Operator Dashboard for those.</p>
+      <p class="note">These instances use the real edge processing code inside a simulation. The Operator Dashboard shows this same simulation alongside live heartbeat reports.</p>
+      <p id="simulation-clock">Loading clock...</p>
+      <div id="clock-controls" class="control-row">
+        <label for="clock-speed">Simulation speed</label>
+        <select id="clock-speed"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select>
+        <button data-running="true">Run clock</button>
+        <button data-running="false">Pause clock</button>
+      </div>
       <p class="note">Fail a server to see its buses move to the other server in the region.</p>
       <div class="table-wrap" id="edge-table">Loading...</div>
       <p id="message" class="message"></p>
       <button id="reset-button">Reset simulation</button>
     </div>
 
-    <div class="card">
+    <div class="card" id="bus-controls">
       <h2>Bus simulation</h2>
-      <p class="note">These controls are not connected yet. The bus simulator does not have a command API (BUS-05).</p>
+      <p class="note">Commands go through central and MQTT to running bus publishers. Resume continues a paused bus; it does not launch a stopped process. Demand and traffic apply at the next stop segment; sensor faults apply at the next reading.</p>
+      <label for="bus-region">Region</label>
+      <select id="bus-region"><option value="west">West</option><option value="east">East</option></select>
       <div class="control-row">
-        <button disabled>Start</button>
-        <button disabled>Pause</button>
+        <button data-command="resume">Resume buses</button>
+        <button data-command="pause">Pause buses</button>
       </div>
       <div class="control-row">
-        <label>Passenger demand</label>
-        <select disabled>
-          <option>Normal</option>
-          <option>Peak</option>
-          <option>Off-peak</option>
+        <label for="bus-demand">Passenger demand</label>
+        <select id="bus-demand">
+          <option value="off_peak">Off-peak</option>
+          <option value="peak">Peak</option>
         </select>
+        <button data-command="set_demand">Apply demand</button>
       </div>
       <div class="control-row">
-        <label>Traffic delay</label>
-        <select disabled>
-          <option>None</option>
-          <option>Light</option>
-          <option>Heavy</option>
+        <label for="bus-traffic">Traffic delay</label>
+        <select id="bus-traffic">
+          <option value="1">None</option>
+          <option value="0.7">Light</option>
+          <option value="0.3">Heavy</option>
         </select>
+        <button data-command="set_traffic">Apply traffic</button>
       </div>
       <div class="control-row">
-        <label>Sensor fault</label>
-        <button disabled>Trigger</button>
+        <label for="bus-fault">Sensor fault rate</label>
+        <select id="bus-fault"><option value="0">Healthy</option><option value="0.5">50%</option><option value="1">All faulty</option></select>
+        <button data-command="set_sensor_failure_rate">Apply faults</button>
       </div>
     </div>
   </main>
 
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/helpers.js"></script>
-  <script src="js/controls.js"></script>
+  <script src="js/api.js?v=3"></script>
+  <script src="js/helpers.js?v=3"></script>
+  <script src="js/controls.js?v=3"></script>
 </body>
 </html>

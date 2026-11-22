@@ -36,21 +36,27 @@
     </div>
 
     <div class="card">
-      <h2>Edge servers</h2>
+      <h2>Simulated edge servers</h2>
+      <p id="simulation-clock">Loading clock...</p>
+      <div class="table-wrap" id="simulation-edges"></div>
+    </div>
+
+    <div class="card">
+      <h2>Live edge servers</h2>
       <div class="table-wrap" id="edges"></div>
     </div>
 
     <div class="card">
       <h2>Edge status changes</h2>
-      <p class="note">Detected from live heartbeats while this page is open.</p>
+      <p class="note">Reported by central, including live failures, recovery and bus reassignments.</p>
       <div id="events"></div>
     </div>
   </main>
 
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/helpers.js"></script>
-  <script src="js/operator.js"></script>
+  <script src="js/api.js?v=3"></script>
+  <script src="js/helpers.js?v=3"></script>
+  <script src="js/operator.js?v=3"></script>
 </body>
 </html>

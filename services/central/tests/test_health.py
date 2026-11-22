@@ -501,3 +501,36 @@ def test_cluster_ui_api_runs_telemetry_takeover_registration_and_recovery(monkey
         client.post("/health/simulation/reset", json={"fleet_size": 51}).status_code
         == 422
     )
+
+
+def test_recovery_clock_runs_without_browser_steps_and_supports_pause_speed(monkeypatch):
+    from services.central import health
+    from services.central.main import app
+    from services.edge.main import EdgeClusterSimulation
+
+    now = [0.0]
+    monkeypatch.setattr(health, "simulation", EdgeClusterSimulation())
+    clock = health.SimulationClock(clock=lambda: now[0])
+    monkeypatch.setattr(health, "simulation_clock", clock)
+    client = TestClient(app)
+    client.post("/health/simulation/instances/edge-west-1/fail")
+    client.post("/health/simulation/instances/edge-west-1/recover")
+    # Polling from multiple pages must not advance time or accelerate recovery.
+    assert client.get("/health/simulation").json()["virtual_seconds"] == 0
+    assert client.get("/health/simulation").json()["virtual_seconds"] == 0
+    client.patch("/health/simulation/clock", json={"running": False, "speed": 2.0})
+    now[0] = 20
+    clock.tick()
+    assert health.simulation.workers["edge-west-1"].state == "recovering"
+    client.patch("/health/simulation/clock", json={"running": True, "speed": 2.0})
+    now[0] = 21
+    clock.tick()  # central's background task calls this even with no browser open
+    result = client.get("/health/simulation").json()
+    assert result["virtual_seconds"] == 2
+    assert health.simulation.workers["edge-west-1"].state == "healthy"
+    assert result["clock"] == {"running": True, "speed": 2.0}
+    assert client.patch("/health/simulation/clock", json={"running": True, "speed": 0.0}).status_code == 422
+    assert client.post("/health/simulation/reset").json()["virtual_seconds"] == 0
+    now[0] = 21.5
+    clock.tick()
+    assert health.simulation.time == 1

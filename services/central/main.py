@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from services.central.failover import run_round
 from services.central.health import monitor
+from services.central.health import simulation_clock
 from services.central.health import router as health_router
 from services.central.ownership import bus_ownership
 from services.central.routers import bus_states, buses, eta, messaging, routes, stops
@@ -37,13 +38,28 @@ async def poll_loop():
         await asyncio.sleep(POLL_SECONDS)
 
 
+async def simulation_loop():
+    while True:
+        try:
+            simulation_clock.tick()
+        except Exception:
+            logger.exception("Simulation clock step failed")
+        await asyncio.sleep(0.1)
+
+
 @asynccontextmanager
 async def lifespan(app):
     mqtt_client.start()
     poll_task = asyncio.create_task(poll_loop())
-    yield  # server pause here and handle request
-    poll_task.cancel()
-    mqtt_client.stop()  # execute on ctrl+C input or shutdown
+    simulation_clock.last = simulation_clock.clock()
+    clock_task = asyncio.create_task(simulation_loop())
+    try:
+        yield  # server pause here and handle request
+    finally:
+        poll_task.cancel()
+        clock_task.cancel()
+        await asyncio.gather(poll_task, clock_task, return_exceptions=True)
+        mqtt_client.stop()  # execute on ctrl+C input or shutdown
 
 
 app = FastAPI(lifespan=lifespan)

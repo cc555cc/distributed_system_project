@@ -334,6 +334,34 @@ from services.edge.main import EdgeClusterSimulation
 simulation = EdgeClusterSimulation()
 
 
+class SimulationClock:
+    """Use elapsed real seconds once in central, regardless of open browser tabs."""
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.last = clock()
+        self.running = True
+        self.speed = 1.0
+        self.lock = RLock()
+
+    def tick(self):
+        with self.lock:
+            now = self.clock()
+            elapsed = max(0.0, now - self.last)
+            self.last = now
+            remaining = elapsed * self.speed if self.running else 0.0
+            while remaining > 1e-9:
+                step = min(60.0, remaining)
+                simulation.advance(step)
+                remaining -= step
+
+    def snapshot(self):
+        return {"running": self.running, "speed": self.speed}
+
+
+simulation_clock = SimulationClock()
+
+
 class SimulationInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
@@ -345,6 +373,11 @@ class SimulationRequests(SimulationInput):
 
 class SimulationStep(SimulationInput):
     seconds: float = Field(gt=0, le=60)
+
+
+class SimulationTiming(SimulationInput):
+    running: bool
+    speed: float = Field(gt=0, le=10)
 
 
 class SimulationCharacteristics(SimulationInput):
@@ -359,7 +392,16 @@ class SimulationPolicy(SimulationInput):
 
 @router.get("/simulation")
 def get_simulation():
-    return simulation.snapshot()
+    with simulation_clock.lock:
+        return {**simulation.snapshot(), "clock": simulation_clock.snapshot()}
+
+
+@router.patch("/simulation/clock")
+def configure_simulation_clock(body: SimulationTiming):
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_clock.running, simulation_clock.speed = body.running, body.speed
+        return get_simulation()
 
 
 @router.post("/simulation/requests")
@@ -409,8 +451,10 @@ class SimulationTransfer(SimulationInput):
 @router.post("/simulation/reset")
 def reset_simulation(body: SimulationReset | None = None):
     global simulation
-    simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
-    return simulation.snapshot()
+    with simulation_clock.lock:
+        simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
+        simulation_clock.last = simulation_clock.clock()
+        return get_simulation()
 
 
 def simulation_action(action, *args, **kwargs):

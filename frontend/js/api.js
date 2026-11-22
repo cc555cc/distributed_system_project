@@ -34,8 +34,12 @@ async function getBus(busId) {
   return response.json();
 }
 
-async function sendPost(path) {
-  const response = await fetch(API_URL + path, { method: "POST" });
+async function sendPost(path, body, method = "POST") {
+  const response = await fetch(API_URL + path, {
+    method: method,
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
   if (!response.ok) {
     let text = "Request failed: " + response.status;
     try {
@@ -51,11 +55,23 @@ async function sendPost(path) {
   return response.json();
 }
 
+async function setSimulationClock(running, speed) {
+  return sendPost("/health/simulation/clock", { running: running, speed: speed }, "PATCH");
+}
+
+async function sendBusCommand(region, action, params = {}) {
+  return sendPost("/commands", { region_id: region, action: action, params: params });
+}
+
 async function getEdgeHealth() {
   if (USE_MOCK) {
     return mockHealth();
   }
   return getJson("/health/edges");
+}
+
+async function getHealthEvents() {
+  return USE_MOCK ? [] : getJson("/health/events");
 }
 
 async function getSimulation() {
@@ -69,14 +85,14 @@ async function failEdge(edgeId) {
   if (USE_MOCK) {
     return mockFail(edgeId);
   }
-  return sendPost("/health/simulation/instances/" + edgeId + "/fail");
+  return sendPost("/health/simulation/instances/" + encodeURIComponent(edgeId) + "/fail");
 }
 
 async function recoverEdge(edgeId) {
   if (USE_MOCK) {
     return mockRecover(edgeId);
   }
-  return sendPost("/health/simulation/instances/" + edgeId + "/recover");
+  return sendPost("/health/simulation/instances/" + encodeURIComponent(edgeId) + "/recover");
 }
 
 async function resetSimulation() {
