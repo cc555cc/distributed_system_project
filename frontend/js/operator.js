@@ -268,12 +268,12 @@ async function loadAll() {
       problems.push("routes");
     }
 
-    const ids = [];
-    routes.forEach(function (route) {
-      for (let i = 1; i <= BUSES_PER_ROUTE; i++) {
-        ids.push({ id: "bus-" + route.route_id + "-" + i, route: route.route_id });
-      }
-    });
+    let ids = [];
+    try {
+      ids = await getFleetIds(routes);
+    } catch (error) {
+      problems.push("fleet");
+    }
 
     const results = await Promise.all(ids.map(function (item) {
       return getBus(item.id).catch(function () {

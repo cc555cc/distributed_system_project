@@ -71,6 +71,18 @@ async function getBus(busId) {
   return response.json();
 }
 
+async function getFleetIds(routes) {
+  const ids = new Set(routes.map(function (route) { return route.route_id; }));
+  if (demoView()) return (await getSimulation()).registered_buses.filter(function (bus) {
+    return ids.has(bus.route_id);
+  }).map(function (bus) { return {id: bus.bus_id, route: bus.route_id}; });
+  return routes.flatMap(function (route) {
+    return Array.from({length: BUSES_PER_ROUTE}, function (_, i) {
+      return {id: "bus-" + route.route_id + "-" + (i + 1), route: route.route_id};
+    });
+  });
+}
+
 async function sendPost(path, body, method = "POST") {
   simulationRead = null;
   const response = await fetch(API_URL + path, {
@@ -84,6 +96,10 @@ async function sendPost(path, body, method = "POST") {
       const body = await response.json();
       if (typeof body.detail === "string") {
         text = body.detail;
+      } else if (Array.isArray(body.detail)) {
+        text = body.detail.map(function (item) {
+          return item.loc.join(".") + ": " + item.msg;
+        }).join("; ");
       }
     } catch (error) {
       text = "Request failed: " + response.status;
@@ -167,9 +183,9 @@ async function recoverEdge(edgeId) {
   return sendPost("/health/simulation/instances/" + encodeURIComponent(edgeId) + "/recover");
 }
 
-async function resetSimulation() {
+async function resetSimulation(fleetSize) {
   if (USE_MOCK) {
     return mockReset();
   }
-  return sendPost("/health/simulation/reset");
+  return sendPost("/health/simulation/reset", fleetSize === undefined ? undefined : {fleet_size: fleetSize});
 }

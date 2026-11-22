@@ -39,6 +39,14 @@ class BusRegistry:
         """Resolve the single authoritative configured assignment."""
         return self._assignments.get(bus_id)
 
+    def register(self, bus_id: str, assignment: BusAssignment) -> None:
+        """The coordinator validates route configuration before registering a bus."""
+        if not isinstance(bus_id, str) or not bus_id.strip() or bus_id in self._assignments:
+            raise ValueError("Bus ID must be nonempty and unique")
+        if not isinstance(assignment, BusAssignment):
+            raise ValueError("A valid bus assignment is required")
+        self._assignments[bus_id] = assignment
+
     def assigned_bus_ids(self, city_id: str, region_id: str, edge_id: str) -> list[str]:
         """Only these buses count toward this worker's workload and sensor health."""
         return sorted(

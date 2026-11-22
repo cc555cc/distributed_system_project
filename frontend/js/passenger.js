@@ -168,12 +168,13 @@ function showBus(item, bus) {
 }
 
 async function loadBuses(myNumber) {
-  const busIds = [];
-  routes.forEach(function (route) {
-    for (let i = 1; i <= BUSES_PER_ROUTE; i++) {
-      busIds.push({ id: "bus-" + route.route_id + "-" + i, route: route.route_id });
-    }
-  });
+  let busIds;
+  try {
+    busIds = await getFleetIds(routes);
+  } catch (error) {
+    statusText.textContent = "Could not load fleet: " + error.message;
+    return;
+  }
 
   const results = await Promise.all(busIds.map(function (item) {
     return getBus(item.id).catch(function () {

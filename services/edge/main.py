@@ -370,7 +370,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         super().__init__(network_path)
         self.network_path = network_path
         self.network = NetworkConfig.load(network_path)
-        self.bus_definitions = load_network(network_path)["buses"]
+        network_definition = load_network(network_path)
+        self.bus_definitions = network_definition["buses"]
         if fleet_size is not None:
             if (
                 isinstance(fleet_size, bool)
@@ -388,6 +389,13 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 }
                 for i in range(fleet_size)
             ]
+            from shared.schema.network import route_stops
+            for index, bus in enumerate(self.bus_definitions[len(originals):], start=len(originals)):
+                # Extra streams start a few stops apart rather than on top of their template.
+                stops = route_stops(network_definition, bus["route_id"], bus.get("direction_id", 0))
+                scenario = dict(bus.get("scenario", {}))
+                scenario["start_stop_index"] = (scenario.get("start_stop_index", 0) + 5 * (index // len(originals))) % (len(stops) - 1)
+                bus["scenario"] = scenario
         self.registry = BusRegistry(
             {
                 bus["bus_id"]: BusAssignment(
@@ -412,6 +420,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         self.central_available = True
         self.central_pending, self.central_received_at, self.central_pending_at = {}, {}, {}
         self.central_retry_at = 0.0
+        self.headways, self.departures, self.last_departure = {}, {}, {}
+        self.dispatch_queues = {}
         for worker in self.workers.values():
             worker.on_telemetry = self._complete
 
@@ -555,11 +565,80 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 self.demo_running = running
                 self.events.append(dict(time=self.time, action="demo_started" if running else "demo_stopped"))
             if condition is not None:
+                if any(bus_id in queue for queue in self.dispatch_queues.values()):
+                    raise ValueError("Bus is awaiting dispatch; use the scheduler or reset first")
                 self.demo.configure(bus_id, condition, self.time)
             if central_available is not None:
                 self.central_available = central_available
                 self.events.append(dict(time=self.time, action="central_available" if central_available else "central_unavailable"))
             return self.snapshot()
+
+    def register_bus(self, bus_id, route_id, capacity=50, direction_id=0):
+        """BUS-11: register a configured bus; no sensor/schema extension is needed."""
+        from services.edge.validation.bus_registry import BusAssignment
+        from shared.schema.network import validate_network
+
+        with self.lock:
+            import re
+            if not isinstance(bus_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", bus_id):
+                raise ValueError("Bus ID must be a valid topic segment")
+            network = load_network(self.network_path)
+            route = next((r for r in network["routes"] if r["route_id"] == route_id), None)
+            if route is None or bus_id in self.bus_regions or len(self.bus_regions) >= 50:
+                raise ValueError("Choose a known route, unique bus ID and fleet size below 50")
+            workers = self._eligible(route["region_id"])
+            if not workers:
+                raise ValueError("No healthy regional edge can own the new bus")
+            owner = min(workers, key=lambda w: len(self._assigned(w.edge_id))).edge_id
+            definition = dict(bus_id=bus_id, route_id=route_id, city_id=route["city_id"],
+                              region_id=route["region_id"], edge_id=owner,
+                              capacity=capacity, direction_id=direction_id)
+            network["buses"] = self.bus_definitions + [definition]
+            validate_network(network)
+            self.configure_demo()
+            self.demo.add_bus(definition, self.time, condition="out_of_service")
+            self.registry.register(bus_id, BusAssignment(route["region_id"], route_id, route["city_id"], owner))
+            self.bus_definitions.append(definition)
+            self.bus_regions[bus_id] = route["region_id"]
+            self.epochs[bus_id], self.committed[bus_id] = 1, None
+            self.events.append(dict(time=self.time, action="bus_registered", bus_id=bus_id, route_id=route_id))
+            return self.snapshot()
+
+    def schedule(self, route_id, action, bus_id=None, headway_seconds=None):
+        """Central or an operator requests dispatch; every delay uses simulation time."""
+        with self.lock:
+            if route_id not in {r["route_id"] for r in load_network(self.network_path)["routes"]}:
+                raise ValueError("Unknown route")
+            if action == "set_headway":
+                if bus_id is not None or isinstance(headway_seconds, bool) or not isinstance(headway_seconds, (int, float)) or not math.isfinite(headway_seconds) or not 1 <= headway_seconds <= 3600:
+                    raise ValueError("Headway must be between 1 and 3600 simulation seconds")
+                self.headways[route_id] = float(headway_seconds)
+                self.departures[route_id] = max(self.time, self.last_departure.get(route_id, self.time) + headway_seconds)
+            elif action == "dispatch":
+                if headway_seconds is not None:
+                    raise ValueError("Dispatch takes a bus ID, not headway_seconds")
+                self.configure_demo()
+                bus = self.demo.buses.get(bus_id)
+                if bus is None or bus["definition"]["route_id"] != route_id or bus["condition"] != "out_of_service":
+                    raise ValueError("Dispatch requires an available out-of-service bus assigned to this route")
+                if any(bus_id in queue for queue in self.dispatch_queues.values()):
+                    raise ValueError("Bus is already queued for dispatch")
+                self.dispatch_queues.setdefault(route_id, []).append(bus_id)
+                self.departures.setdefault(route_id, self.time)
+            else:
+                raise ValueError("Choose dispatch or set_headway")
+            self.events.append(dict(time=self.time, action=action, bus_id=bus_id, route_id=route_id,
+                                    headway_seconds=self.headways.get(route_id, 10)))
+            return self.snapshot()
+
+    def _dispatch_due(self, now):
+        for route, queue in self.dispatch_queues.items():
+            if queue and now >= self.departures[route]:
+                bus_id = queue.pop(0)
+                self.demo.configure(bus_id, "normal", now)
+                self.last_departure[route] = now
+                self.departures[route] = now + self.headways.get(route, 10)
+                self.events.append(dict(time=now, action="bus_dispatched", bus_id=bus_id, route_id=route))
 
     def submit_telemetry(self, source):
         from copy import deepcopy
@@ -938,6 +1017,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             while remaining > 1e-9:
                 step = min(1.0, remaining)
                 if self.demo is not None and self.demo_running:
+                    self._dispatch_due(self.time + step)
                     self.demo.step(step, self.time + step, self.submit_telemetry)
                 super().advance(step)
                 self._deliver_central()
@@ -982,6 +1062,10 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             result.update(
                 telemetry_mode=True,
                 demo_running=self.demo_running,
+                registered_buses=deepcopy(self.bus_definitions),
+                schedules={route: dict(headway_seconds=self.headways.get(route, 10),
+                    next_departure=self.departures.get(route), pending=list(self.dispatch_queues.get(route, [])))
+                    for route in set(self.headways) | set(self.dispatch_queues)},
                 demo_buses=self.demo.snapshot(self.time) if self.demo is not None else {},
                 central_available=self.central_available,
                 central_pending=len(self.central_pending),

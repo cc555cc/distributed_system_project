@@ -29,6 +29,24 @@
         <a href="index.html">Open passenger map</a>
       </div>
       <div class="control-row">
+        <label for="fleet-size">Fleet size</label>
+        <select id="fleet-size"><option>5</option><option>10</option><option selected>20</option><option>25</option><option>50</option></select>
+        <button id="fleet-apply">Apply fleet (reset)</button>
+      </div>
+      <details>
+        <summary>Add a bus / scheduler controls</summary>
+        <p class="note">Fleet reset replaces the demonstration. Added buses wait out of service until dispatched. Dispatch uses an existing assigned route; it does not move a bus to another route or change the live MQTT database.</p>
+        <div class="control-row"><label for="new-bus-id">New bus ID</label><input id="new-bus-id" maxlength="64" placeholder="bus-extra-1"></div>
+        <div class="control-row"><label for="new-bus-route">Assigned route</label><select id="new-bus-route"></select>
+          <label for="new-bus-capacity">Capacity</label><input id="new-bus-capacity" type="number" min="1" max="200" value="50">
+          <button id="bus-register">Register bus</button></div>
+        <div class="control-row"><label for="schedule-route">Scheduler route</label><select id="schedule-route"></select>
+          <label for="headway">Departure interval (simulation s)</label><input id="headway" type="number" min="1" max="3600" value="10">
+          <button id="headway-apply">Set interval</button>
+          <button id="bus-dispatch">Dispatch selected bus</button></div>
+        <p id="schedule-status">No dispatch requests yet.</p>
+      </details>
+      <div class="control-row">
         <label for="demo-bus">Bus</label><select id="demo-bus"></select>
       </div>
       <div class="control-row">
@@ -103,8 +121,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=6"></script>
-  <script src="js/helpers.js?v=6"></script>
-  <script src="js/controls.js?v=6"></script>
+  <script src="js/api.js?v=7"></script>
+  <script src="js/helpers.js?v=7"></script>
+  <script src="js/controls.js?v=7"></script>
 </body>
 </html>

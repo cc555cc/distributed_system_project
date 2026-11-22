@@ -4,25 +4,25 @@ A public-transit simulation connecting bus telemetry, MQTT messaging, regional e
 
 ## Project progress
 
-**45/77 completed (58.4%), 15 partial (19.5%), 17 pending (22.1%).** The unfinished portion is **32/77 (41.6%)**. Percentages count tickets, not remaining effort; partial work is not counted as half-complete. Values are rounded.
+**48/77 completed (62.3%), 13 partial (16.9%), 16 pending (20.8%).** The unfinished portion is **29/77 (37.7%)**. Percentages count tickets, not remaining effort; partial work is not counted as half-complete. Values are rounded.
 
 | Section | Completed | Partial | Pending | Total |
 |---|---:|---:|---:|---:|
 | Ali — Edge | 12 | 0 | 0 | 12 |
-| Zachary — Simulator | 8 | 2 | 1 | 11 |
+| Zachary — Simulator | 11 | 0 | 0 | 11 |
 | Julian — Messaging | 11 | 0 | 0 | 11 |
 | Carson — Central | 2 | 4 | 6 | 12 |
 | Danial — UI | 5 | 3 | 3 | 11 |
 | Shared integration | 7 | 6 | 7 | 20 |
-| **Total** | **45** | **15** | **17** | **77** |
+| **Total** | **48** | **13** | **16** | **77** |
 
 This `ali` checkout integrates the fetched `main` implementation, including Carson's central-driven live failover and dashboard endpoints, Julian's messaging work, Danial's frontend and the edge simulation/authentication/conversion work. Your four broader scenario tests are retained in each server, lifecycle and pipeline file. The audit counts each ticket once across the pushed branches, regardless of who contributed a particular change. The agreed demonstration now covers map movement, area isolation, runtime controls, sensor/transport conditions, delivery retries and recovery. The live MQTT feed and controlled demonstration are explicitly selectable. Completion is assessed against this simulation scope; journey search, arrival predictions and operator permissions remain unfinished.
 
-Verification: **422 tests passed, 18 opt-in service tests skipped (440 collected)** using `python -m pytest services/data_simulation/tests services/edge/tests services/central/tests services/messaging/tests -q --tb=short -ra`. Four new high-level scenario tests cover movement/runtime controls, sensor/validation conditions, transport/process/central failures, and invalid controls/area isolation. Earlier live recovery and MQTT command checks remain documented; these skipped service-dependent tests were not all rerun for the controlled demo.
+Verification: **426 tests passed, 18 opt-in service tests skipped (444 collected)** using `python -m pytest services/data_simulation/tests services/edge/tests services/central/tests services/messaging/tests -q --tb=short -ra`. Four new high-level scenario tests cover movement/runtime controls, sensor/validation conditions, transport/process/central failures, and invalid controls/area isolation. Earlier live recovery and MQTT command checks remain documented; these skipped service-dependent tests were not all rerun for the controlled demo.
 
 The configured Durham network has 373 stops, five routes and 20 buses (four per route, two per direction). Central now polls edge health, reconciles ownership, publishes regional assignments and exposes dashboard endpoints. Stateful replication, queued-update transfer, cross-region recovery, balancing and third-instance scaling also have the agreed single-coordinator simulation evidence. These demonstrations do not establish durable distributed consensus or arbitrary network-partition safety. The default demo broker is anonymous; a separate secured broker configuration and credential/ACL tests are provided in the messaging area. Central UI login/roles remain unfinished.
 
-Largest remaining areas: simulator fleet configuration, sensor extensibility and scheduling features; route-based ETA with traffic and stop waiting time; demand scheduling, A-to-B planning and recommendations; backend operator authorization; remaining UI features and integration; and report/demo/submission work. Pause/resume and traffic/demand/sensor commands are implemented, and the Lamport/messaging work is recorded complete. Carson's ETA still uses direct GPS distance to stops and a fallback speed, so CENTRAL-03 remains partial.
+Largest remaining areas: automatic demand scheduling and its feedback loop; route-based ETA with traffic and stop waiting time; demand scheduling, A-to-B planning and recommendations; backend operator authorization; remaining UI features and integration; and report/demo/submission work. Pause/resume and traffic/demand/sensor commands are implemented, and the Lamport/messaging work is recorded complete. Carson's ETA still uses direct GPS distance to stops and a fallback speed, so CENTRAL-03 remains partial.
 
 ## Architecture and structure
 
@@ -301,10 +301,10 @@ Generate simulated bus movement, sensor telemetry and configurable scenarios usi
 | `BUS-05` | **P1** | Add controls to start, pause, resume and stop simulations. Allow supported commands to change traffic, demand or sensor conditions while the simulator is running.<br><br>**Done when:** Valid commands change the requested scenario. Invalid commands or nonexistent bus/route IDs are rejected without crashing the simulator. | 🟩 Done (controlled demo start/stop, clock pause/resume and condition controls verified; live publishers still launch from CLI) |
 | `BUS-06` | **P1** | Test the simulator's GPS movement, route assignments, passenger counts, sensor readings and simultaneous bus operation. Include normal and invalid-data scenarios.<br><br>**Done when:** Tests confirm valid movement and sensor values. Multiple buses operate correctly, and errors are reported without unexpectedly stopping the entire simulation. | 🟩 Done (20-bus movement, route/field consistency, sensor and invalid-reading scenarios tested) |
 | `BUS-07` | **P1** | Add bus states such as travelling, arriving, stopped, boarding, departing and out of service. Simulate waiting at bus stops before continuing along the route.<br><br>**Done when:** Buses transition through valid states in the correct order. Stop durations affect simulated journey time, and out-of-service buses stop accepting passengers. | 🟩 Done (controlled demo arrival, stop, boarding, departure and out-of-service states tested) |
-| `BUS-08` | **P1** | Allow the simulator to run different fleet sizes, such as 5, 10, 25 and 50 buses, using configuration instead of manually creating each bus.<br><br>**Done when:** Each fleet size starts successfully, uses valid bus IDs and route assignments, and produces the expected number of active bus streams. | Partial (fleet experiments exist; simulator fleet-control acceptance remains) |
-| `BUS-09` | **P1** | Allow Carson's scheduler to request changes in bus service. Support adding an available simulated bus to a route or adjusting the time between departures.<br><br>**Done when:** A valid scheduling command changes the simulated service. The changes appear in subsequent telemetry and can be observed by Carson's central server. | Pending |
+| `BUS-08` | **P1** | Allow the simulator to run different fleet sizes, such as 5, 10, 25 and 50 buses, using configuration instead of manually creating each bus.<br><br>**Done when:** Each fleet size starts successfully, uses valid bus IDs and route assignments, and produces the expected number of active bus streams. | 🟩 Done (5/10/25/50 controlled fleets produce exact validated streams and appear dynamically in the UI) |
+| `BUS-09` | **P1** | Allow Carson's scheduler to request changes in bus service. Support adding an available simulated bus to a route or adjusting the time between departures.<br><br>**Done when:** A valid scheduling command changes the simulated service. The changes appear in subsequent telemetry and can be observed by Carson's central server. | 🟩 Done (central demo scheduler dispatches available assigned buses and changes queued departure intervals; telemetry confirms execution) |
 | `BUS-10` | **P2** | Create repeatable test scenarios for normal traffic, peak demand, traffic congestion and sensor failures. Use fixed simulation settings so results can be compared.<br><br>**Done when:** Running the same scenario with the same configuration produces consistent, comparable results. Expected behaviours are documented and checked. | 🟩 Done (seeded repeatable scenarios and checks) |
-| `BUS-11` | **P1** | Support adding new buses and optional sensor types through versioned configuration objects. Avoid rewriting the main simulator whenever a supported sensor is added.<br><br>**Done when:** A new registered bus or supported sensor can be added through configuration. Existing buses and sensor messages continue working correctly. | Partial (optional sensor extension remains) |
+| `BUS-11` | **P1** | Support adding registered buses through versioned configuration objects without rewriting simulator logic. Sensor extensions are outside this ticket's agreed scope.<br><br>**Done when:** A new bus can be registered from bus-config-v1 configuration with a valid route, direction and capacity. Existing buses continue working; duplicate IDs and invalid configurations are rejected. | 🟩 Done (bus-only versioned registration verified; sensor extensions excluded by agreed scope) |
 
 </details>
 
@@ -445,6 +445,16 @@ The current map uses logical route boundaries: west owns routes 302/900 (four bu
 
 
 ### UI-controlled edge cluster simulation
+
+Fleet and scheduler controls extend the same controlled demonstration:
+
+- **Fleet size → Apply fleet (reset)** creates 5, 10, 20, 25 or 50 configured buses and resets earlier experiment state. Extra streams receive unique IDs, valid owners/routes and spaced starting stops. Map and dashboard use the registered fleet list rather than assuming four buses per route.
+- **Add a bus / scheduler controls** accepts a unique bus ID, existing route and capacity. The UI sends a versioned `bus-config-v1` object to `POST /health/simulation/buses`, with optional direction 0 or 1 through the API. A healthy regional edge is chosen; the bus begins out of service. The controlled fleet is capped at 50. Registration is in memory and resets with the demo; it does not register a bus in the live PostgreSQL database or add sensor types.
+- Select the registered bus and its assigned route, then **Dispatch selected bus**. Only available out-of-service buses assigned to that route can be dispatched. **Set interval** changes departure spacing (1–3600 simulation seconds), including queued departures. Central or an operator can call `POST /health/simulation/schedule` with `action: dispatch` and `bus_id`, or `action: set_headway` and `headway_seconds`. Movement, central sequence updates and `bus_dispatched` events confirm execution.
+- These are scheduler command/execution capabilities (BUS-09). Automatic demand detection, scheduling decisions and the complete live scheduler feedback loop remain CENTRAL-04/08 and TEAM-14 work. BUS-01's existing telemetry contract remains unchanged. BUS-11 now covers adding buses only.
+
+Four additional tests cover exact fleet sizes, valid/invalid versioned bus configuration, dispatch/changed intervals reaching central-shaped telemetry, and rejection of unavailable, wrong-route and duplicate dispatches. All 11 bus tickets are complete for the agreed controlled-demonstration scope; this is not a claim that the live MQTT launcher dynamically registers buses or that optional sensors were implemented.
+
 
 Use the existing Simulation Controls page to run a repeatable demonstration:
 

@@ -7,6 +7,7 @@ let demoMap = null;
 let demoMarkers = null;
 let demoRoute = null;
 let selectedRoute = null;
+let fleetRoutesLoaded = false;
 if (typeof L !== "undefined") {
   demoMap = L.map("demo-map").setView([43.9, -78.9], 11);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -19,15 +20,35 @@ if (typeof L !== "undefined") {
 }
 
 async function drawDemo(simulation) {
+  if (!fleetRoutesLoaded) {
+    const routes = await getJson("/health/simulation/routes");
+    ["new-bus-route", "schedule-route"].forEach(function (name) {
+      const select = document.getElementById(name);
+      select.replaceChildren(...routes.map(function (route) {
+        const option = document.createElement("option");
+        option.value = route.route_id;
+        option.textContent = route.route_id + " — " + route.name;
+        return option;
+      }));
+    });
+    fleetRoutesLoaded = true;
+  }
   const ids = Object.keys(simulation.demo_buses);
-  if (demoBus.options.length !== ids.length) {
+  if (demoBus.dataset.ids !== ids.join(",")) {
+    const selected = demoBus.value;
+    demoBus.dataset.ids = ids.join(",");
     demoBus.replaceChildren(...ids.map(function (id) {
       const option = document.createElement("option");
       option.value = id;
       option.textContent = id + " (" + simulation.demo_buses[id].region_id + ")";
       return option;
     }));
+    if (ids.includes(selected)) demoBus.value = selected;
   }
+  document.getElementById("schedule-status").textContent = Object.entries(simulation.schedules).map(function ([route, schedule]) {
+    return route + ": every " + schedule.headway_seconds + " s; queued " +
+      (schedule.pending.join(", ") || "none") + "; next slot " + (schedule.next_departure ?? "not set");
+  }).join(" · ") || "No dispatch requests yet.";
   document.getElementById("demo-summary").textContent =
     (simulation.demo_running ? "Buses running" : "Buses stopped intentionally") + " · Central " +
     (simulation.central_available ? "available" : "unavailable") + " · " + simulation.central_pending + " pending central updates";
@@ -94,10 +115,28 @@ document.getElementById("demo-controls").addEventListener("click", async functio
     "demo-restore": {bus_id: demoBus.value, condition: "normal"},
     "central-fail": {central_available: false}, "central-restore": {central_available: true}
   }[button.id];
-  if (!body) return;
+  const fleetAction = ["fleet-apply", "bus-register", "headway-apply", "bus-dispatch"].includes(button.id);
+  if (!body && !fleetAction) return;
   button.disabled = true;
   try {
-    await configureDemo(body);
+    if (button.id === "fleet-apply") {
+      await resetSimulation(Number(document.getElementById("fleet-size").value));
+      await configureDemo({running: true});
+    } else if (button.id === "bus-register") {
+      await sendPost("/health/simulation/buses", {
+        schema_version: "bus-config-v1", bus_id: document.getElementById("new-bus-id").value.trim(),
+        route_id: document.getElementById("new-bus-route").value,
+        capacity: Number(document.getElementById("new-bus-capacity").value), direction_id: 0
+      });
+    } else if (button.id === "headway-apply" || button.id === "bus-dispatch") {
+      const request = {route_id: document.getElementById("schedule-route").value,
+        action: button.id === "bus-dispatch" ? "dispatch" : "set_headway"};
+      if (request.action === "dispatch") request.bus_id = demoBus.value;
+      else request.headway_seconds = Number(document.getElementById("headway").value);
+      await sendPost("/health/simulation/schedule", request);
+    } else {
+      await configureDemo(body);
+    }
     chooseDemo();
     demoResult.textContent = "Applied. Watch the readings and event history for the result.";
     await loadWorkers();

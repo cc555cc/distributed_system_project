@@ -193,18 +193,22 @@ class DemoFleet:
     def __init__(self, network_path, definitions, now, event):
         self.event = event
         self.buses = {}
+        self.network_path = network_path
         for bus in definitions:
-            stops = load_stops(bus["route_id"], bus.get("direction_id", 0), network_path=network_path)
-            # Keep configured starting positions so a fleet does not stack at a terminal.
-            start = min(bus.get("scenario", {}).get("start_stop_index", 0), len(stops) - 2)
-            template = next(generate_messages(bus["route_id"], bus.get("direction_id", 0),
-                network_path=network_path, max_updates=1, update_seconds=0))
-            template.update(bus_id=bus["bus_id"], capacity=bus["capacity"])
-            self.buses[bus["bus_id"]] = dict(definition=bus, stops=stops, segment=start,
-                metres=0.0, distance_m=0.0, condition="normal", speed=0.0, dwell=0.0,
-                sequence=0, template=template, local=None, heartbeat=None, valid=None,
-                report_at=now, pending=None, retry_at=now, attempts=0, rejected=0,
-                recovery_until=now, started=now)
+            self.add_bus(bus, now)
+
+    def add_bus(self, bus, now, condition="normal"):
+        stops = load_stops(bus["route_id"], bus.get("direction_id", 0), network_path=self.network_path)
+        # Keep configured starting positions so a fleet does not stack at a terminal.
+        start = min(bus.get("scenario", {}).get("start_stop_index", 0), len(stops) - 2)
+        template = next(generate_messages(bus["route_id"], bus.get("direction_id", 0),
+            network_path=self.network_path, max_updates=1, update_seconds=0))
+        template.update(bus_id=bus["bus_id"], capacity=bus["capacity"])
+        self.buses[bus["bus_id"]] = dict(definition=bus, stops=stops, segment=start,
+            metres=0.0, distance_m=0.0, condition=condition, speed=0.0, dwell=0.0,
+            sequence=0, template=template, local=None, heartbeat=None, valid=None,
+            report_at=now, pending=None, retry_at=now, attempts=0, rejected=0,
+            recovery_until=now, started=now)
 
     def configure(self, bus_id, condition, now):
         if bus_id not in self.buses or condition not in self.CONDITIONS:

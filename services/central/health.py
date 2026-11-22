@@ -328,6 +328,7 @@ def get_events(limit: int = Query(default=50, ge=1, le=200)):
 # telemetry, start OS processes or alter the live ownership registry.
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from services.edge.main import EdgeClusterSimulation
 
@@ -387,6 +388,21 @@ class SimulationDemo(SimulationInput):
     central_available: bool | None = None
 
 
+class BusConfiguration(SimulationInput):
+    schema_version: Literal["bus-config-v1"]
+    bus_id: str = Field(pattern=r"^[A-Za-z0-9_.:-]+$", min_length=1, max_length=64)
+    route_id: str = Field(min_length=1, max_length=64)
+    capacity: int = Field(default=50, ge=1, le=200)
+    direction_id: int = Field(default=0, ge=0, le=1)
+
+
+class DispatchRequest(SimulationInput):
+    action: Literal["dispatch", "set_headway"]
+    route_id: str = Field(min_length=1, max_length=64)
+    bus_id: str | None = None
+    headway_seconds: float | None = Field(default=None, ge=1, le=3600)
+
+
 class SimulationCharacteristics(SimulationInput):
     capacity: int | None = Field(default=None, ge=1, le=50)
     processing_ms: float | None = Field(default=None, ge=1, le=60000)
@@ -436,6 +452,22 @@ def configure_demo(body: SimulationDemo):
     with simulation_clock.lock:
         simulation_clock.tick()
         simulation_action(simulation.configure_demo, **body.model_dump(exclude_none=True))
+        return get_simulation()
+
+
+@router.post("/simulation/buses", status_code=201)
+def register_simulated_bus(body: BusConfiguration):
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_action(simulation.register_bus, **body.model_dump(exclude={"schema_version"}))
+        return get_simulation()
+
+
+@router.post("/simulation/schedule")
+def schedule_simulated_service(body: DispatchRequest):
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_action(simulation.schedule, **body.model_dump())
         return get_simulation()
 
 
@@ -492,9 +524,9 @@ def reset_simulation(body: SimulationReset | None = None):
         return get_simulation()
 
 
-def simulation_action(action, *args, **kwargs):
+def simulation_action(operation, *args, **kwargs):
     try:
-        return action(*args, **kwargs)
+        return operation(*args, **kwargs)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
