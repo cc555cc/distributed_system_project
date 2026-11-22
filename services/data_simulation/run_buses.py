@@ -12,6 +12,7 @@ import os
 from services.data_simulation import generate_data
 from services.edge.auth_edge_server import encode_bus_message, configure_mqtt_client
 from shared.schema.health import BusHeartbeat, policy_from_environment
+from services.messaging.publisher import ReliablePublisher
 from services.messaging.topics import bus_heartbeat
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
@@ -40,6 +41,11 @@ class SimulatorHeartbeats:
 
     def publish_until_stopped(self, client, stop, interval):
         while not stop.is_set():
+            # A heartbeat means "alive now". Do not queue one while offline:
+            # delivered late it would only take space from telemetry.
+            if not client.is_connected():
+                stop.wait(interval)
+                continue
             heartbeat = self.snapshot()
             try:
                 topic = bus_heartbeat(heartbeat.region_id, heartbeat.bus_id)
@@ -54,21 +60,18 @@ class SimulatorHeartbeats:
 
 def run_bus(bus, network_path, updates, interval, publish, host, port):
     """Keep each bus's random state, counters and connection independent."""
-    client = None
+    client = publisher = None
     heartbeat_source = SimulatorHeartbeats(bus)
     heartbeat_stop = Event()
     heartbeat_thread = None
     try:
         if publish:
-            import paho.mqtt.client as mqtt
-            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=bus["bus_id"] + "-publisher")
-            ready = Event()
-            client.on_connect = lambda c, u, f, reason, p: ready.set() if not reason.is_failure else None
-            configure_mqtt_client(client)
-            client.connect(host, port, keepalive=60)
-            client.loop_start()
-            if not ready.wait(10):
-                raise TimeoutError("MQTT publisher connection did not become ready")
+            # Reconnects by itself; readings generated while offline are queued
+            # and arrive late with their original sequence/clock (MQTT-04).
+            publisher = ReliablePublisher(bus["bus_id"] + "-publisher", host, port,
+                                          configure=configure_mqtt_client)
+            publisher.connect()
+            client = publisher.client
             heartbeat_thread = Thread(target=heartbeat_source.publish_until_stopped,
                                       args=(client, heartbeat_stop, policy_from_environment().interval_seconds), daemon=True)
             heartbeat_thread.start()
@@ -76,12 +79,10 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             encoded = json.dumps(message, allow_nan=False)
             if client is not None:
                 topic = f"transit/buses/{message['region_id']}/{message['bus_id']}/telemetry"
-                receipt = client.publish(topic, encode_bus_message(topic, message, bus["bus_id"]), qos=1, retain=False)
-                if receipt.rc != 0:
-                    raise ConnectionError("Broker rejected bus telemetry")
-                receipt.wait_for_publish(timeout=5)
-                if not receipt.is_published():
-                    raise TimeoutError("Bus telemetry delivery timed out")
+                outcome = publisher.publish(topic, encode_bus_message(topic, message, bus["bus_id"]))
+                if outcome != "sent":
+                    logging.warning("Telemetry %s for bus=%s sequence=%s", outcome,
+                                    message["bus_id"], message["sequence_number"])
             print(encoded, flush=True)
         scenario = bus.get("scenario", {})
         generate_data.main(bus["route_id"], bus.get("direction_id", 0), bus["bus_id"],
@@ -91,9 +92,9 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
         heartbeat_stop.set()
         if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=3)
-        if client is not None:
-            client.disconnect()
-            client.loop_stop()
+        if publisher is not None:
+            publisher.close()
+            logging.info("Publisher totals for bus=%s: %s", bus["bus_id"], publisher.stats)
 
 
 def main(network_path=DEFAULT_NETWORK_PATH, *, updates=100, interval=1.0,

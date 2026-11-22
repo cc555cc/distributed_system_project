@@ -101,3 +101,43 @@ So for one reading, `lamport` < `edge_lamport` < central's clock after delivery.
 Limits: clocks restart from 0 when a process restarts. Heartbeats do not carry Lamport stamps; they are ordered by session ID and heartbeat sequence. Edge workers do not yet exchange stamps with each other, so stamps from two workers are only ordered through the buses and central they share. Buses do not receive messages yet; when commands arrive (MQTT-05), the command consumer passes its clock to the simulator so received stamps raise later send stamps.
 
 Run the checks with `python -m pytest services/messaging/tests/test_lamport.py -q`.
+
+## Connection loss, delayed and duplicate messages (MQTT-04)
+
+All messages use QoS 1, which is at-least-once: a message can arrive late or more than once, and receivers must tolerate both. Ordering never depends on arrival order; it depends on the fields in [Message ordering](#message-ordering-mqtt-03).
+
+What each client does when its connection drops:
+
+| Client | Reconnect | While disconnected | After reconnect |
+| --- | --- | --- | --- |
+| Bus publisher ([publisher.py](../services/messaging/publisher.py)) | Automatic, 1-10 s backoff | Keeps generating readings. Up to 1000 unacknowledged messages are held in memory and reported as `queued`; any beyond that are reported as `dropped` and counted. Heartbeats are skipped, not queued. | Queued readings are sent in their original order with their original sequence number, Lamport stamp and timestamp. |
+| Edge subscriber | Automatic, 1-10 s backoff | Clean session: the broker does not keep telemetry for it. | Resubscribes in `on_connect`. Readings published during the gap are lost and show up as a gap in accepted sequence numbers. |
+| Edge-to-central sender | Automatic, 1-10 s backoff | Keeps only the latest accepted state per bus. | Sends the latest state; a pending state older than `EDGE_FRESHNESS_SECONDS` is discarded instead. |
+| Central subscriber | Automatic, 1-30 s backoff | Persistent session: the broker queues bus states for it. | Resubscribes and receives the queued states late, in order. |
+
+How a late or repeated message is identified:
+
+| Where | Check | Result |
+| --- | --- | --- |
+| Edge | Sequence lower than the last accepted for that bus | `STALE`, state unchanged, nothing forwarded |
+| Edge | Same sequence and same content | `DUPLICATE`, state unchanged, nothing forwarded |
+| Edge | Same sequence, different content | `CONFLICT`, state unchanged, nothing forwarded |
+| Central | Sequence not higher than the stored one | `stale update`, row unchanged |
+
+The publisher's totals (`sent`, `queued`, `dropped`, `acknowledged`, `disconnects`, `reconnects`) are logged when a bus process ends, and `close()` returns how many accepted messages the broker never acknowledged.
+
+Limits: the bus's offline queue is in memory, so readings are lost if the bus process stops during an outage. When the queue is full the newest reading is the one dropped. With publisher signing enabled, a signed message that is delivered twice or arrives after the signature's time window is rejected by edge authentication before the sequence check. Behaviour across a broker restart is covered by MQTT-10.
+
+Checks:
+
+```text
+python -m pytest services/messaging/tests/test_publisher.py services/messaging/tests/test_delivery_faults.py -q
+```
+
+The live reconnection tests need a dedicated broker and are skipped without `EDGE_LIVE_MQTT_HOST`. Each client connects through a TCP relay that the test cuts and restores:
+
+```powershell
+$env:EDGE_LIVE_MQTT_HOST = "127.0.0.1"
+$env:EDGE_LIVE_MQTT_PORT = "1883"
+python -m pytest services/messaging/tests/test_live_reconnect.py -q
+```
