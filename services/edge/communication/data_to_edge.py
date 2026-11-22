@@ -19,7 +19,7 @@ from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
 from services.edge.data_to_json_converter import convert_to_telemetry, decode_json
 from services.edge.edge_server_health import EdgeMonitor
-from services.messaging.topics import bus_heartbeat_filter
+from services.messaging.topics import assignment, bus_heartbeat_filter
 
 # So type checkers, now what classes i am refering to and what type of data it those class need
 if TYPE_CHECKING:
@@ -82,6 +82,10 @@ class TelemetrySubscriber:
         # Subscribe to telemetry from all buses in this region
         # '+' represents any single bus ID
         self.topic_filter = f"transit/buses/{region_id}/+/telemetry"
+
+        # Central's live bus ownership for this region (retained, so it arrives right after subscribing)
+        self.assignment_topic = assignment(region_id)
+        self.assignment_epoch: int | None = None
 
         # Create a queue to temporarily hold validated telemetry
         self.messages: Queue[BusTelemetry] = Queue(maxsize=queue_size)
@@ -159,8 +163,48 @@ class TelemetrySubscriber:
         return True
 
     # So basically, when message arrives this is the validation steps it takes on header and payload.
+    def apply_assignment(self, raw_payload: bytes) -> list[str]:
+        """Follow central's ownership for this region; returns the buses whose owner changed.
+
+        Every component of this edge shares self.registry, so updating it switches what the
+        subscriber queues, what the processor accepts and what the sender forwards."""
+        if len(raw_payload) > MAX_PAYLOAD_BYTES:
+            raise ValueError("Assignment too large")
+        payload = json.loads(raw_payload)
+        if not isinstance(payload, dict):
+            raise ValueError("Assignment must be a JSON object")
+        owners, epoch = payload.get("owners"), payload.get("epoch")
+        if payload.get("region_id") != self.region_id or not isinstance(owners, dict) \
+                or isinstance(epoch, bool) or not isinstance(epoch, int):
+            raise ValueError("Assignment is not for this region or is malformed")
+        if self.assignment_epoch is not None and epoch < self.assignment_epoch:
+            return []  # an older assignment arrived late; keep the newer one
+        changed = []
+        for bus_id, edge_id in sorted(owners.items()):
+            current = self.registry.get(bus_id)
+            if current is None or current.region_id != self.region_id or (
+                    self.city_id is not None and current.city_id != self.city_id):
+                continue  # only buses this region knows about
+            if self.registry.set_owner(bus_id, edge_id):
+                changed.append(bus_id)
+        self.assignment_epoch = epoch
+        if self.monitor is not None:
+            self.monitor.set_assigned(self.registry.assigned_bus_ids(
+                self.monitor.config.city_id, self.region_id, self.edge_id))
+        if changed:
+            owned = [bus for bus in changed if self.registry.get(bus).edge_id == self.edge_id]
+            logger.warning("Ownership update epoch=%s: now processing %s, handed off %s",
+                           epoch, owned or "-", [bus for bus in changed if bus not in owned] or "-")
+        return changed
+
     def on_message(self, client: object, userdata: object, message: MQTTMessageLike) -> None:
         """Paho callback: delegate transport events to the testable handler."""
+        if message.topic == self.assignment_topic:
+            try:
+                self.apply_assignment(message.payload)
+            except (ValueError, TypeError, AttributeError, UnicodeError, RecursionError):
+                logger.warning("Rejected ownership assignment: invalid format")
+            return
         if self.monitor is not None and message.topic.startswith("transit/heartbeats/bus/"):
             try:
                 decoded = self.auth.verify(message.topic, decode_json(message.payload))
@@ -178,6 +222,10 @@ class TelemetrySubscriber:
         if reason_code.is_failure:
             logger.error("MQTT connection refused: %s", reason_code)
             return
+        # Learn the current ownership first, so telemetry is filtered by central's live assignment.
+        self.auth.authorize_subscribe(self.assignment_topic)
+        client.subscribe(self.assignment_topic, qos=1)
+
         # Fails then Stop, otherwise subscribe to the topic filter and log the result.
         self.auth.authorize_subscribe(self.topic_filter)
         result, _mid = client.subscribe(self.topic_filter, qos=1)

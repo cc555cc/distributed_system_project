@@ -6,24 +6,54 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
+import asyncio
+import os
 from fastapi import FastAPI
-from services.central.routers import bus_states, stops, routes, eta
+from fastapi.middleware.cors import CORSMiddleware
+from services.central.routers import bus_states, stops, routes, eta, buses
 from contextlib import asynccontextmanager
 from services.messaging import mqtt_client
-from services.central.health import router as health_router
+from services.central.health import router as health_router, monitor
+from services.central.ownership import bus_ownership
+from services.central.failover import run_round
+
+POLL_SECONDS = 1
+logger = logging.getLogger(__name__)
+
+#every second, central notice failed/recovered edges, move their buses accordingly, and tell the edges 
+async def poll_loop():
+    while True:
+        try:
+            run_round(monitor, bus_ownership, mqtt_client.publish_assignment)
+        except Exception:
+            logger.exception("Failover round failed") #it should keep polling even if one round fails
+        await asyncio.sleep(POLL_SECONDS)
 
 @asynccontextmanager
 async def lifespan(app):
     mqtt_client.start()
+    poll_task = asyncio.create_task(poll_loop())
     yield #server pause here and handle request
+    poll_task.cancel()
     mqtt_client.stop() #execute on ctrl+C input or shutdown
 
 app = FastAPI(lifespan=lifespan)
+
+#allow the frontend dashboard to call this API from the browser
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in cors_origins.split(",") if origin.strip()],
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
+    allow_headers=["Content-Type"],
+)
+
 app.include_router(bus_states.router)
 app.include_router(stops.router)
 app.include_router(routes.router)
 app.include_router(health_router)
 app.include_router(eta.router)
+app.include_router(buses.router)
 
 
 

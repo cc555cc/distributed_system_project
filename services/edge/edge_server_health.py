@@ -20,6 +20,13 @@ class EdgeMonitor:
         self.received = self.processed = 0
         self.processing_seconds = 0.0
 
+    def set_assigned(self, bus_ids) -> None:
+        """Follow a live ownership change: report and track sensors for the buses owned now."""
+        with self.lock:
+            self.bus_ids = sorted(bus_ids)
+            with self.tracker.lock:
+                self.tracker.expected = {(bus, sensor) for bus in self.bus_ids for sensor in SENSORS}
+
     def receive(self, topic: str, payload: bytes) -> bool:
         """Heartbeats update health directly, not the bus-processing queue."""
         if len(payload) > 64 * 1024:

@@ -325,5 +325,6 @@ def test_reconnect_resubscribes_and_failed_connection_does_not():
     client.subscribe.assert_not_called()
     for _ in range(2):
         subscriber.on_connect(client, None, None, SimpleNamespace(is_failure=False), None)
-    assert client.subscribe.call_count == 2
+    assert client.subscribe.call_count == 4  # assignment + telemetry, on each connect
     client.subscribe.assert_called_with(subscriber.topic_filter, qos=1)
+    assert [call.args[0] for call in client.subscribe.call_args_list].count("transit/assignments/north") == 2

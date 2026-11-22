@@ -39,3 +39,11 @@ def bus_heartbeat_filter(region_id: str) -> str:
 
 def edge_heartbeat(region_id: str, edge_id: str) -> str:
     return f"transit/heartbeats/edge/{region_id}/{edge_id}"
+
+
+# Central publishes which edge owns each bus in a region; edges follow it.
+ASSIGNMENT_FILTER = "transit/assignments/+"
+
+
+def assignment(region_id: str) -> str:
+    return f"transit/assignments/{region_id}"

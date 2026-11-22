@@ -138,7 +138,7 @@ def test_worker_heartbeat_and_outgoing_health_connection(setup, monkeypatch):
     report = instance.heartbeat()
     assert report.edge_id == "edge-west-1"
     assert report.workload.queue_utilization_percent == 80
-    assert {bus.bus_id for bus in report.buses} == {"bus-302-1", "bus-900-1"}
+    assert {bus.bus_id for bus in report.buses} == {"bus-302-1", "bus-302-4", "bus-900-1", "bus-900-4"}
     client = Mock()
     client.is_connected.return_value = True
     client.publish.return_value.rc = 0
@@ -161,7 +161,8 @@ def test_heartbeat_subscription_is_registered(setup):
     client = Mock()
     client.subscribe.return_value = (0, 1)
     subscriber.on_connect(client, None, None, SimpleNamespace(is_failure=False), None)
-    assert client.subscribe.call_count == 2
+    assert client.subscribe.call_count == 3  # assignments, telemetry, sensor heartbeats
+    assert client.subscribe.call_args_list[0].args[0] == "transit/assignments/west"
     assert client.subscribe.call_args.args[0] == "transit/heartbeats/bus/west/+"
 
 

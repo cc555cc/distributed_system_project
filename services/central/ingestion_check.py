@@ -15,11 +15,25 @@ def check_update(conn, bus_id: str, region_id: str, state) -> str | None:
     if metadata is not None and metadata.route_id != route_id:
         return "metadata route differs from assigned route"
 
+    #fencing: only the edge central currently assigns to this bus may update it
+    #(rejects a failed/partitioned edge that comes back still thinking it owns the bus)
+    if metadata is not None:
+        reason = owner_check(bus_id, metadata.edge_id)
+        if reason is not None:
+            return reason
+
     if state.next_stop_id is not None:
         if not next_stop_check(conn, route_id, stored_next_stop, state.next_stop_id, state.direction_id):
             return f"next stop {state.next_stop_id} invalid after {stored_next_stop}"
 
-    #TODO add edge server check here
+    return None
+
+#the sending edge must be the bus's current owner; buses central does not manage are not fenced
+def owner_check(bus_id: str, edge_id: str) -> str | None:
+    from services.central.ownership import bus_ownership
+    owner = bus_ownership.owner(bus_id)
+    if owner is not None and owner != edge_id:
+        return f"edge {edge_id} is not the current owner of {bus_id} (owner: {owner})"
     return None
 
 #scenario: system assign a new bus to a route -> check if bus route exists

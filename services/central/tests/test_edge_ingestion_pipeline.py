@@ -367,6 +367,10 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(tmp_path
     transport = LocalTransport(mqtt_client.on_message)
     api = TestClient(app)
     cluster = EdgeClusterSimulation()
+    # Here the simulation coordinator is the ownership authority, so central's fencing
+    # follows its handoffs instead of the live failover table.
+    from services.central.ownership import bus_ownership
+    monkeypatch.setattr(bus_ownership, "owner", lambda bus: cluster.registry.get(bus).edge_id)
     bus_id = "bus-302-1"
     def flush_and_read():
         cluster.advance(1)

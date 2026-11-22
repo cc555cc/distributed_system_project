@@ -185,4 +185,9 @@ class CentralForwarder:
             self.pending[bus_id] = (payload, accepted_at)
             logging.warning("Central delivery pending for bus=%s", bus_id)
             return False
+        except ValueError:
+            # Central moved this bus to another edge after the update was accepted;
+            # the new owner reports it now, so drop instead of crashing the loop.
+            logging.warning("Dropped pending update for bus=%s: no longer assigned to this edge", bus_id)
+            return False
         return True

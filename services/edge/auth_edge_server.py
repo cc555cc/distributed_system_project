@@ -91,7 +91,8 @@ class EdgeAuth:
         raise PermissionError("Edge cannot publish outside its assigned topics")
 
     def authorize_subscribe(self, topic):
-        if topic not in (f"transit/buses/{self.region_id}/+/telemetry", f"transit/heartbeats/bus/{self.region_id}/+"):
+        if topic not in (f"transit/buses/{self.region_id}/+/telemetry", f"transit/heartbeats/bus/{self.region_id}/+",
+                         f"transit/assignments/{self.region_id}"):
             raise PermissionError("Edge cannot subscribe outside its region")
 
     def verify(self, topic, message):
@@ -166,7 +167,8 @@ def mosquitto_acl(network):
     An operator installs this alongside a password file and allow_anonymous false.
     It does not silently deploy broker-wide policy or create credentials.
     """
-    lines = ["user central", "topic read transit/+/bus/+/state", "topic read transit/heartbeats/edge/+/+"]
+    lines = ["user central", "topic read transit/+/bus/+/state", "topic read transit/heartbeats/edge/+/+",
+             "topic write transit/assignments/+"]
     edge_ids = set()
     for region in network["regions"]:
         if not _segment(region["region_id"]):
@@ -179,11 +181,14 @@ def mosquitto_acl(network):
             lines.extend(["", "user " + edge_id,
                 f"topic read transit/buses/{region['region_id']}/+/telemetry",
                 f"topic read transit/heartbeats/bus/{region['region_id']}/+",
-                f"topic write transit/heartbeats/edge/{region['region_id']}/{edge_id}"])
+                f"topic write transit/heartbeats/edge/{region['region_id']}/{edge_id}",
+                f"topic read transit/assignments/{region['region_id']}"])
+            # Central may hand any bus in the region to this edge during failover, so it may
+            # write state for every bus of its region (central's ownership check fences the rest).
             for bus in network["buses"]:
-                if bus["edge_id"] == edge_id:
-                    if not _segment(bus["bus_id"]) or bus["region_id"] != region["region_id"]:
-                        raise ValueError("Unsafe or mismatched bus assignment")
+                if bus["region_id"] == region["region_id"]:
+                    if not _segment(bus["bus_id"]):
+                        raise ValueError("Unsafe bus assignment")
                     lines.append(f"topic write transit/{region['region_id']}/bus/{bus['bus_id']}/state")
     usernames = {"central"} | edge_ids
     for bus in network["buses"]:
