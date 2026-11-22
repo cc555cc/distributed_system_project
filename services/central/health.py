@@ -1,28 +1,76 @@
 """Central watches edge heartbeats independently; failed edges cannot report themselves."""
 
-from copy import deepcopy
-from threading import RLock
 import time
+from collections import deque
+from copy import deepcopy
+from datetime import UTC, datetime
+from threading import RLock
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from services.messaging.topics import edge_heartbeat
-from shared.schema.health import EdgeHeartbeat, HeartbeatTracker, HealthPolicy, SENSORS, policy_from_environment
-from shared.schema.health import classify_bus_health, sensor_health_status, edge_workload_status
+from shared.schema.health import (
+    SENSORS,
+    EdgeHeartbeat,
+    HealthPolicy,
+    HeartbeatTracker,
+    classify_bus_health,
+    edge_workload_status,
+    policy_from_environment,
+    sensor_health_status,
+)
 from shared.schema.network import load_network
 
 
+class EventLog:
+    """Recent central events, newest last. In memory; a central restart clears it."""
+
+    def __init__(self, maxlen=200):
+        self.events = deque(
+            maxlen=maxlen
+        )  # oldest events drop off automatically once full
+        self.lock = RLock()
+
+    def append(self, event_type: str, **fields) -> None:
+        # wall-clock UTC is for people reading the log; timeout logic keeps using the monotonic clock
+        event = {"time": datetime.now(UTC).isoformat(), "type": event_type, **fields}
+        with self.lock:
+            self.events.append(event)
+
+    def recent(self, limit: int = 50) -> list[dict]:
+        with self.lock:
+            return list(reversed(self.events))[:limit]  # newest first
+
+
 class CentralHealthMonitor:
-    def __init__(self, network, policy: HealthPolicy, *, clock=time.monotonic):
+    def __init__(
+        self,
+        network,
+        policy: HealthPolicy,
+        *,
+        clock=time.monotonic,
+        events=None,
+        ownership=None,
+    ):
         self.policy, self.clock = policy, clock
+        self.events = events or EventLog()
+        self.ownership = ownership  # live BusOwnership; None = use the static owners from the network file
+        self.last_status = {}  # edge_id -> status seen by the previous poll()
         self.expected = {}
-        self.owners = {bus["bus_id"]: (bus["city_id"], bus["region_id"], bus["edge_id"])
-                       for bus in network["buses"]}
+        self.owners = {
+            bus["bus_id"]: (bus["city_id"], bus["region_id"], bus["edge_id"])
+            for bus in network["buses"]
+        }
         for region in network["regions"]:
             for field in ("primary_edge", "backup_edge"):
                 key = (region["city_id"], region["region_id"], region[field])
                 self.expected[region[field]] = key
-        self.tracker = HeartbeatTracker(self.expected, policy.edge_timeout_seconds, policy.recovery_seconds, clock=clock)
+        self.tracker = HeartbeatTracker(
+            self.expected,
+            policy.edge_timeout_seconds,
+            policy.recovery_seconds,
+            clock=clock,
+        )
         self.reports, self.received_at, self.overloaded_since = {}, {}, {}
         self.lock = RLock()
 
@@ -34,25 +82,48 @@ class CentralHealthMonitor:
         except ValueError:
             return False
         key = (heartbeat.city_id, heartbeat.region_id, heartbeat.edge_id)
-        if self.expected.get(heartbeat.edge_id) != key or topic != edge_heartbeat(heartbeat.region_id, heartbeat.edge_id):
+        if self.expected.get(heartbeat.edge_id) != key or topic != edge_heartbeat(
+            heartbeat.region_id, heartbeat.edge_id
+        ):
             return False
-        owned = {bus_id for bus_id, owner in self.owners.items() if owner == key}
+        # Liveness must not depend on ownership being in sync: during a handoff the edge may
+        # report its old or new bus set for a moment. Accept any set of buses from the edge's
+        # own region, as long as the report is internally consistent.
+        region_buses = {
+            bus_id for bus_id, owner in self.owners.items() if owner[:2] == key[:2]
+        }
         supplied = [bus.bus_id for bus in heartbeat.buses]
-        if set(supplied) != owned or len(supplied) != len(owned) or heartbeat.workload.assigned_buses != len(owned):
+        if (
+            len(set(supplied)) != len(supplied)
+            or not set(supplied) <= region_buses
+            or heartbeat.workload.assigned_buses != len(supplied)
+        ):
             return False
         if any(set(bus.sensors) != set(SENSORS) for bus in heartbeat.buses):
             return False
         with self.lock:
-            if not self.tracker.record(heartbeat.edge_id, heartbeat.session_id, heartbeat.sequence_number):
+            if not self.tracker.record(
+                heartbeat.edge_id, heartbeat.session_id, heartbeat.sequence_number
+            ):
                 return False
             now = self.clock()
             # A gap/restart cannot count toward sustained overload.
             previous = self.received_at.get(heartbeat.edge_id)
             old_report = self.reports.get(heartbeat.edge_id)
-            restarted = old_report is not None and old_report["session_id"] != heartbeat.session_id
-            if previous is None or restarted or now - previous >= self.policy.edge_timeout_seconds:
+            restarted = (
+                old_report is not None
+                and old_report["session_id"] != heartbeat.session_id
+            )
+            if (
+                previous is None
+                or restarted
+                or now - previous >= self.policy.edge_timeout_seconds
+            ):
                 self.overloaded_since.pop(heartbeat.edge_id, None)
-            if heartbeat.workload.queue_utilization_percent >= self.policy.overload_percent:
+            if (
+                heartbeat.workload.queue_utilization_percent
+                >= self.policy.overload_percent
+            ):
                 self.overloaded_since.setdefault(heartbeat.edge_id, now)
             else:
                 self.overloaded_since.pop(heartbeat.edge_id, None)
@@ -78,50 +149,168 @@ class CentralHealthMonitor:
                         for sensor in bus["sensors"].values():
                             if sensor["age_seconds"] is not None:
                                 sensor["age_seconds"] += elapsed
-                                if sensor["age_seconds"] >= self.policy.sensor_timeout_seconds:
+                                if (
+                                    sensor["age_seconds"]
+                                    >= self.policy.sensor_timeout_seconds
+                                ):
                                     sensor["status"] = "unavailable"
                             if status["status"] == "unavailable":
                                 sensor["status"] = "unknown"
-                reports = report["buses"] if report is not None else [
-                    dict(bus_id=bus_id, valid_telemetry_age_seconds=None, last_speed_kmh=None,
-                         sensors={name: dict(status="unknown", reported_state="unknown", age_seconds=None)
-                                  for name in SENSORS})
-                    for bus_id, owner in self.owners.items() if owner == (city, region, edge_id)]
+                # List each bus once, under the edge that owns it now. A bus the owner has not
+                # reported yet (e.g. just handed over) appears as unknown instead of disappearing.
+                reported = (
+                    {bus["bus_id"]: bus for bus in report["buses"]}
+                    if report is not None
+                    else {}
+                )
+                owned_now = sorted(
+                    bus_id
+                    for bus_id, owner in self.owners.items()
+                    if owner[:2] == (city, region) and self._owner(bus_id) == edge_id
+                )
+                reports = [
+                    reported.get(bus_id)
+                    or {
+                        "bus_id": bus_id,
+                        "valid_telemetry_age_seconds": None,
+                        "last_speed_kmh": None,
+                        "sensors": {
+                            name: {
+                                "status": "unknown",
+                                "reported_state": "unknown",
+                                "age_seconds": None,
+                            }
+                            for name in SENSORS
+                        },
+                    }
+                    for bus_id in owned_now
+                ]
                 for bus in reports:
-                    bus["health"] = classify_bus_health(bus, status["status"], self.policy.sensor_timeout_seconds)
+                    bus["health"] = classify_bus_health(
+                        bus, status["status"], self.policy.sensor_timeout_seconds
+                    )
                     for sensor in bus["sensors"].values():
-                        sensor["health_status"] = sensor_health_status(sensor, status["status"], self.policy.sensor_timeout_seconds)
-                    buses.append(dict(edge_id=edge_id, city_id=city, region_id=region, **deepcopy(bus)))
+                        sensor["health_status"] = sensor_health_status(
+                            sensor, status["status"], self.policy.sensor_timeout_seconds
+                        )
+                    buses.append(
+                        dict(
+                            edge_id=edge_id,
+                            city_id=city,
+                            region_id=region,
+                            **deepcopy(bus),
+                        )
+                    )
                 since = self.overloaded_since.get(edge_id)
-                utilization = report["workload"]["queue_utilization_percent"] if report else None
-                workload_status = edge_workload_status(status["status"], utilization,
-                    since is not None and now - since >= self.policy.sustained_seconds, self.policy.overload_percent)
-                edges.append(dict(edge_id=edge_id, city_id=city, region_id=region, **status,
-                                  workload_status=workload_status, last_report=report))
-            return dict(edges=edges, buses=buses, recommendations=self.recommendations(edges, now))
+                utilization = (
+                    report["workload"]["queue_utilization_percent"] if report else None
+                )
+                workload_status = edge_workload_status(
+                    status["status"],
+                    utilization,
+                    since is not None and now - since >= self.policy.sustained_seconds,
+                    self.policy.overload_percent,
+                )
+                edges.append(
+                    dict(
+                        edge_id=edge_id,
+                        city_id=city,
+                        region_id=region,
+                        **status,
+                        workload_status=workload_status,
+                        last_report=report,
+                    )
+                )
+            return {
+                "edges": edges,
+                "buses": buses,
+                "recommendations": self.recommendations(edges, now),
+            }
 
     def recommendations(self, edges, now):
         """Least-loaded healthy peer selection; no migration or instance creation."""
         choices = []
         for source in edges:
             since = self.overloaded_since.get(source["edge_id"])
-            if source["status"] != "healthy" or since is None or now - since < self.policy.sustained_seconds:
+            if (
+                source["status"] != "healthy"
+                or since is None
+                or now - since < self.policy.sustained_seconds
+            ):
                 continue
-            peers = [edge for edge in edges if edge["edge_id"] != source["edge_id"]
-                     and (edge["city_id"], edge["region_id"]) == (source["city_id"], source["region_id"])
-                     and edge["status"] == "healthy" and edge["last_report"] is not None
-                     and edge["last_report"]["workload"]["queue_utilization_percent"] < self.policy.overload_percent]
-            target = min(peers, key=lambda edge: (edge["last_report"]["workload"]["queue_utilization_percent"], edge["edge_id"])) if peers else None
-            choices.append(dict(algorithm="least_queue_utilization", from_edge_id=source["edge_id"],
-                                to_edge_id=target["edge_id"] if target else None,
-                                action="consider_migration" if target else "additional_capacity_needed",
-                                migration_performed=False))
+            peers = [
+                edge
+                for edge in edges
+                if edge["edge_id"] != source["edge_id"]
+                and (edge["city_id"], edge["region_id"])
+                == (source["city_id"], source["region_id"])
+                and edge["status"] == "healthy"
+                and edge["last_report"] is not None
+                and edge["last_report"]["workload"]["queue_utilization_percent"]
+                < self.policy.overload_percent
+            ]
+            target = (
+                min(
+                    peers,
+                    key=lambda edge: (
+                        edge["last_report"]["workload"]["queue_utilization_percent"],
+                        edge["edge_id"],
+                    ),
+                )
+                if peers
+                else None
+            )
+            choices.append(
+                {
+                    "algorithm": "least_queue_utilization",
+                    "from_edge_id": source["edge_id"],
+                    "to_edge_id": target["edge_id"] if target else None,
+                    "action": "consider_migration"
+                    if target
+                    else "additional_capacity_needed",
+                    "migration_performed": False,
+                }
+            )
         return choices
+
+    def _owner(self, bus_id):
+        if self.ownership is not None:
+            return self.ownership.owner(bus_id)
+        return self.owners[bus_id][2]
+
+    def statuses(self) -> dict[str, str]:
+        """Current liveness status of every expected edge (healthy/recovering/unavailable/unknown)."""
+        return {
+            edge_id: self.tracker.report(edge_id)["status"] for edge_id in self.expected
+        }
+
+    def poll(self) -> None:
+        """Called every second by central. An edge going silent produces no message,
+        so status changes can only be noticed by checking regularly."""
+        with self.lock:
+            for edge_id in sorted(self.expected):
+                status = self.tracker.report(edge_id)["status"]
+                previous = self.last_status.get(edge_id)
+                if previous is not None and previous != status:
+                    city, region, _ = self.expected[edge_id]
+                    self.events.append(
+                        "edge_status",
+                        edge_id=edge_id,
+                        city_id=city,
+                        region_id=region,
+                        from_status=previous,
+                        to_status=status,
+                    )
+                self.last_status[edge_id] = status
 
 
 router = APIRouter(prefix="/health", tags=["health"])
 # Built once per central process. A central restart intentionally forgets old liveness.
-monitor = CentralHealthMonitor(load_network(), policy_from_environment())
+from services.central.ownership import bus_ownership
+
+monitor = CentralHealthMonitor(
+    load_network(), policy_from_environment(), ownership=bus_ownership
+)
 
 
 @router.get("/edges")
@@ -129,10 +318,17 @@ def get_edge_health():
     return monitor.snapshot()
 
 
+# recent edge status changes, newest first
+@router.get("/events")
+def get_events(limit: int = Query(default=50, ge=1, le=200)):
+    return monitor.events.recent(limit)
+
+
 # UI experiments have their own queues and virtual clock. They do not publish
 # telemetry, start OS processes or alter the live ownership registry.
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+
 from services.edge.main import EdgeClusterSimulation
 
 simulation = EdgeClusterSimulation()

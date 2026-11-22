@@ -1,44 +1,46 @@
 import math
 
-#functions for calculating eta.
+# functions for calculating eta.
 
-DEFAULT_SPEED = 30 #fallback for when bus is stopped
+DEFAULT_SPEED = 30  # fallback for when bus is stopped
 
-#get the location of a bus in a route, use its lat and lon to estimate the eta of the rest of the 
-#stops in that direction
+
+# get the location of a bus in a route, use its lat and lon to estimate the eta of the rest of the
+# stops in that direction
 def eta_bus(conn, bus_id) -> list[dict] | None:
     stops_eta = []
     bus = conn.execute(
-        "SELECT lat, lon, current_stop_id, route_id, direction, speed FROM bus_states WHERE bus_id = %s",
-        (bus_id).fetchone()
-    )
+        "SELECT s.lat, s.lon, s.current_stop_id, b.route_id, s.direction_id, s.speed FROM bus_states s JOIN buses b ON b.bus_id = s.bus_id WHERE s.bus_id = %s",
+        (bus_id,),
+    ).fetchone()
 
     if bus is None:
-        return "This bus is not in the system"
-
-    current_stop_id = bus[2]
+        return None
 
     stops = conn.execute(
-        "SELECT stops_id, lat, lon FROM route_stops WHERE route_id = %s AND direction_id = %s ORDER BY stop_id",
-        (bus[3], bus[4]).fetchall()
-    )
+        "SELECT rs.stop_id, st.lat, st.lon FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = %s AND rs.direction_id = %s ORDER BY rs.position",
+        (bus[3], bus[4]),
+    ).fetchall()
 
+    avg_speed = bus[5] if bus[5] > 0 else DEFAULT_SPEED
     for stop in stops:
-        #distance
-        bx, by = bus[0], bus[1]
-        sx, sy = stop[1], stop[2]
-        dx, dy = abs(bx - sx), abs(by - sy)
-        distance = math.sqrt(pow(dx,2), pow(dy,2))
-
-        #time
-        avg_speed = bus[5] > 0 if 0.8 * avg_speed + 0.2 * bus[5] else DEFAULT_SPEED
-        eta = distance/avg_speed
-        stops_eta.append[eta]
+        distance = distance_km(
+            bus[0], bus[1], stop[1], stop[2]
+        )  # provide bus and stop lat and lon
+        eta = distance / avg_speed * 60  # in minutes
+        stops_eta.append({"stop_id": stop[0], "eta_minutes": round(eta, 1)})
 
     return stops_eta
 
 
+# haversine helper function to give real distance between two GPS points
+EARTH_RADIUS_KM = 6371
 
 
-    
-
+def distance_km(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(math.radians, (lat1, lon1, lat2, lon2))
+    x = (
+        math.sin((lat2 - lat1) / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    )
+    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(x))

@@ -1,0 +1,503 @@
+{
+  "recorded_at": "2026-11-22T05:45:37+00:00",
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.22631-SP0",
+    "paho": "2.x",
+    "broker": "127.0.0.1:18830"
+  },
+  "settings": {
+    "host": "127.0.0.1",
+    "port": 18830,
+    "buses": [
+      5,
+      10,
+      25,
+      50
+    ],
+    "scenarios": [
+      "normal",
+      "outage"
+    ],
+    "rate": 5.0,
+    "duration": 15.0,
+    "delay_ms": 200.0,
+    "outage_s": 3.0,
+    "output": "services/messaging/results/mqtt11_scaling.json"
+  },
+  "results": [
+    {
+      "scenario": "normal",
+      "buses": 5,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 25.0,
+      "published": 375,
+      "queued_while_offline": 0,
+      "dropped_by_publisher": 0,
+      "received": 375,
+      "unique": 375,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.15,
+        "p95": 3.05,
+        "p99": 3.32,
+        "max": 4.03,
+        "mean": 1.84
+      },
+      "throughput_msgs_per_s": 24.3,
+      "reconnects": 0,
+      "disconnects": 0,
+      "events": []
+    },
+    {
+      "scenario": "normal",
+      "buses": 10,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 50.0,
+      "published": 750,
+      "queued_while_offline": 0,
+      "dropped_by_publisher": 0,
+      "received": 750,
+      "unique": 750,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.02,
+        "p95": 3.03,
+        "p99": 3.33,
+        "max": 16.06,
+        "mean": 1.54
+      },
+      "throughput_msgs_per_s": 48.5,
+      "reconnects": 0,
+      "disconnects": 0,
+      "events": []
+    },
+    {
+      "scenario": "normal",
+      "buses": 25,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 125.0,
+      "published": 1875,
+      "queued_while_offline": 0,
+      "dropped_by_publisher": 0,
+      "received": 1875,
+      "unique": 1875,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 1.63,
+        "p95": 3.01,
+        "p99": 3.75,
+        "max": 14.76,
+        "mean": 1.51
+      },
+      "throughput_msgs_per_s": 121.1,
+      "reconnects": 0,
+      "disconnects": 0,
+      "events": []
+    },
+    {
+      "scenario": "normal",
+      "buses": 50,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 250.0,
+      "published": 3750,
+      "queued_while_offline": 0,
+      "dropped_by_publisher": 0,
+      "received": 3750,
+      "unique": 3750,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.04,
+        "p95": 3.64,
+        "p99": 4.68,
+        "max": 25.3,
+        "mean": 1.97
+      },
+      "throughput_msgs_per_s": 241.9,
+      "reconnects": 0,
+      "disconnects": 0,
+      "events": []
+    },
+    {
+      "scenario": "outage",
+      "buses": 5,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 25.0,
+      "published": 375,
+      "queued_while_offline": 76,
+      "dropped_by_publisher": 0,
+      "received": 375,
+      "unique": 375,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.11,
+        "p95": 2280.87,
+        "p99": 2874.89,
+        "max": 3030.66,
+        "mean": 310.52
+      },
+      "throughput_msgs_per_s": 24.3,
+      "reconnects": 5,
+      "disconnects": 5,
+      "events": [
+        [
+          "cut",
+          5.02
+        ],
+        [
+          "restore",
+          8.02
+        ]
+      ]
+    },
+    {
+      "scenario": "outage",
+      "buses": 10,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 50.0,
+      "published": 750,
+      "queued_while_offline": 231,
+      "dropped_by_publisher": 0,
+      "received": 750,
+      "unique": 750,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.24,
+        "p95": 5229.22,
+        "p99": 6655.07,
+        "max": 7020.45,
+        "mean": 855.81
+      },
+      "throughput_msgs_per_s": 48.4,
+      "reconnects": 10,
+      "disconnects": 10,
+      "events": [
+        [
+          "cut",
+          5.02
+        ],
+        [
+          "restore",
+          8.02
+        ]
+      ]
+    },
+    {
+      "scenario": "outage",
+      "buses": 25,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 125.0,
+      "published": 1875,
+      "queued_while_offline": 638,
+      "dropped_by_publisher": 0,
+      "received": 1876,
+      "unique": 1875,
+      "duplicates": 1,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.39,
+        "p95": 5723.62,
+        "p99": 6870.36,
+        "max": 7125.99,
+        "mean": 1049.88
+      },
+      "throughput_msgs_per_s": 121.0,
+      "reconnects": 25,
+      "disconnects": 25,
+      "events": [
+        [
+          "cut",
+          5.03
+        ],
+        [
+          "restore",
+          8.03
+        ]
+      ]
+    },
+    {
+      "scenario": "outage",
+      "buses": 50,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 250.0,
+      "published": 3750,
+      "queued_while_offline": 1415,
+      "dropped_by_publisher": 0,
+      "received": 3610,
+      "unique": 3610,
+      "duplicates": 0,
+      "lost": 140,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {
+        "B007": [
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B010": [
+          54,
+          55,
+          56,
+          57,
+          58,
+          60,
+          61,
+          62
+        ],
+        "B011": [
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          62
+        ],
+        "B012": [
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B013": [
+          60,
+          61,
+          62
+        ],
+        "B014": [
+          61,
+          62
+        ],
+        "B016": [
+          62
+        ],
+        "B017": [
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B018": [
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B019": [
+          62
+        ],
+        "B020": [
+          62
+        ],
+        "B022": [
+          61,
+          62
+        ],
+        "B023": [
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B024": [
+          58,
+          59,
+          61,
+          62
+        ],
+        "B025": [
+          62
+        ],
+        "B026": [
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B027": [
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B028": [
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          60,
+          61,
+          62
+        ],
+        "B029": [
+          62
+        ],
+        "B030": [
+          62
+        ],
+        "B031": [
+          61
+        ],
+        "B032": [
+          62
+        ],
+        "B033": [
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62
+        ],
+        "B034": [
+          62
+        ],
+        "B035": [
+          62
+        ],
+        "B037": [
+          62
+        ],
+        "B038": [
+          62
+        ],
+        "B040": [
+          62
+        ]
+      },
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.73,
+        "p95": 6289.42,
+        "p99": 7135.58,
+        "max": 7364.07,
+        "mean": 1313.23
+      },
+      "throughput_msgs_per_s": 232.9,
+      "reconnects": 50,
+      "disconnects": 50,
+      "events": [
+        [
+          "cut",
+          5.06
+        ],
+        [
+          "restore",
+          8.06
+        ]
+      ]
+    }
+  ]
+}

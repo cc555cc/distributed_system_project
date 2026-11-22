@@ -11,6 +11,7 @@ from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 def slow_simulation():
     from services.edge.main import EdgeLoadSimulation
+
     simulation = EdgeLoadSimulation()
     for edge_id in ("edge-west-1", "edge-west-2"):
         simulation.configure(edge_id, processing_ms=60000)
@@ -19,13 +20,18 @@ def slow_simulation():
 
 def make_cluster():
     from services.edge.main import EdgeClusterSimulation
+
     return EdgeClusterSimulation()
 
 
 def test_instance_creation_configuration_and_isolation():
     # Main uses four configured instances.
     assert set(configured_instances(DEFAULT_NETWORK_PATH)) == {
-        "edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"}
+        "edge-west-1",
+        "edge-west-2",
+        "edge-east-1",
+        "edge-east-2",
+    }
 
     # Single instance checks environment.
     with pytest.MonkeyPatch.context() as monkeypatch:
@@ -36,9 +42,13 @@ def test_instance_creation_configuration_and_isolation():
 
     # Main deployment has two disjoint owners per region.
     from services.edge.main import deployment_plan
+
     plan = deployment_plan(DEFAULT_NETWORK_PATH)
     all_buses = []
-    for region, routes, count in (("west", {"302", "900"}, 2), ("east", {"407", "409", "901"}, 3)):
+    for region, routes, count in (
+        ("west", {"302", "900"}, 4),
+        ("east", {"407", "409", "901"}, 6),
+    ):
         workers = [worker for worker in plan if worker["region_id"] == region]
         assert len(workers) == 2
         assert all(set(worker["route_ids"]) == routes for worker in workers)
@@ -51,14 +61,17 @@ def test_instance_creation_configuration_and_isolation():
     # Main constructs independent workers.
     with pytest.MonkeyPatch.context() as monkeypatch:
         import services.edge.main as launcher
+
         monkeypatch.setenv("CENTRAL_OCCUPANCY_UNIT", "passengers")
         workers = []
         real_worker = EdgeServerInstance
+
         def capture(*args):
             worker = real_worker(*args)
             worker.run = Mock()
             workers.append(worker)
             return worker
+
         monkeypatch.setattr(launcher, "EdgeServerInstance", capture)
         stop = Mock()
         for identity in launcher.configured_instances(DEFAULT_NETWORK_PATH).values():
@@ -72,6 +85,7 @@ def test_instance_creation_configuration_and_isolation():
     # Launcher rejects unknown instance before starting process.
     with pytest.MonkeyPatch.context() as monkeypatch:
         import services.edge.main as launcher
+
         process = Mock()
         monkeypatch.setattr(launcher, "Process", process)
         with pytest.raises(ValueError, match="unregistered"):
@@ -100,12 +114,15 @@ def test_scaling_policy_for_bursts_sustained_load_and_failure():
 
     # Short burst drains without starting third instance.
     from services.edge.main import EdgeLoadSimulation
+
     simulation = EdgeLoadSimulation()
     simulation.submit("bus-302-1", 80)
     report = simulation.advance(1)
     assert sum(w["completed"] for w in report["workers"]) == 80
     assert not simulation.workers["edge-west-3"].active
-    assert simulation.workers["edge-west-1"].snapshot()["average_latency_ms"] == pytest.approx(102.5)
+    assert simulation.workers["edge-west-1"].snapshot()[
+        "average_latency_ms"
+    ] == pytest.approx(102.5)
 
     # Disabled autoscale keeps third stopped.
     simulation = slow_simulation()
@@ -180,6 +197,7 @@ def test_registration_snapshot_and_recovery_timing():
 
     # Advance chunking does not change recovery or processing.
     from services.edge.main import EdgeClusterSimulation
+
     large, small = EdgeClusterSimulation(), EdgeClusterSimulation()
     for cluster in (large, small):
         cluster.generate("bus-302-1", 1)
@@ -192,4 +210,6 @@ def test_registration_snapshot_and_recovery_timing():
         small.advance(1)
     assert large.snapshot()["ownership"] == small.snapshot()["ownership"]
     assert large.outcomes == small.outcomes
-    assert [w.state for w in large.workers.values()] == [w.state for w in small.workers.values()]
+    assert [w.state for w in large.workers.values()] == [
+        w.state for w in small.workers.values()
+    ]

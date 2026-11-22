@@ -13,6 +13,7 @@ from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 def make_cluster():
     from services.edge.main import EdgeClusterSimulation
+
     return EdgeClusterSimulation()
 
 
@@ -27,20 +28,42 @@ def test_publisher_contract_faults_and_regional_ingress():
 
     # Other workers telemetry never fills our queue.
     from services.data_simulation.generate_data import generate_messages
+
     network = NetworkConfig.load(DEFAULT_NETWORK_PATH)
-    source = next(generate_messages("302", 1, "bus-302-2", max_updates=1, update_seconds=0))
-    subscriber = TelemetrySubscriber("west", "edge-west-1", registry=network.registry,
-                                     city_id="DURHAM", monitor=None)
-    assert not subscriber.handle_raw_message("transit/buses/west/bus-302-2/telemetry", json.dumps(source).encode())
+    source = next(
+        generate_messages("302", 1, "bus-302-2", max_updates=1, update_seconds=0)
+    )
+    subscriber = TelemetrySubscriber(
+        "west", "edge-west-1", registry=network.registry, city_id="DURHAM", monitor=None
+    )
+    assert not subscriber.handle_raw_message(
+        "transit/buses/west/bus-302-2/telemetry", json.dumps(source).encode()
+    )
     assert subscriber.messages.empty()
 
     # Generator reports fault without inventing telemetry.
     from services.data_simulation.generate_data import generate_messages
+
     health = []
-    assert list(generate_messages("302", 0, "bus-302-1", max_updates=2, update_seconds=0,
-                                  sensor_failure_rate=1.0, sensor_health=health.append)) == []
+    assert (
+        list(
+            generate_messages(
+                "302",
+                0,
+                "bus-302-1",
+                max_updates=2,
+                update_seconds=0,
+                sensor_failure_rate=1.0,
+                sensor_health=health.append,
+            )
+        )
+        == []
+    )
     assert len(health) == 2
-    assert all(set(states) == set(SENSORS) and set(states.values()) == {"faulty"} for states in health)
+    assert all(
+        set(states) == set(SENSORS) and set(states.values()) == {"faulty"}
+        for states in health
+    )
 
 
 def test_takeover_ordering_replay_and_replica_safety():
@@ -59,7 +82,13 @@ def test_takeover_ordering_replay_and_replica_safety():
     assert cluster.registry.get(bus).edge_id == "edge-west-2"
     assert cluster.epochs[bus] > old_epoch
     target = cluster.workers["edge-west-2"]
-    assert [job[3]["sequence_number"] for job in target.queue if job[1] == bus] == [2, 3, 4, 5, 6]
+    assert [job[3]["sequence_number"] for job in target.queue if job[1] == bus] == [
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
     cluster._complete(cluster.workers[owner], old_job)
     assert cluster.central_states[bus]["sequence_number"] == 1
     assert cluster.outcomes["FENCED"] == 1
@@ -72,6 +101,7 @@ def test_takeover_ordering_replay_and_replica_safety():
     # 06 replays conflicts invalid data after takeover are not accepted.
     cluster = make_cluster()
     from copy import deepcopy
+
     bus = "bus-302-1"
     cluster.generate(bus, 2)
     cluster.advance(1)
@@ -114,7 +144,9 @@ def test_takeover_ordering_replay_and_replica_safety():
     cluster.advance(1)
     for edge_id in ("edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"):
         cluster.fail(edge_id)
-    assert not cluster.submit_telemetry(cluster.message_templates["bus-302-1"])["accepted"]
+    assert not cluster.submit_telemetry(cluster.message_templates["bus-302-1"])[
+        "accepted"
+    ]
     with pytest.raises(ValueError, match="replica"):
         cluster.recover("edge-west-1")
     assert cluster.workers["edge-west-1"].state == "failed"
@@ -172,7 +204,10 @@ def test_bus_balancing_cross_region_handoff_and_recovery():
     cluster.advance(1)
     for bus in moved:
         assert cluster.central_states[bus]["sequence_number"] == 2
-        assert cluster.central_states[bus]["edge_metadata"]["edge_id"] == "edge-west-dynamic"
+        assert (
+            cluster.central_states[bus]["edge_metadata"]["edge_id"]
+            == "edge-west-dynamic"
+        )
 
     # 09 cross region takeover preserves home route then synchronized recovery.
     cluster = make_cluster()
@@ -211,7 +246,11 @@ def test_bus_balancing_cross_region_handoff_and_recovery():
     cluster.advance(1)
     workers = cluster._eligible("west")
     assert sorted(len(worker.queue) for worker in workers) == [20, 25]
-    assert max(len(cluster._assigned(w.edge_id)) for w in workers) - min(len(cluster._assigned(w.edge_id)) for w in workers) <= 1
+    assert (
+        max(len(cluster._assigned(w.edge_id)) for w in workers)
+        - min(len(cluster._assigned(w.edge_id)) for w in workers)
+        <= 1
+    )
     assert len(cluster.journal) == 45
     assert not cluster.workers["edge-west-3"].active
 
@@ -220,6 +259,7 @@ def test_fleet_sizes_preserve_all_accepted_updates_after_failure():
     # 10 fleet performance and failover have no lost accepted updates.
     for size in [5, 10, 25, 50]:
         from services.edge.main import EdgeClusterSimulation
+
         cluster = EdgeClusterSimulation(fleet_size=size)
         for bus in cluster.bus_regions:
             assert cluster.generate(bus, 2)["accepted"] == 2
@@ -229,7 +269,9 @@ def test_fleet_sizes_preserve_all_accepted_updates_after_failure():
             assert cluster.generate(bus, 1)["accepted"] == 1
         cluster.advance(1)
         assert len(cluster.central_states) == size
-        assert all(state["sequence_number"] == 3 for state in cluster.central_states.values())
+        assert all(
+            state["sequence_number"] == 3 for state in cluster.central_states.values()
+        )
         assert cluster.outcomes["ACCEPTED"] == size * 3
         assert not cluster.journal
         assert sum(w.completed for w in cluster.workers.values()) == size * 3

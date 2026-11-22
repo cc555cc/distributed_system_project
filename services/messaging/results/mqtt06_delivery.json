@@ -1,0 +1,136 @@
+{
+  "recorded_at": "2026-11-22T05:42:44+00:00",
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.22631-SP0",
+    "paho": "2.x",
+    "broker": "127.0.0.1:18830"
+  },
+  "settings": {
+    "host": "127.0.0.1",
+    "port": 18830,
+    "buses": [
+      10
+    ],
+    "scenarios": [
+      "normal",
+      "delayed",
+      "outage"
+    ],
+    "rate": 5.0,
+    "duration": 15.0,
+    "delay_ms": 200.0,
+    "outage_s": 3.0,
+    "output": "services/messaging/results/mqtt06_delivery.json"
+  },
+  "results": [
+    {
+      "scenario": "normal",
+      "buses": 10,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 50.0,
+      "published": 750,
+      "queued_while_offline": 0,
+      "dropped_by_publisher": 0,
+      "received": 750,
+      "unique": 750,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 1.32,
+        "p95": 2.93,
+        "p99": 3.29,
+        "max": 4.43,
+        "mean": 1.25
+      },
+      "throughput_msgs_per_s": 48.4,
+      "reconnects": 0,
+      "disconnects": 0,
+      "events": []
+    },
+    {
+      "scenario": "delayed",
+      "buses": 10,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 50.0,
+      "published": 750,
+      "queued_while_offline": 0,
+      "dropped_by_publisher": 0,
+      "received": 750,
+      "unique": 750,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.28,
+        "p95": 222.79,
+        "p99": 228.84,
+        "max": 233.88,
+        "mean": 72.16
+      },
+      "throughput_msgs_per_s": 48.5,
+      "reconnects": 0,
+      "disconnects": 0,
+      "events": [
+        [
+          "delay on",
+          5.0
+        ],
+        [
+          "delay off",
+          10.0
+        ]
+      ]
+    },
+    {
+      "scenario": "outage",
+      "buses": 10,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 50.0,
+      "published": 750,
+      "queued_while_offline": 251,
+      "dropped_by_publisher": 0,
+      "received": 750,
+      "unique": 750,
+      "duplicates": 0,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.29,
+        "p95": 5600.83,
+        "p99": 6789.99,
+        "max": 7009.48,
+        "mean": 996.71
+      },
+      "throughput_msgs_per_s": 48.5,
+      "reconnects": 10,
+      "disconnects": 10,
+      "events": [
+        [
+          "cut",
+          5.03
+        ],
+        [
+          "restore",
+          8.03
+        ]
+      ]
+    }
+  ]
+}

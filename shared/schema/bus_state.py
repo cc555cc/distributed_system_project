@@ -17,12 +17,17 @@ class RegionalStatistics(BaseModel):
 
     @model_validator(mode="after")
     def counts_are_consistent(self):
-        if self.crowded_buses > self.active_buses or self.occupancy_samples > self.active_buses:
+        if (
+            self.crowded_buses > self.active_buses
+            or self.occupancy_samples > self.active_buses
+        ):
             raise ValueError("Regional sample counts exceed active bus count")
         if sum(self.active_buses_per_route.values()) != self.active_buses:
             raise ValueError("Per-route counts differ from active bus count")
         if (self.occupancy_samples == 0) != (self.average_occupancy_percent is None):
-            raise ValueError("Occupancy average must be unavailable when there are no samples")
+            raise ValueError(
+                "Occupancy average must be unavailable when there are no samples"
+            )
         return self
 
 
@@ -50,12 +55,15 @@ class EdgeMetadata(BaseModel):
     processing_timestamp: str
     freshness: Literal["current"]
     route_progress_percent: float | None = Field(default=None, ge=0, le=100)
+    # Edge's Lamport clock when it sent this update. BusStateUpdate.lamport
+    # stays the bus's own stamp for the reading. Optional for older senders.
+    edge_lamport: int | None = Field(default=None, ge=0)
     statistics: RegionalStatistics
 
     @field_validator("source_timestamp", "processing_timestamp")
     @classmethod
     def timestamp_has_timezone(cls, value: str) -> str:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError("Timestamp needs a UTC offset")
         return value
@@ -88,7 +96,15 @@ class BusStateUpdate(BaseModel):
     def occupancy_uses_declared_unit(self):
         if self.edge_metadata is not None:
             meta = self.edge_metadata
-            expected = meta.passengers if meta.occupancy_unit == "passengers" else meta.occupancy_percent
+            expected = (
+                meta.passengers
+                if meta.occupancy_unit == "passengers"
+                else meta.occupancy_percent
+            )
             if self.occupancy != expected:
                 raise ValueError("Central occupancy differs from its declared unit")
+            # The edge received the bus reading before forwarding it, so its
+            # send stamp must be later than the bus's stamp.
+            if meta.edge_lamport is not None and meta.edge_lamport <= self.lamport:
+                raise ValueError("Edge Lamport stamp must follow the bus stamp")
         return self

@@ -26,7 +26,9 @@ REGION = "smoke"
 def connect(client_id: str, host: str, port: int) -> mqtt.Client:
     accepted = threading.Event()
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
-    client.on_connect = lambda c, u, f, reason, p: None if reason.is_failure else accepted.set()
+    client.on_connect = lambda c, u, f, reason, p: (
+        None if reason.is_failure else accepted.set()
+    )
     client.connect(host, port, keepalive=30)
     client.loop_start()
     if not accepted.wait(TIMEOUT_SECONDS):
@@ -36,7 +38,9 @@ def connect(client_id: str, host: str, port: int) -> mqtt.Client:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check the broker with the agreed MQTT topics.")
+    parser = argparse.ArgumentParser(
+        description="Check the broker with the agreed MQTT topics."
+    )
     parser.add_argument("--host", default=os.getenv("MQTT_HOST", "localhost"))
     parser.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", "1883")))
     args = parser.parse_args()
@@ -45,10 +49,18 @@ def main() -> int:
     bus_id = f"SMOKE-{run_id}"
     # Each topic is paired with the filter its real subscriber uses.
     cases = [
-        ("telemetry", topics.telemetry(REGION, bus_id), topics.telemetry_filter(REGION)),
+        (
+            "telemetry",
+            topics.telemetry(REGION, bus_id),
+            topics.telemetry_filter(REGION),
+        ),
         ("state", topics.state(REGION, bus_id), topics.STATE_FILTER),
         ("alert", topics.alert(REGION, bus_id), topics.ALERT_FILTER),
-        ("command to one bus", topics.command(REGION, bus_id), topics.command(REGION, bus_id)),
+        (
+            "command to one bus",
+            topics.command(REGION, bus_id),
+            topics.command(REGION, bus_id),
+        ),
         ("command to region", topics.command(REGION), topics.command(REGION)),
     ]
     expected = {topic for _name, topic, _filter in cases}
@@ -77,7 +89,9 @@ def main() -> int:
     try:
         subscriber.on_message = on_message
         subscriber.on_subscribe = lambda c, u, mid, reasons, p: subscribed.set()
-        subscriber.subscribe([(topic_filter, 1) for _name, _topic, topic_filter in cases])
+        subscriber.subscribe(
+            [(topic_filter, 1) for _name, _topic, topic_filter in cases]
+        )
         if not subscribed.wait(TIMEOUT_SECONDS):
             print("FAIL  broker did not confirm the subscriptions")
             return 1

@@ -1,0 +1,65 @@
+{
+  "recorded_at": "2026-11-22T05:47:55+00:00",
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.22631-SP0",
+    "paho": "2.x",
+    "broker": "127.0.0.1:18831"
+  },
+  "settings": {
+    "host": "127.0.0.1",
+    "port": 18831,
+    "buses": [
+      50
+    ],
+    "scenarios": [
+      "outage"
+    ],
+    "rate": 5.0,
+    "duration": 15.0,
+    "delay_ms": 200.0,
+    "outage_s": 3.0,
+    "output": "services/messaging/results/mqtt11_outage_tuned.json"
+  },
+  "results": [
+    {
+      "scenario": "outage",
+      "buses": 50,
+      "rate_per_bus_hz": 5.0,
+      "duration_s": 15.0,
+      "offered_msgs_per_s": 250.0,
+      "published": 3750,
+      "queued_while_offline": 1339,
+      "dropped_by_publisher": 0,
+      "received": 3751,
+      "unique": 3750,
+      "duplicates": 1,
+      "lost": 0,
+      "late": 0,
+      "unacknowledged_at_close": 0,
+      "lost_messages": {},
+      "lamport_violations": 0,
+      "per_bus_order_preserved": true,
+      "delay_ms": {
+        "p50": 2.84,
+        "p95": 6070.63,
+        "p99": 7088.43,
+        "max": 7354.42,
+        "mean": 1183.35
+      },
+      "throughput_msgs_per_s": 241.8,
+      "reconnects": 50,
+      "disconnects": 50,
+      "events": [
+        [
+          "cut",
+          5.06
+        ],
+        [
+          "restore",
+          8.06
+        ]
+      ]
+    }
+  ]
+}
