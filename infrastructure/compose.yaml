@@ -1,3 +1,40 @@
+# One-command demo: broker, database, central server and 4 edge servers.
+#
+#   podman compose up -d --build          # start every server
+#   podman compose run --rm buses         # introduce the buses (Ctrl+C to stop)
+#   podman compose down                   # stop everything; the database resets
+#
+# Central API: http://localhost:8000/docs    Postgres: localhost:5433 (transit/transit)
+
+# Shared heartbeat policy; source, edge and central must agree on timeouts.
+x-health: &health-env
+  HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-2}
+  SENSOR_HEARTBEAT_TIMEOUT_SECONDS: ${SENSOR_HEARTBEAT_TIMEOUT_SECONDS:-10}
+  EDGE_HEARTBEAT_TIMEOUT_SECONDS: ${EDGE_HEARTBEAT_TIMEOUT_SECONDS:-10}
+  HEARTBEAT_RECOVERY_SECONDS: ${HEARTBEAT_RECOVERY_SECONDS:-4}
+  EDGE_OVERLOAD_PERCENT: ${EDGE_OVERLOAD_PERCENT:-80}
+  EDGE_OVERLOAD_SUSTAIN_SECONDS: ${EDGE_OVERLOAD_SUSTAIN_SECONDS:-6}
+  EDGE_QUEUE_SIZE: ${EDGE_QUEUE_SIZE:-50}
+
+# Shared image for central, edges and the bus simulator (see ../Containerfile).
+x-app: &app
+  image: transit-app:latest
+  build:
+    context: ..
+    dockerfile: Containerfile
+  restart: on-failure
+
+x-edge: &edge
+  <<: *app
+  depends_on:
+    central: { condition: service_healthy }
+  environment: &edge-env
+    <<: *health-env
+    CITY_ID: DURHAM
+    EDGE_NETWORK_CONFIG: shared/routes.json
+    CENTRAL_OCCUPANCY_UNIT: passengers
+    MQTT_HOST: mosquitto     # compose service name, not 127.0.0.1
+
 services:
   mosquitto:
     # Fully qualified so Podman does not need a short-name registry lookup.
@@ -8,6 +45,73 @@ services:
     volumes:
       - ./mosquitto:/mosquitto/config:ro
       - mosquitto-data:/mosquitto/data
+
+  postgres:
+    image: docker.io/library/postgres:17
+    environment:
+      POSTGRES_USER: transit
+      POSTGRES_PASSWORD: transit
+      POSTGRES_DB: transit
+    ports:
+      - "5433:5432"          # 5433 so it does not clash with a local Postgres on 5432
+    volumes:
+      # Runs once on an empty database, in file-name order.
+      - ../shared/schema/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../shared/schema/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    # Data lives in memory, so every demo starts from the seeded state.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      # TCP check: the init-time server only listens on a socket, so this
+      # passes only after schema and seed have finished loading.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U transit -d transit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  central:
+    <<: *app
+    command: ["uvicorn", "services.central.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      mosquitto: { condition: service_started }
+      postgres: { condition: service_healthy }
+    environment:
+      <<: *health-env
+      DATABASE_URL: postgresql://transit:transit@postgres:5432/transit
+      MQTT_HOST: mosquitto
+    ports:
+      - "8000:8000"
+    healthcheck:
+      # Healthy once the API answers and can read the seeded database.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/routes', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  edge-west-1:
+    <<: *edge
+    environment: { <<: *edge-env, REGION_ID: west, EDGE_ID: edge-west-1 }
+  edge-west-2:
+    <<: *edge
+    environment: { <<: *edge-env, REGION_ID: west, EDGE_ID: edge-west-2 }
+  edge-east-1:
+    <<: *edge
+    environment: { <<: *edge-env, REGION_ID: east, EDGE_ID: edge-east-1 }
+  edge-east-2:
+    <<: *edge
+    environment: { <<: *edge-env, REGION_ID: east, EDGE_ID: edge-east-2 }
+
+  # Not started by `up`; run it on cue with `podman compose run --rm buses`.
+  buses:
+    <<: *app
+    profiles: [buses]
+    restart: "no"
+    command: ["python", "-m", "services.data_simulation.run_buses", "--mqtt", "--updates", "300"]
+    depends_on:
+      mosquitto: { condition: service_started }
+    environment:
+      <<: *health-env
+      MQTT_HOST: mosquitto
 
 volumes:
   mosquitto-data:

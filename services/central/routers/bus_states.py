@@ -14,6 +14,15 @@ def apply_bus_state(bus_id: str, region_id: str, state: BusStateUpdate) -> tuple
     with psycopg.connect(db_url) as connection:
         if state.edge_metadata is not None and state.edge_metadata.region_id != region_id:
             return False, "metadata region differs from MQTT/API region"
+
+        #validate sequence number first 
+        row = connection.execute(
+            "SELECT sequence_number FROM bus_states WHERE bus_id = %s FOR UPDATE",
+            (bus_id,),
+        ).fetchone()
+        if row is not None and row[0] >= state.sequence_number: #a late message, drop it
+            return False, "stale update"
+        
         #use ingestion check first before pushing update to the database
         reason = check_update(connection, bus_id, region_id, state)
         if reason is not None:
@@ -65,5 +74,35 @@ def get_bus_state(bus_id: str):
         raise HTTPException(404, f"Bus: {bus_id} not found")
     return row
 
+#remove bus from active network when it reaches the terminal
+@router.put("/bus_states/{bus_id}/terminal")
+def remove_bus_from_network(bus_id: str):
+    with psycopg.connect(db_url) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE bus_states s SET
+                current_stop_id = last.stop_id,
+                next_stop_id    = last.stop_id,
+                bus_status      = 'idle',
+                occupancy       = 0,
+                speed           = 0,
+                edge_metadata   = NULL,
+                last_updated    = now()
+            FROM buses b,
+                 LATERAL (
+                     SELECT rs.stop_id FROM route_stops rs
+                     WHERE rs.route_id = b.route_id AND rs.direction_id = s.direction_id
+                     ORDER BY rs.position DESC LIMIT 1
+                 ) AS last
+            WHERE s.bus_id = %s AND b.bus_id = s.bus_id
+            """,
+            (bus_id,),
+        )
+    if cursor.rowcount == 0:
+        raise HTTPException(404, f"Bus: {bus_id} not found")
+    return {"bus_id": bus_id, "bus_status": "idle"}
+
+
 def connect_db():
     return psycopg.connect(db_url)
+

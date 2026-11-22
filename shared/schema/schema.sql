@@ -66,3 +66,4 @@ CREATE TABLE ingestion_rejections (
     reason       TEXT NOT NULL,
     payload      JSONB
 );
+ 

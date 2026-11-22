@@ -1,0 +1,6 @@
+.git
+.venv
+central_server
+**/__pycache__
+*.docx
+.env

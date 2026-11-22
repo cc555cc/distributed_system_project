@@ -9,6 +9,7 @@ import sys
 import time
 
 from services.data_simulation import export_routes
+from shared.schema.health import SENSORS
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 SPEED_KMH = 30
@@ -32,7 +33,7 @@ def distance_metres(start, end):
 def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
                       traffic_factor=1.0, sensor_failure_rate=0.0, *,
                       network_path=DEFAULT_NETWORK_PATH, max_updates=MAX_UPDATES,
-                      update_seconds=UPDATE_SECONDS, utc_now=None):
+                      update_seconds=UPDATE_SECONDS, utc_now=None, sensor_health=None):
     """Yield standard messages so stdout, MQTT and tests use identical data."""
     if demand not in ("peak", "off_peak"):
         raise ValueError("Demand must be peak or off_peak")
@@ -95,7 +96,10 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
                 message["next_stop_city_id"] = following["city_id"]
             # Keep Zach's fault behaviour: movement continues but a failed sensor
             # produces no reading. Do not publish invented replacement values.
-            if sensors.random() < sensor_failure_rate:
+            failed = sensors.random() < sensor_failure_rate
+            if sensor_health is not None:
+                sensor_health({sensor: "faulty" if failed else "healthy" for sensor in SENSORS})
+            if failed:
                 print(f"{bus['bus_id']}: sensor failure at update {sequence}", file=sys.stderr, flush=True)
             else:
                 yield message

@@ -32,7 +32,7 @@ The script connects a publisher and a subscriber as separate clients and sends o
 | --- | --- |
 | Host | `MQTT_HOST`, default `localhost` |
 | Port | `MQTT_PORT`, default `1883` (plain TCP, no TLS) |
-| Authentication | None yet; anonymous clients are allowed until MQTT-07 |
+| Authentication | Shared demo remains anonymous; edge credential/TLS/signature support and tested ACL generation are described in the root README; broker-wide MQTT-07 deployment remains separate |
 | QoS | 1 for every publish and subscribe |
 | Retained messages | Not used |
 | Keepalive | 60 seconds |
@@ -53,3 +53,21 @@ Services read `MQTT_HOST` and `MQTT_PORT` from the environment or the root `.env
 The telemetry and state topics are the ones the simulator, edge and central code already use. The alert and command topics are proposed and not yet used by any service; confirm them through TEAM-02 before MQTT-05 builds on them.
 
 Region IDs must not be `buses`, `alerts` or `commands`, and a bus ID must not be `all`. Python code should build topic strings with [services/messaging/topics.py](../services/messaging/topics.py) rather than typing them out.
+
+
+## Heartbeats and queue health
+
+The bus publisher sends `transit/heartbeats/bus/<region_id>/<bus_id>`. Its payload has independent heartbeat states for four logical channels: GPS, speed, stop status and passenger occupancy. Missing channel entries do not refresh that channel. Heartbeats run separately from telemetry generation, including while the simulator reports sensor faults.
+
+Each edge sends `transit/heartbeats/edge/<region_id>/<edge_id>` to central. Central subscribes independently and exposes `GET /health/edges`, including sensor reports, edge liveness, queue measurements and least-loaded-peer recommendations. A missing edge becomes unavailable after its timeout without needing a final message from that edge.
+
+Default heartbeat interval is 2 seconds; sensor and edge timeouts are each 10 seconds. Recovery requires repeated heartbeats over 4 seconds. Set `HEARTBEAT_INTERVAL_SECONDS`, `SENSOR_HEARTBEAT_TIMEOUT_SECONDS`, `EDGE_HEARTBEAT_TIMEOUT_SECONDS`, `HEARTBEAT_RECOVERY_SECONDS`, `EDGE_OVERLOAD_PERCENT` (80), `EDGE_OVERLOAD_SUSTAIN_SECONDS` (6) and `EDGE_QUEUE_SIZE` (50, configurable from 1 to 50) before starting compose to customize them.
+
+The queue percentage measures telemetry backlog, not passenger occupancy or CPU utilization. The 50/70/75/79/80 bands are reported through health snapshots. Sustained overload produces a recommendation; no workload migration, replication, takeover or extra instance is automatically performed. Existing static bus assignments remain authoritative.
+
+The image starts `services.edge.main --single` for each of the four configured edge containers. For a host-based launch, `python -m services.edge.main` creates four separate processes from the map configuration. Do not run the host launcher and the same compose edge workers simultaneously: duplicate MQTT client IDs would compete.
+
+Heartbeat state is in memory and resets when central restarts. Session IDs and increasing heartbeat sequences prevent delayed duplicates from refreshing liveness. These endpoints do not establish broker authentication or confirm a crash; those remain separate responsibilities.
+
+
+For UI load experiments, `/health/simulation` provides an isolated stateful bus-telemetry simulation and virtual clock. Its instance controls never change these Compose workers. Telemetry, ownership transfer, replica takeover, recovery and scaling run in the single-coordinator simulation; the live MQTT-worker topology remains fixed. See the root README for the request, advance, capacity and third-instance experiment endpoints. Queue capacity defaults to 50 waiting messages in both the live edge and the experiment.
