@@ -50,6 +50,9 @@ class EdgeMetadata(BaseModel):
     processing_timestamp: str
     freshness: Literal["current"]
     route_progress_percent: float | None = Field(default=None, ge=0, le=100)
+    # Edge's Lamport clock when it sent this update. BusStateUpdate.lamport
+    # stays the bus's own stamp for the reading. Optional for older senders.
+    edge_lamport: int | None = Field(default=None, ge=0)
     statistics: RegionalStatistics
 
     @field_validator("source_timestamp", "processing_timestamp")
@@ -91,4 +94,8 @@ class BusStateUpdate(BaseModel):
             expected = meta.passengers if meta.occupancy_unit == "passengers" else meta.occupancy_percent
             if self.occupancy != expected:
                 raise ValueError("Central occupancy differs from its declared unit")
+            # The edge received the bus reading before forwarding it, so its
+            # send stamp must be later than the bus's stamp.
+            if meta.edge_lamport is not None and meta.edge_lamport <= self.lamport:
+                raise ValueError("Edge Lamport stamp must follow the bus stamp")
         return self

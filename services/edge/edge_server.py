@@ -121,7 +121,9 @@ class SimulatedEdge:
 
     def __post_init__(self):
         from collections import deque
+        from services.messaging.lamport import LamportClock
         self.queue = deque()
+        self.clock = LamportClock()  # same receive/send rules as a live worker
         self.credit_ms = 0.0
         self.completed = 0
         self.latency_seconds = 0.0

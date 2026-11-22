@@ -7,12 +7,16 @@ import logging
 import os
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
+from services.messaging.lamport import LamportClock
 from services.messaging.topics import EDGE_HEARTBEAT_FILTER
 from services.central.routers.bus_states import BusStateUpdate, apply_bus_state
 
 logger = logging.getLogger(__name__)
 
 CLIENT_ID = "central-server" 
+
+# Central's Lamport clock (MQTT-03). Advanced by every valid bus-state message.
+clock = LamportClock()
 
 client: mqtt.Client | None = None
 topic: str = ""
@@ -44,6 +48,13 @@ def on_message(client, userdata, msg):
         bus_id = parts[3]
 
         bus_state = BusStateUpdate.model_validate_json(msg.payload)
+        # Receive rule, applied on delivery whether or not the update is then
+        # stored. Use the sender's (edge's) stamp; senders without one only
+        # relay the bus's stamp.
+        metadata = bus_state.edge_metadata
+        sent_at = metadata.edge_lamport if metadata is not None and metadata.edge_lamport is not None else bus_state.lamport
+        central_clock = clock.receive(sent_at)
+        logger.debug("Lamport %s -> central %s for %s", sent_at, central_clock, bus_id)
         applied, reason = apply_bus_state(bus_id, region_id, bus_state)
 
         if not applied: #bus state update was not accepted

@@ -7,7 +7,8 @@ from shared.schema.bus_state import BusStateUpdate
 OccupancyUnit = Literal["passengers", "percent"]
 
 
-def map_bus_update(output: dict, bus_id: str, occupancy_unit: OccupancyUnit) -> dict:
+def map_bus_update(output: dict, bus_id: str, occupancy_unit: OccupancyUnit, *,
+                   edge_lamport: int | None = None) -> dict:
     """Return checked central fields without inventing missing sensor/clock data."""
     if occupancy_unit not in ("passengers", "percent"):
         raise ValueError("Agree occupancy units: passengers or percent")
@@ -40,6 +41,8 @@ def map_bus_update(output: dict, bus_id: str, occupancy_unit: OccupancyUnit) -> 
         "freshness": bus["freshness"], "route_progress_percent": bus["route_progress_percent"],
         "statistics": output["statistics"],
     }
+    if edge_lamport is not None:
+        metadata["edge_lamport"] = edge_lamport
     payload = dict(lat=bus["latitude"], lon=bus["longitude"], speed=bus["speed_kmh"],
                    direction_id=bus["direction_id"], next_stop_id=bus["next_stop_id"],
                    bus_status=bus["bus_status"], occupancy=occupancy,

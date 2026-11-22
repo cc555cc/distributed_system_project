@@ -71,3 +71,33 @@ Heartbeat state is in memory and resets when central restarts. Session IDs and i
 
 
 For UI load experiments, `/health/simulation` provides an isolated stateful bus-telemetry simulation and virtual clock. Its instance controls never change these Compose workers. Telemetry, ownership transfer, replica takeover, recovery and scaling run in the single-coordinator simulation; the live MQTT-worker topology remains fixed. See the root README for the request, advance, capacity and third-instance experiment endpoints. Queue capacity defaults to 50 waiting messages in both the live edge and the experiment.
+
+## Message ordering (MQTT-03)
+
+Every bus telemetry message carries three ordering fields. Each answers a different question, and only the first decides whether a state is stored.
+
+| Field | Set by | Meaning | Used for |
+| --- | --- | --- | --- |
+| `sequence_number` | Bus | Counts that bus's readings, starting at 1 and rising by 1. A reading dropped by a failed sensor leaves a gap. | Edge and central discard a reading whose sequence is not higher than the last one accepted for that bus. |
+| `lamport_clock` | Bus | The bus's Lamport clock when it sent the reading. | Ordering events across buses, edges and central without trusting wall clocks. |
+| `timestamp` | Bus | UTC wall-clock time the reading was generated, ISO 8601 with offset. | Reporting only. It is never used to order or reject messages. |
+
+Every process (each bus, each edge worker, central) owns one Lamport clock, implemented in [services/messaging/lamport.py](../services/messaging/lamport.py):
+
+- **Send or local event:** `clock = clock + 1`; the message carries the new value.
+- **Receive:** `clock = max(clock, received value) + 1`.
+
+How the stamps travel:
+
+1. The bus ticks its clock for every reading and sends the value as `lamport_clock`.
+2. The edge applies the receive rule to every validated reading it takes off its queue, including ones it then rejects as stale or duplicate.
+3. When the edge accepts a reading it ticks its clock and sends that value to central as `edge_metadata.edge_lamport`. The bus's own stamp is forwarded unchanged as `lamport`. A delivery that is retried after a broker failure keeps its original stamp.
+4. Central applies the receive rule to `edge_lamport` for every valid bus-state message, stored or not. A sender that supplies no `edge_lamport` is treated as relaying the bus's `lamport`.
+
+So for one reading, `lamport` < `edge_lamport` < central's clock after delivery. The shared model rejects a state whose `edge_lamport` is not greater than its `lamport`.
+
+`edge_lamport` is an optional addition to the edge-to-central contract and needs confirming through TEAM-02. Central keeps its clock in memory and does not store it; `edge_lamport` is stored with the rest of `edge_metadata`.
+
+Limits: clocks restart from 0 when a process restarts. Heartbeats do not carry Lamport stamps; they are ordered by session ID and heartbeat sequence. Edge workers do not yet exchange stamps with each other, so stamps from two workers are only ordered through the buses and central they share. Buses do not receive messages yet; when commands arrive (MQTT-05), the command consumer passes its clock to the simulator so received stamps raise later send stamps.
+
+Run the checks with `python -m pytest services/messaging/tests/test_lamport.py -q`.

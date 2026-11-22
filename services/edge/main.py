@@ -338,6 +338,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             self.outcomes["FENCED"] = self.outcomes.get("FENCED", 0) + 1
             return
         from services.edge.transformation.central_mapper import map_bus_update
+        if "lamport_clock" in source:
+            worker.clock.receive(source["lamport_clock"])
         result = self._processor(worker.edge_id, bus_id).process(source)
         self.outcomes[result.status.value] = self.outcomes.get(result.status.value, 0) + 1
         self.journal.pop(job[0])
@@ -345,7 +347,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             self.committed[bus_id] = source["sequence_number"]
             self._replicate(worker.edge_id, bus_id)
             try:
-                payload = map_bus_update(result.output, bus_id, "passengers")
+                payload = map_bus_update(result.output, bus_id, "passengers",
+                                         edge_lamport=worker.clock.tick())
             except ValueError:
                 self.outcomes["NOT_FORWARDABLE"] = self.outcomes.get("NOT_FORWARDABLE", 0) + 1
                 return

@@ -9,6 +9,7 @@ import sys
 import time
 
 from services.data_simulation import export_routes
+from services.messaging.lamport import LamportClock
 from shared.schema.health import SENSORS
 from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
@@ -33,7 +34,8 @@ def distance_metres(start, end):
 def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
                       traffic_factor=1.0, sensor_failure_rate=0.0, *,
                       network_path=DEFAULT_NETWORK_PATH, max_updates=MAX_UPDATES,
-                      update_seconds=UPDATE_SECONDS, utc_now=None, sensor_health=None):
+                      update_seconds=UPDATE_SECONDS, utc_now=None, sensor_health=None,
+                      clock=None):
     """Yield standard messages so stdout, MQTT and tests use identical data."""
     if demand not in ("peak", "off_peak"):
         raise ValueError("Demand must be peak or off_peak")
@@ -59,7 +61,9 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
     speed = SPEED_KMH * traffic_factor
     occupancy = 0
     sequence = 0
-    logical_clock = 0
+    # Pass a clock in when something else in this bus process also receives
+    # messages (commands): its receive() calls then raise later send stamps.
+    clock = clock if clock is not None else LamportClock()
     for index in range(len(stops) - 1):
         start, end = stops[index:index + 2]
         occupancy -= passengers.randint(0, occupancy)
@@ -73,9 +77,8 @@ def generate_messages(route_id, direction, bus_id=None, demand="off_peak",
             progress = step / steps
             at_stop = step == 0 or step == steps
             sequence += 1
-            # This bus generates a real local event. Julian can extend clock
-            # receive/update rules when simulator commands are integrated.
-            logical_clock += 1
+            # Send rule: every reading is a new local event on this bus.
+            logical_clock = clock.tick()
             current = end if step == steps else start
             following = (stops[index + 2] if index + 2 < len(stops) else None) if step == steps else end
             message = {

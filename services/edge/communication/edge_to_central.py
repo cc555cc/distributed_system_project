@@ -37,6 +37,7 @@ from services.edge.transformation.central_mapper import OccupancyUnit, map_bus_u
 
 
 from services.edge.auth_edge_server import EdgeAuth, configure_mqtt_client
+from services.messaging.lamport import LamportClock
 
 
 class EdgeToCentral:
@@ -153,18 +154,25 @@ class CentralForwarder:
         self.sender = sender
         self.occupancy_unit = occupancy_unit
         self.pending: OrderedDict[str, tuple[dict, float]] = OrderedDict()
+        # This edge worker's Lamport clock (MQTT-03).
+        self.clock = LamportClock()
 
     def process(self, telemetry: dict) -> ProcessingResult:
         # Fail visibly rather than fill required central values with guesses.
         if not telemetry.get("bus_status") or "lamport_clock" not in telemetry:
             raise ValueError("Forwarding needs supplied bus_status and lamport_clock")
+        # Receive rule: applies to every delivered reading, including ones
+        # the processor then rejects as stale or duplicate.
+        self.clock.receive(telemetry["lamport_clock"])
         result = self.receiver.process_telemetry(telemetry)
         if result.status == ProcessingStatus.ACCEPTED:
             bus_id = telemetry["bus_id"]
             # The new accepted reading replaces any pending older one, even if
             # the new reading cannot be forwarded (for example a faulty sensor).
             self.pending.pop(bus_id, None)
-            payload = map_bus_update(result.output, bus_id, self.occupancy_unit)
+            # Send rule: stamp once here; a retried delivery keeps this stamp.
+            payload = map_bus_update(result.output, bus_id, self.occupancy_unit,
+                                     edge_lamport=self.clock.tick())
             self.sender.validate_payload(bus_id, payload)
             self.pending[bus_id] = (payload, self.receiver.processor.clock())
         return result
