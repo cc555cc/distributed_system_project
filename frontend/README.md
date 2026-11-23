@@ -16,7 +16,7 @@ From the repository root, with the configured database and broker running:
 
     python -m uvicorn services.central.main:app --host 127.0.0.1 --port 8001
 
-Then open http://127.0.0.1:8001/user.html. This page is public. Control, health and operator pages require login: demo username `operator`, password `TransitDemo123!`. Override these with `OPERATOR_USERNAME` and `OPERATOR_PASSWORD`. Sessions expire after one hour and are revoked on sign-out; restarting central clears them. This is a single-process classroom login, with public passenger access and an operator role. For HTTPS deployments set `COOKIE_SECURE=true` and supply your own credentials.
+Then open http://127.0.0.1:8001/user.html. This page is public. Control, health and operator pages require login: demo username `ali`, password `123`. Override these with `OPERATOR_USERNAME` and `OPERATOR_PASSWORD`. Sessions expire after one hour and are revoked on sign-out; restarting central clears them. This is a single-process classroom login, with public passenger access and an operator role. For HTTPS deployments set `COOKIE_SECURE=true` and supply your own credentials.
 
 ## Mock data or real server
 

@@ -12,8 +12,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-DEFAULT_USER = "operator"
-DEFAULT_PASSWORD = "TransitDemo123!"
+DEFAULT_USER = "ali"
+DEFAULT_PASSWORD = "123"
 COOKIE = "transit_operator"
 SESSION_SECONDS = 3600
 sessions = {}

@@ -42,7 +42,7 @@ def test_operator_pages_apis_and_sessions_are_protected(system):
     assert health.simulation.workers["edge-west-1"].state == "healthy"
     assert operator.get("/control.html").status_code == 200
     assert operator.post("/health/simulation/demo", json={"running": False}, headers={"Origin": "https://other.example"}).status_code == 403
-    assert public.post("/auth/login", json={"username": "operator", "password": "wrong"}).status_code == 401
+    assert public.post("/auth/login", json={"username": "ali", "password": "wrong"}).status_code == 401
     assert public.get("/auth/status", headers={"X-Role": "operator"}).json()["authenticated"] is False
     token = operator.cookies.get(auth.COOKIE)
     assert len(token) >= 32
