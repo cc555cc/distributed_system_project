@@ -263,6 +263,7 @@ def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault"
         if name in {"normal", "capacity", "balancing", "scheduling"}:
             reset_simulation(SimulationReset(fleet_size=50, active_buses=50 if name == "capacity" else 20, processing_ms=100.0))
             health.simulation.configure_demo(running=True)
+            health.simulation_clock.running = True
         health.simulation.configure_demo()
         bus_id = body.bus_id or next(iter(health.simulation.demo.buses))
         if bus_id not in health.simulation.demo.buses:
@@ -303,3 +304,29 @@ def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault"
         else:
             message = "50 active streams: watch regional load." if name == "capacity" else "20 active buses, 30 reserves."
         return dict(scenario=name, message=message, state=get_simulation())
+
+
+@router.get("/simulation/cases")
+def simulation_cases():
+    from services.central import simulation_scenarios
+    with health.simulation_clock.lock:
+        return simulation_scenarios.catalogue()
+
+
+@router.post("/simulation/cases/{case_id}")
+def run_simulation_case(case_id: str):
+    from services.central import simulation_scenarios
+    return simulation_action(simulation_scenarios.run_case, case_id)
+
+
+@router.post("/simulation/cases")
+def run_all_simulation_cases():
+    from services.central import simulation_scenarios
+    return [simulation_scenarios.run_case(case["id"]) for case in simulation_scenarios.CASES]
+
+
+@router.get("/simulation/cases/{case_id}")
+def simulation_case_evidence(case_id: str):
+    from services.central import simulation_scenarios
+    with health.simulation_clock.lock:
+        return simulation_action(simulation_scenarios.evidence, case_id)

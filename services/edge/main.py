@@ -430,6 +430,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         self.assistance_armed = dict.fromkeys(self.regions, True)
         self.assistance_grants = set()
         self.assistance_draining = set()
+        self.emergency_workers = set()
         for worker in self.workers.values():
             worker.on_telemetry = self._complete
 
@@ -824,7 +825,29 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 }
             )
 
+    def _activate_emergency_standby(self, region):
+        """A failed owner needs available capacity now; this is separate from load-only assistance."""
+        third = self.workers["edge-" + region + "-3"]
+        if third.state != "standby":
+            return False
+        try:
+            self._synchronize(third)
+        except ValueError:
+            return False  # a restart cannot invent a lost sequence floor
+        third.active, third.state = True, "healthy"
+        self.emergency_workers.add(third.edge_id)
+        self.auto_workers.add(third.edge_id)
+        self.events.append(dict(time=self.time, action="emergency_standby_takeover", edge_id=third.edge_id))
+        return True
+
     def _takeover(self):
+        # Bring standby online when a failed owner's only regional peer is busy or unavailable.
+        for region in self.regions:
+            affected = any(self.bus_regions[bus] == region and self.workers[self.registry.get(bus).edge_id].state != "healthy"
+                           for bus in self.bus_regions)
+            local = self._eligible(region)
+            if affected and (not local or all(len(w.queue) / w.capacity * 100 >= self.assistance_threshold for w in local)):
+                self._activate_emergency_standby(region)
         remaining = []
         for job in self.orphaned_requests:
             region = self.bus_regions[job[1]]
@@ -839,20 +862,21 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             if self.workers[assignment.edge_id].state == "healthy":
                 continue
             local = self._eligible(assignment.region_id)
-            candidates = local or [
-                w
-                for w in self.workers.values()
-                if w.active and w.state == "healthy" and w.city_id == assignment.city_id
-            ]
-            for target in sorted(
-                candidates,
-                key=lambda w: (len(w.queue), len(self._assigned(w.edge_id)), w.edge_id),
-            ):
+            candidates = local or [w for w in self.workers.values()
+                                   if w.active and w.state == "healthy" and w.city_id == assignment.city_id]
+            moved = False
+            for target in sorted(candidates, key=lambda w: (len(w.queue), len(self._assigned(w.edge_id)), w.edge_id)):
                 try:
                     self.transfer(bus_id, target.edge_id)
+                    moved = True
                     break
                 except ValueError:
-                    continue  # Keep the journal; retry after capacity or a replica returns.
+                    continue  # Keep the journal until a replica and enough capacity are available.
+            if not moved and self._activate_emergency_standby(assignment.region_id):
+                try:
+                    self.transfer(bus_id, "edge-" + assignment.region_id + "-3")
+                except ValueError:
+                    pass
 
     def fail(self, edge_id):
         with self.lock:
@@ -867,6 +891,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             worker.credit_ms = 0.0
             self.recover_at.pop(edge_id, None)
             self.auto_workers.discard(edge_id)
+            self.emergency_workers.discard(edge_id)
             self.assistance_draining.discard(edge_id)
             self.low_since.pop(edge_id, None)
             for bus_id in self._assigned(edge_id):
@@ -887,12 +912,25 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             for bus_id in self.bus_regions:
                 if self.registry.get(bus_id).city_id == worker.city_id:
                     self._latest_replica(bus_id)
+            pending = sum(job[1] in self._assigned(edge_id) for job in self.journal.values())
+            if pending > worker.capacity:
+                raise ValueError("Recovery requires capacity for the pending journal")
             worker.state = "recovering"
             self.recover_at[edge_id] = self.time + 2
             self._synchronize(worker)
             return self.snapshot()
 
     def _synchronize(self, worker):
+        # Rebuild accepted work if the failed owner recovered before another node could take it.
+        queued = {job[0] for job in worker.queue}
+        pending = [job for job in self.journal.values()
+                   if self.registry.get(job[1]).edge_id == worker.edge_id and job[0] not in queued]
+        if len(worker.queue) + len(pending) > worker.capacity:
+            raise ValueError("Insufficient capacity to restore the pending journal")
+        for job in sorted(pending):
+            restored = (*job[:4], self.epochs[job[1]])
+            self.journal[job[0]] = restored
+            worker.queue.append(restored)
         for bus_id in self.bus_regions:
             if self.registry.get(bus_id).city_id == worker.city_id:
                 try:
@@ -1037,7 +1075,9 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         for _ in range(len(self.bus_regions)):
             if len(workers) < 2:
                 return
-            under_pressure = any(len(w.queue) / w.capacity >= self.assistance_threshold / 100 for w in workers)
+            # Between healthy workers, balance waiting time even below the scale-up threshold.
+            # Equal bus counts can strand a backlog on a deliberately slow simulated node.
+            under_pressure = any(w.queue for w in workers)
             ordering = (
                 (lambda w: (self._waiting_ms(w), len(self._assigned(w.edge_id))))
                 if under_pressure
@@ -1050,12 +1090,19 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 len(self._assigned(source.edge_id))
                 - len(self._assigned(target.edge_id))
                 <= 1
-                and not overloaded
+                and not under_pressure
             ):
                 return
             moved = False
             for bus_id in self._assigned(source.edge_id):
                 pending = sum(job[1] == bus_id for job in self.journal.values())
+                if pending == 0 and under_pressure:
+                    continue  # moving a bus without queued work cannot reduce the current backlog
+                if pending == 0 and self.demo and self.demo_running:
+                    active = sum(self.demo.buses[bus]["condition"] != "out_of_service" for bus in self._assigned(target.edge_id))
+                    adding = self.demo.buses[bus_id]["condition"] != "out_of_service"
+                    if active + adding > 1000 / target.processing_ms:
+                        continue  # don't move a fresh stream onto a worker that cannot keep up
                 if overloaded and pending == 0:
                     continue
                 if pending and max(
@@ -1107,6 +1154,14 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 self._takeover()
                 for region in sorted(self.regions):
                     self._balance(region)
+                for edge_id in list(self.emergency_workers):
+                    worker = self.workers[edge_id]
+                    if worker.state == "healthy" and len(self._primary_workers(worker.region_id)) == 2:
+                        self.assistance_draining.add(edge_id)
+                # An idle recovered standby must not silently become a third permanent primary.
+                for worker in self.workers.values():
+                    if worker.edge_id.endswith("-3") and worker.state == "healthy" and not worker.queue and not self._assigned(worker.edge_id) and len(self._primary_workers(worker.region_id)) == 2:
+                        self.scale_down(worker.edge_id)
                 for edge_id in list(self.assistance_draining):
                     worker = self.workers[edge_id]
                     if worker.state == "healthy" and not worker.queue and len(self._primary_workers(worker.region_id)) == 2:
@@ -1183,6 +1238,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             for worker in result["workers"]:
                 worker["overload_percent"] = self.assistance_threshold
                 worker["assistance_draining"] = worker["edge_id"] in self.assistance_draining
+                worker["emergency_takeover"] = worker["edge_id"] in self.emergency_workers
                 worker["assigned_buses"] = self._assigned(worker["edge_id"])
                 worker["active_assigned_buses"] = sum(self.demo.buses[bus_id]["condition"] != "out_of_service"
                     for bus_id in worker["assigned_buses"]) if self.demo else 0

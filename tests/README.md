@@ -8,6 +8,7 @@ python -m pytest tests services/central/tests/test_evaluation.py -q
 
 | File | Acceptance covered |
 |---|---|
+| `simulation_test.py` | Nine combined edge/sensor/central failure cases, measured timelines, queue ownership and sequence checks, operator protection and run-all coverage |
 | `test_contract.py` | TEAM-02: configured publishers validate at edge; central mapping and MQTT topics match the shared contract; bad assignments cannot alter state |
 | `test_system_integration.py` | TEAM-05/06/08/14: central/public consistency, full modeled processing path, named controls, demand-to-dispatch-to-passenger feedback |
 | `test_system_quality.py` | TEAM-18: backend access/privacy checks, one batch per threshold crossing, bounded queues, failure/recovery and central outage delivery |
@@ -54,3 +55,23 @@ Matched 240-second seeded runs start with one active Route 302 bus and the same 
 | Transparency | Passenger data hides edge internals; operator health shows source, queues, faults, batches and acknowledgements. Unavailable predictions remain unavailable. |
 
 The excluded report/presentation/contribution tickets are not restored by this test folder. Completion refers to the agreed classroom demonstration, not production deployment.
+
+## Combined failure situations
+
+`python -m pytest tests/simulation_test.py -q` verifies the same cases displayed in Control. Runtime definitions and observations live in `services/central/simulation_scenarios.py`; test code is never imported into the server.
+
+| Situation | Required observed response |
+|---|---|
+| One busy primary, its partner failed | Emergency standby activation without waiting for two healthy overloaded primaries |
+| Both regional primaries failed | Standby owns the affected buses and central sequences continue |
+| Standby fails during takeover | Pending journal survives; recovered primary resumes processing |
+| Primary recovers during standby use | Recovery window, synchronized ownership handback and standby return |
+| Owner restarts while peer is full and standby failed | Saved accepted work is rebuilt in the owner's queue, retaining sequence floors |
+| Occupancy fault with healthy GPS | Sensor-specific evidence; no invented edge crash; restoration works |
+| All sensors silent | Heartbeat timeout, unavailable state, then observed valid recovery |
+| Central delivery outage | Bounded latest-state pending delivery retries after restoration |
+| All edges and replicas lost | Last-known central data remains; recovery without replicas is rejected |
+
+Cases use accelerated simulated seconds and pause the final demo for inspection. PASS means the expected result occurred, including deliberate unavailability in the total-loss case. It does not mean that all nodes are healthy. Evidence includes per-second queues, assignments, sensor status, accepted journal and central pending counts. Normal service restarts the demo afterward.
+
+Emergency takeover is distinct from normal load assistance: a failed owner plus a busy/full peer can activate standby immediately. The ordinary two-primary 70% / 6-second / one-batch rule remains. Healthy-peer balancing accounts for waiting time and processing capacity rather than equal bus counts alone. Recovery rebuilds accepted journal entries when their owner returns before a peer has room.

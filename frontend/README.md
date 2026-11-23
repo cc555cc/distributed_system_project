@@ -53,3 +53,9 @@ Health and Control refresh their shared overview every second. Sensor faults app
 Use the buttons at the top of Control instead of entering request counts. **Show load balancing** demonstrates one batch at a 70% crossing, then standby; it rearms only after both primary queues fall below 70%. **Show scheduling loop** resets the demo, applies peak demand and enables the real demo scheduler. The result table shows the decision, departure interval and central confirmation. **Check access security** verifies actual unauthenticated responses without signing out.
 
 Click the Passenger map or **Try a nearby location** for pickup recommendations at real nearby stops. Walking time is estimated using straight-line distance; buses that arrive before walking plus a boarding margin are excluded. A no-service result is valid and never filled with guessed buses.
+
+## Clickable failure-case table
+
+Control starts with **Combined failure tests**. Each row has **Run** and **Evidence**; **Run all situations** verifies all nine cases. These checks use accelerated source time and leave the controlled demo paused at its final observation so Health can be inspected. Expand the evidence for actual per-second queues, owners, sensors and delivery counts. A pass is based on those observations, never just a successful command response. Start **Normal service** to resume ordinary movement.
+
+The total-loss case is expected to remain unavailable: cached central positions are last-known data, and lost replica sequence floors are not invented. The table marks that correct fail-closed response as PASS.

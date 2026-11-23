@@ -490,6 +490,8 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(
     assert state["sequence_number"] == 2
     assert state["edge_metadata"]["edge_id"] == "edge-west-2"
     cluster.fail("edge-west-2")
+    assert cluster.registry.get(bus_id).edge_id == "edge-west-3"
+    cluster.fail("edge-west-3")  # cross-region fallback requires loss of local standby too
     cluster.generate(bus_id, 1)
     state = flush_and_read()
     assert state["sequence_number"] == 3

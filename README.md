@@ -18,7 +18,7 @@ A public-transit simulation connecting bus telemetry, MQTT messaging, regional e
 
 These statuses cover the agreed controlled-demonstration scope. Current passenger, authentication and demand-scheduling work is on [ali](https://github.com/cc555cc/distributed_system_project/tree/ali). Native live MQTT dispatch and durable multi-process sessions are not included in this completion claim. BUS-02 uses the agreed west/east map; BUS-11 adds buses only.
 
-Verification on `ali`: **456 passed, 19 opt-in service tests skipped (475 collected)**. Browser checks verified login protection, stop arrivals, journey recommendations, peak demand, approved dispatch and central sequence confirmation. Earlier fleet, fault and recovery checks remain covered by the suite. Separately, both opt-in live MQTT/PostgreSQL ingestion tests passed against isolated local test schemas.
+Verification on `ali`: **467 passed, 19 opt-in service tests skipped (486 collected)**. Browser checks verified login protection, stop arrivals, journey recommendations, peak demand, approved dispatch and central sequence confirmation. Earlier fleet, fault and recovery checks remain covered by the suite. Separately, both opt-in live MQTT/PostgreSQL ingestion tests passed against isolated local test schemas.
 
 Global acceptance checks and central evaluation now cover the final seven tickets. See [tests/README.md](tests/README.md) for ticket mapping, wire formats, matched evaluation results, native-service setup and system quality/security limits. The isolated native global pipeline test also passed separately. Report, presentation, contribution and screenshot tasks remain excluded from this ticket list. Completion does not claim native dynamic MQTT load balancing, durable consensus, production identity management or pedestrian routing. Earlier notes below describe previous milestones; the ticket rows and this summary describe current status.
 
@@ -617,3 +617,9 @@ These additions demonstrate edge publisher authentication, authorization and inp
 Control offers named buttons for normal service, fleet capacity, load balancing, edge takeover, sensor faults, traffic, peak demand, the scheduling loop, central outage/recovery and access security. Numeric controls remain under Manual settings. The security action makes actual requests without the session and verifies public passenger access versus rejected management calls.
 
 On Passenger, click any map location or try a nearby location. The backend checks the nearest five real stops, current buses, capacity and whether the walking estimate leaves time to board. It may recommend the same bus at different stops or different buses; if none is reachable it says so. Stop IDs and walking distances are shown with the recommendation.
+
+## Combined failure verification
+
+The Control page includes a clickable nine-row failure-case table with per-case Run/Evidence and Run all situations. [tests/simulation_test.py](tests/simulation_test.py) checks the same runtime situations defined in `services/central/simulation_scenarios.py`. These cover overloaded-peer failure, both-primary failure, standby failure, recovery handback, an owner restarting before a full peer has capacity, individual/silent sensors, central outage and complete replica loss.
+
+The combined checks exposed and fixed missing emergency standby activation, accepted-journal restoration on owner recovery, and backlog being stranded by equal-count balancing on a slow node. Normal load assistance still uses one batch per 70% crossing. Emergency takeover may use standby while one primary is failed. Final observations are paused for inspection; total replica loss stays unavailable instead of claiming fabricated recovery.

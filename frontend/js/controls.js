@@ -309,3 +309,54 @@ document.getElementById('scenario-controls').addEventListener('click', async fun
   } catch (error) { output.textContent = error.message; }
   finally { actions.forEach(b => b.disabled = false); }
 });
+
+
+// The case table reads backend checks and per-second evidence; it never assumes a click passed.
+async function loadCombinedCases() {
+  const cases = await getJson('/health/simulation/cases');
+  document.getElementById('case-table').innerHTML = tableHtml(['Situation', 'Expected response', 'Result', 'Test'], cases.map(function (c) {
+    return [escapeHtml(c.title), escapeHtml(c.expected), c.result ? tag(c.result.passed ? 'PASS' : 'FAIL', c.result.passed ? 'good' : 'bad') : 'Not run',
+      '<button data-case="' + escapeHtml(c.id) + '" aria-label="Run ' + escapeHtml(c.title) + '">Run</button> ' +
+      '<button data-evidence="' + escapeHtml(c.id) + '" aria-label="Evidence for ' + escapeHtml(c.title) + '"' + (c.result ? '' : ' disabled') + '>Evidence</button>'];
+  }));
+  return cases;
+}
+function showCaseEvidence(result) {
+  const edge = function (frame, id) {
+    const w = frame.edges.find(e => e.edge_id === id);
+    return escapeHtml(w.state) + (w.emergency ? ' · takeover' : '') + '<br>' + w.queue + '/' + w.capacity + ' queued · ' + w.assigned.length + ' buses';
+  };
+  document.getElementById('case-details').innerHTML = '<h3>' + escapeHtml(result.case_id.replaceAll('_',' ')) + ' ' +
+    tag(result.passed ? 'PASS' : 'FAIL', result.passed ? 'good' : 'bad') + '</h3><ul>' + result.checks.map(function (c) {
+      return '<li>' + tag(c.passed ? 'PASS' : 'FAIL', c.passed ? 'good' : 'bad') + ' ' + escapeHtml(c.label) + '</li>';
+    }).join('') + '</ul>' + tableHtml(['Time', 'Edge A', 'Edge B', 'Standby', 'Selected bus', 'Central ACKs', 'Central pending', 'Accepted journal'], result.timeline.map(function (f) {
+      return [f.second + ' s', edge(f,'edge-west-1'), edge(f,'edge-west-2'), edge(f,'edge-west-3'), escapeHtml(f.bus_health) +
+        '<br>' + Object.entries(f.sensor_status).filter(([name,state]) => state !== 'healthy').map(([name,state]) => escapeHtml(name + ': ' + state)).join('<br>'),
+        f.acknowledged, f.central_pending, f.journal_pending];
+    }));
+  document.getElementById('case-evidence').open = true;
+}
+document.getElementById('combined-cases').addEventListener('click', async function (event) {
+  const button = event.target.closest('button');
+  if (!button) return;
+  const status = document.getElementById('case-feedback');
+  const controls = document.querySelectorAll('#combined-cases button, #scenario-controls button');
+  controls.forEach(b => b.disabled = true);
+  try {
+    if (button.dataset.evidence) {
+      showCaseEvidence(await getJson('/health/simulation/cases/' + button.dataset.evidence));
+    } else {
+      status.textContent = 'Running accelerated simulation; measuring queues, ownership and delivery...';
+      const result = await sendPost('/health/simulation/cases' + (button.dataset.case ? '/' + button.dataset.case : ''));
+      chooseDemo();
+      const outcomes = Array.isArray(result) ? result : [result];
+      const passed = outcomes.filter(r => r.passed).length;
+      status.textContent = passed + '/' + outcomes.length + ' expected outcomes verified. Demo paused; open Health or start Normal service.';
+      showCaseEvidence(outcomes.find(r => !r.passed) || outcomes[outcomes.length-1]);
+      await loadWorkers();
+    }
+  } catch (error) { status.textContent = error.message; }
+  finally { controls.forEach(b => b.disabled = false); await loadCombinedCases(); }
+});
+loadCombinedCases().then(function () { document.getElementById('case-feedback').textContent = 'Choose a situation to verify.'; })
+  .catch(function (error) { document.getElementById('case-feedback').textContent = error.message; });

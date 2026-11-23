@@ -109,7 +109,7 @@ async function renderSystemOverview(source) {
     ' buses healthy</span><span>' + d.sensor_issues.length + ' sensor issues</span></div>' +
     (source === 'demo' ? '<p class="note">70% trigger · one batch per crossing · ' + Object.entries(d.assistance).map(([region, policy]) => escapeHtml(region) + ': ' + (policy.third_draining ? 'finishing batch' : policy.armed ? 'armed' : 'waiting for pressure to fall')).join(' | ') + '</p>' : '') +
     tableHtml(['Edge', 'State', 'Queue', 'Buses', 'Completed'], d.workers.map(function (w) {
-      return [escapeHtml(w.edge_id), tag(w.assistance_draining ? 'finishing batch' : w.state === 'healthy' && w.queue_utilization_percent >= (w.overload_percent || 80) ? 'overloaded' : w.state, w.state === 'healthy' && w.queue_utilization_percent < (w.overload_percent || 80) ? 'good' : 'warn'), queueMeter(w),
+      return [escapeHtml(w.edge_id), tag(w.emergency_takeover ? 'emergency takeover' : w.assistance_draining ? 'finishing batch' : w.state === 'healthy' && w.queue_utilization_percent >= (w.overload_percent || 80) ? 'overloaded' : w.state, w.state === 'healthy' && w.queue_utilization_percent < (w.overload_percent || 80) ? 'good' : 'warn'), queueMeter(w),
         Array.isArray(w.assigned_buses) ? (w.active_assigned_buses ?? w.assigned_buses.length) + ' active / ' + w.assigned_buses.length : (w.assigned_buses ?? '-'), w.completed ?? '-'];
     })) + '<h3>Sensor issues - all buses</h3>' + (d.sensor_issues.length ?
       tableHtml(['Bus', 'Route', 'Sensor', 'Status'], d.sensor_issues.slice(0,60).map(function (i) {
