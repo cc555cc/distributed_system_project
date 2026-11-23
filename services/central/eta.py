@@ -8,29 +8,32 @@ DEFAULT_SPEED = 30  # fallback for when bus is stopped
 # get the location of a bus in a route, use its lat and lon to estimate the eta of the rest of the
 # stops in that direction
 def eta_bus(conn, bus_id) -> list[dict] | None:
-    stops_eta = []
     bus = conn.execute(
-        "SELECT s.lat, s.lon, s.current_stop_id, b.route_id, s.direction_id, s.speed FROM bus_states s JOIN buses b ON b.bus_id = s.bus_id WHERE s.bus_id = %s",
+        "SELECT s.lat, s.lon, s.next_stop_id, b.route_id, s.direction_id, s.speed "
+        "FROM bus_states s JOIN buses b ON b.bus_id = s.bus_id WHERE s.bus_id = %s",
         (bus_id,),
     ).fetchone()
-
     if bus is None:
         return None
+    lat, lon, next_stop, route_id, direction, speed = bus
 
     stops = conn.execute(
-        "SELECT rs.stop_id, st.lat, st.lon FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = %s AND rs.direction_id = %s ORDER BY rs.position",
-        (bus[3], bus[4]),
+        "SELECT rs.stop_id, st.lat, st.lon FROM route_stops rs "
+        "JOIN stops st ON st.stop_id = rs.stop_id "
+        "WHERE rs.route_id = %s AND rs.direction_id = %s ORDER BY rs.position",
+        (route_id, direction),
     ).fetchall()
-
-    avg_speed = bus[5] if bus[5] > 0 else DEFAULT_SPEED
-    for stop in stops:
-        distance = distance_km(
-            bus[0], bus[1], stop[1], stop[2]
-        )  # provide bus and stop lat and lon
-        eta = distance / avg_speed * 60  # in minutes
-        stops_eta.append({"stop_id": stop[0], "eta_minutes": round(eta, 1)})
-
-    return stops_eta
+    stop_ids = [stop[0] for stop in stops]
+    if next_stop not in stop_ids:
+        return []
+    
+    avg_speed = speed if speed and speed > 0 else DEFAULT_SPEED
+    etas, travelled_km, here = [], 0.0, (lat, lon)
+    for stop_id, stop_lat, stop_lon in stops[stop_ids.index(next_stop):]:
+        travelled_km += distance_km(*here, stop_lat, stop_lon)
+        here = (stop_lat, stop_lon)
+        etas.append({"stop_id": stop_id, "eta_minutes": round(travelled_km / avg_speed * 60, 1)})
+    return etas
 
 
 # haversine helper function to give real distance between two GPS points

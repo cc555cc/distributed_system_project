@@ -8,6 +8,8 @@ from psycopg.types.json import Jsonb
 from services.central.ingestion_check import check_update  # ingestion check function
 from shared.schema.bus_state import BusStateUpdate
 
+from services.central.freshness import freshness
+
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
@@ -39,14 +41,15 @@ def apply_bus_state(
 
         cursor = connection.execute(
             """
-            INSERT INTO bus_states (bus_id, lat, lon, speed, direction_id, next_stop_id,
+            INSERT INTO bus_states (bus_id, lat, lon, speed, direction_id, current_stop_id, next_stop_id,
                                     bus_status, occupancy, sequence_number, lamport, edge_metadata, last_updated)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (bus_id) DO UPDATE SET
                 lat = EXCLUDED.lat,
                 lon = EXCLUDED.lon,
                 speed = EXCLUDED.speed,
                 direction_id = EXCLUDED.direction_id,
+                current_stop_id = EXCLUDED.current_stop_id,
                 next_stop_id = EXCLUDED.next_stop_id,
                 bus_status = EXCLUDED.bus_status,
                 occupancy = EXCLUDED.occupancy,
@@ -62,6 +65,7 @@ def apply_bus_state(
                 state.lon,
                 state.speed,
                 state.direction_id,
+                state.edge_metadata.current_stop_id if state.edge_metadata else None,
                 state.next_stop_id,
                 state.bus_status,
                 state.occupancy,
@@ -95,7 +99,7 @@ def get_bus_state(bus_id: str):
         ).fetchone()
     if row is None:
         raise HTTPException(404, f"Bus: {bus_id} not found")
-    return row
+    return {**row, "freshness": freshness(row["last_updated"])}
 
 
 # remove bus from active network when it reaches the terminal
