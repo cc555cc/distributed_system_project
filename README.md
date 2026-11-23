@@ -96,7 +96,7 @@ project/
 `-- SOFE4790U-Project-Proposal.docx
 ```
 
-This directory guide describes the earlier `main` structure and reserved locations, excluding Git internals and generated caches. Newer branch-only modules are summarized above. `legacy/central_server/` contains only old empty directories and generated caches; all active source stays in `services/`. Use `services/central/` for central work. The legacy directory is local only because its contents are empty directories or ignored caches. Git does not track empty directories, and the empty placeholders are currently untracked, so those locations may be absent in a fresh clone. Keep unfinished files empty until their tasks are implemented.
+This directory guide describes the integrated checkout and reserved locations, excluding Git internals and generated caches. `legacy/central_server/` contains only old empty directories and generated caches; all active source stays in `services/`. Use `services/central/` for central work. The legacy directory is local only because its contents are empty directories or ignored caches. Git does not track empty directories, and the empty placeholders are currently untracked, so those locations may be absent in a fresh clone. Keep unfinished files empty until their tasks are implemented.
 
 | Branch | Put implementation here |
 | --- | --- |
@@ -106,12 +106,12 @@ This directory guide describes the earlier `main` structure and reserved locatio
 | `carson` | `services/central/`; database SQL in `shared/schema/` |
 | `danial` | `frontend/` |
 
-Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The central subscriber and local EDGE-01/02 pipeline are implemented. Regional failure, balancing and scaling scenarios are verified in the UI-controlled simulation; the separate MQTT worker launcher retains fixed ownership.
+Put service tests in that service's `tests/` directory, end-to-end tests in root `tests/`, and report evidence in `docs/`. Coordinate shared contract changes through TEAM-02. The central subscriber and local EDGE-01/02 pipeline are implemented. Regional failure, balancing and scaling scenarios are verified in the UI-controlled simulation; live MQTT workers also receive central-published ownership assignments.
 
 
 ## Backend implementation currently on `main`
 
-EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. There are **292 passing tests with MQTT/PostgreSQL and authenticated-broker checks enabled (no skips)**: 289 offline checks plus three opt-in live tests. EDGE-03 is verified against the current shared model and central ingestion code. All changes, including compatible central receiver support, were developed on `ali` and are now merged into `main` through `carson`.
+EDGE-01 receiving/validation and EDGE-02 processing are connected to EDGE-03 mapping and automatic forwarding. The current merge verification passed **417 tests with 18 integration skips** across simulator, edge, central and messaging tests. Historical service-enabled runs are recorded separately below. EDGE-03 is verified against the current shared model and central ingestion code. All changes, including compatible central receiver support, were developed on `ali` and are now merged into `main` through `carson`.
 
 ### Follow the data
 
@@ -170,7 +170,7 @@ The fresh-development `schema.sql` already includes this column. Do not rerun it
 
 ### Carson's map with the standardized simulator and edge pipeline
 
-The active `shared/routes.json` now mirrors Carson's Durham SQL seed: **373 stops, five routes, west/east regions and ten registered buses**. Routes 302 and 900 belong to west; routes 407, 409 and 901 belong to east. Stop IDs, coordinates, names, bus assignments and both directional stop patterns match his seed. The fictional two-city/five-stop map is no longer active.
+The active `shared/routes.json` now mirrors Carson's Durham SQL seed: **373 stops, five routes, west/east regions and twenty registered buses**. Routes 302 and 900 belong to west; routes 407, 409 and 901 belong to east. Stop IDs, coordinates, names, bus assignments and both directional stop patterns match his seed. The fictional two-city/five-stop map is no longer active.
 
 | Region | Routes | Edge IDs |
 | --- | --- | --- |
@@ -179,14 +179,14 @@ The active `shared/routes.json` now mirrors Carson's Durham SQL seed: **373 stop
 
 `city_id: "DURHAM"` labels this dataset; west/east are processing regions, not invented cities. This data does not currently meet a separate two-city requirement. The model remains configurable for additional cities, but no synthetic intercity link is added to Carson's map.
 
-The shared network loader supports explicit `directions` stop lists. A return trip is not assumed to be the forward trip reversed: route 302, for example, has 50 stops in direction 0 and 53 in direction 1. The original five-stop restriction was removed. Simulator interpolation, validation and edge route-progress checks all use the same directional patterns. Each route has two registered buses, initially assigned to its region's two configured edge IDs and opposite travel directions. This is fixed configuration for the MQTT workers; stateful replication/failover is demonstrated separately by the newer `ali` simulation.
+The shared network loader supports explicit `directions` stop lists. A return trip is not assumed to be the forward trip reversed: route 302, for example, has 50 stops in direction 0 and 53 in direction 1. The original five-stop restriction was removed. Simulator interpolation, validation and edge route-progress checks all use the same directional patterns. Each route has four registered buses, two per travel direction, initially divided between the region's two edge IDs. Central-driven assignment messages now update live ownership; replicated-state and atomic queued-update handoff remain covered by the stateful simulation.
 
 Carson's new `GET /routes/{route_id}/stops?direction=0` or `direction=1` endpoint is merged into the routes router. The duplicate route-stop endpoint was removed from the stops router. Omitting direction returns both ordered patterns; an invalid direction receives HTTP 422. Existing dictionary-shaped stop responses are retained.
 
 Zach's standardized simulator remains in `services/data_simulation/`. His movement calculation, separate seeded random sources, configurable traffic and sensor-drop behaviour are kept. The common local network allows the simulator and edge to start without querying central for every reading. Their messages still use the shared BUS-01 field format and the existing central mapper/metadata model. Your communication-file comment edits were preserved unchanged during this merge.
 
 ```powershell
-# Print standard JSON from all ten configured Durham buses.
+# Print standard JSON from all twenty configured Durham buses.
 python -m services.data_simulation.run_buses --updates 100 --interval 1
 # Publish the identical messages to Julian's MQTT broker.
 python -m services.data_simulation.run_buses --mqtt --host 127.0.0.1 --port 1883
@@ -236,7 +236,7 @@ Heartbeat monitoring covers EDGE-04 and workload metrics cover EDGE-07, with a h
 
 ### Test ownership
 
-Object health/queue behaviour is tested in `services/edge/tests/test_edge_server_testing.py`, instance creation/recovery/scaling in `services/edge/tests/test_edge_lifecycle.py`, and telemetry flow/state handoffs in `services/edge/tests/test_edge_pipeline.py`. The split preserves the existing checks. Central SQL/API and live MQTT/PostgreSQL integration tests remain in the central test directory.
+Object health/queue behaviour is tested in `services/edge/tests/test_edge_server_testing.py`, instance creation/recovery/scaling in `services/edge/tests/test_edge_lifecycle.py`, and telemetry flow/state handoffs in `services/edge/tests/test_edge_pipeline.py`. Each has four broader scenario tests, retaining the existing checks and the new upstream assertions. Additional live-failover, messaging, security and converter tests remain separate. Central SQL/API and live MQTT/PostgreSQL integration tests remain in the central test directory.
 
 Your EDGE-03 tests are in `services/edge/tests/test_edge_to_central.py`: mapping, the shared validation model, outgoing ownership/field checks, the MQTT topic and sender connection/failure handling. They import the shared model directly, without importing central services or needing a database URL. EDGE-01 and EDGE-02 keep their existing test files. Run `python -m pytest services/edge/tests -q` for the edge validation, processing, forwarding and heartbeat checks.
 
@@ -257,7 +257,7 @@ $env:EDGE_LIVE_MQTT_PORT = "1883"
 python -m pytest services/central/tests/test_live_edge_ingestion.py -q
 ```
 
-Both live tests use unique PostgreSQL schemas and remove only their test data. They require permission to create/drop schemas and are skipped when `EDGE_LIVE_DATABASE_URL` is absent. Use a dedicated broker: the four-instance test uses the configured edge IDs and bus topics and must not share an active project broker. The tests passed against isolated Mosquitto 2 and PostgreSQL 17 containers, which were removed afterward. The second test launches four actual child processes through `main.run_instance`, exercises all ten configured buses and verifies coordinates, speed, occupancy, stop/direction/status, clocks, timestamps, city/route/region and edge owner in database/API readback. It checks each process's workload metrics and 50-message capacity, passes GPS fault/restoration through MQTT to the health API, stops one process, observes timeout while its peer remains healthy, and restarts it through recovering to healthy. The complete command `python -m pytest services/data_simulation/tests services/edge/tests services/central/tests -q --tb=short -ra` passed **292 tests, no skips** with those dedicated services and the isolated authenticated-broker settings configured.
+Both live tests use unique PostgreSQL schemas and remove only their test data. They require permission to create/drop schemas and are skipped when `EDGE_LIVE_DATABASE_URL` is absent. Use a dedicated broker: the four-instance test uses the configured edge IDs and bus topics and must not share an active project broker. The tests passed against isolated Mosquitto 2 and PostgreSQL 17 containers, which were removed afterward. The second test launches four actual child processes through `main.run_instance`, exercises all ten configured buses and verifies coordinates, speed, occupancy, stop/direction/status, clocks, timestamps, city/route/region and edge owner in database/API readback. It checks each process's workload metrics and 50-message capacity, passes GPS fault/restoration through MQTT to the health API, stops one process, observes timeout while its peer remains healthy, and restarts it through recovering to healthy. The complete command `python -m pytest services/data_simulation/tests services/edge/tests services/central/tests -q --tb=short -ra` passed **292 tests, no skips** on the earlier snapshot with those dedicated services and the isolated authenticated-broker settings configured; current merge verification is 417 passed and 18 skipped.
 
 All **12 edge tickets are complete for the agreed simulation demonstration**: EDGE-01/02/03/04/07 have the existing pipeline/live-service evidence, and EDGE-05/06/08/09/10/11/12 have tested stateful simulation scenarios and fleet measurements. The simulation uses the real validator, route/occupancy processor, cache/sequence logic and central mapping contract. Its reliable single coordinator models atomic ownership changes, replication and a retained pending-request journal. It does not add distributed consensus, disk durability, network partitions or a live interprocess replication protocol to the separate MQTT workers. The full-code-path central integration test also sends post-handoff payloads through central ingestion SQL and API readback using its SQLite adapter. This verification does not claim a separate human contract approval from Carson.
 
@@ -439,10 +439,51 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `services/edge/tests/test_edge_lifecycle.py` | Instance creation/configuration, registration, recovery timing, scale-up and safe scale-down. |
 | `services/edge/tests/test_edge_pipeline.py` | Pipeline behaviour: publisher telemetry, replication, pending-update takeover, ownership, replay protection, cross-region handoffs and fleet throughput. |
 
-The current map uses logical route boundaries: west owns routes 302/900 (two buses per instance), east owns 407/409/901 (three buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. The simulation starts from these assignments, balances buses within their home region and permits controlled cross-region takeover when local workers fail. It keeps the original route region and coordinates when a remote instance hosts that work. The MQTT launcher continues using the fixed plan.
+The current map uses logical route boundaries: west owns routes 302/900 (four buses per instance), east owns 407/409/901 (six buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. The simulation starts from these assignments, balances buses within their home region and permits controlled cross-region takeover when local workers fail. It keeps the original route region and coordinates when a remote instance hosts that work. The MQTT launcher starts from that plan and follows subsequent central ownership assignments.
 
 
 ### UI-controlled edge cluster simulation
+
+Fleet and scheduler controls extend the same controlled demonstration:
+
+- **Fleet size → Apply fleet (reset)** creates 5, 10, 20, 25 or 50 configured buses and resets earlier experiment state. Extra streams receive unique IDs, valid owners/routes and spaced starting stops. Map and dashboard use the registered fleet list rather than assuming four buses per route.
+- **Add a bus / scheduler controls** accepts a unique bus ID, existing route and capacity. The UI sends a versioned `bus-config-v1` object to `POST /health/simulation/buses`, with optional direction 0 or 1 through the API. A healthy regional edge is chosen; the bus begins out of service. The controlled fleet is capped at 50. Registration is in memory and resets with the demo; it does not register a bus in the live PostgreSQL database or add sensor types.
+- Select the registered bus and its assigned route, then **Dispatch selected bus**. Only available out-of-service buses assigned to that route can be dispatched. **Set interval** changes departure spacing (1–3600 simulation seconds), including queued departures. Central or an operator can call `POST /health/simulation/schedule` with `action: dispatch` and `bus_id`, or `action: set_headway` and `headway_seconds`. Movement, central sequence updates and `bus_dispatched` events confirm execution.
+- These are scheduler command/execution capabilities (BUS-09). Automatic demand detection, scheduling decisions and the complete live scheduler feedback loop remain CENTRAL-04/08 and TEAM-14 work. BUS-01's existing telemetry contract remains unchanged. BUS-11 now covers adding buses only.
+
+Four additional tests cover exact fleet sizes, valid/invalid versioned bus configuration, dispatch/changed intervals reaching central-shaped telemetry, and rejection of unavailable, wrong-route and duplicate dispatches. All 11 bus tickets are complete for the agreed controlled-demonstration scope; this is not a claim that the live MQTT launcher dynamically registers buses or that optional sensors were implemented.
+
+
+Use the existing Simulation Controls page to run a repeatable demonstration:
+
+1. Click **Start buses**, then choose a clock speed and **Run clock**. One simulation second moves a normal bus about 8.33 metres (30 km/h); heavy traffic uses 9 km/h. Three simulation seconds are spent at each stop. Buses begin at configured stops and stop at their route terminal rather than teleporting.
+2. Select one bus and apply a condition. Restore it before comparing another condition. The panel shows local distance/GPS, central's last position/sequence, heartbeat age, sensor states, retry attempts and pending delivery.
+3. Use **Controlled demonstration** on the Passenger Planner and Operator Dashboard. The selection is shared across open pages. Unknown, unavailable, degraded and intentionally stopped buses are not shown as fresh live positions.
+4. Simulate a central outage or edge failure. Pending delivery is bounded to the latest state per bus, retries wait at least two simulation seconds, and recovery preserves sequence ordering. Pending central data older than 30 simulation seconds is discarded rather than presented as fresh.
+5. Restore the bus/server and observe recovering then healthy status and backend events. Stop buses or pause the clock when finished. Reset clears demonstration state; central restart also clears it.
+
+| Condition | Evidence and expected result |
+|---|---|
+| Normal / stationary / out of service | Movement follows elapsed time; stationary buses still report; out-of-service buses stop moving and boarding |
+| Traffic / peak demand | Lower movement speed / higher passenger count, within capacity |
+| Occupancy sensor faulty | GPS and heartbeat continue; occupancy is explicitly faulty; central keeps the last trusted full reading |
+| Invalid GPS | Actual validator rejects the reading; rejection does not prove hardware failure |
+| All sensors silent | No new sensor readings/heartbeats; unavailable after 6 simulation seconds; no crash inferred |
+| Connection loss | Local GPS continues, central position freezes, delivery retries wait 2 simulation seconds |
+| Process failure | Explicitly injected process failure; local updates and heartbeats stop; this does not kill an OS process |
+| Unexplained silence | No received heartbeat; unavailable with cause unknown |
+| Central outage | No modeled acknowledgement; latest pending updates retry, then deliver or expire safely |
+
+The demonstration uses the real telemetry validator, processor, cache, mapper and shared central model. Its acknowledgement/transport/coordinator are modeled in memory; it does not write these experiments to PostgreSQL or replace live MQTT integration tests. Failure evidence distinguishes deliberate injection from a diagnosis of an unexplained live outage. Eight additional tickets are now complete under the agreed scope: BUS-02/05/06/07 and UI-02/03/05/08. Of the 17 tickets discussed, 14 are complete; UI-04, UI-06 and UI-10 remain partial because ETA, journey search and permissions are not supplied by these controls.
+
+
+Central advances the simulation automatically from elapsed monotonic real time, including when no browser is open. At 1×, one real second represents one simulation second; Controls supports 2×, 5× and 10×, plus clock pause/resume. Recovery completes after two simulation seconds. Browser polling only reads state, so opening another page does not speed it up. Keep one central API process because the simulation remains in memory. `/advance` is still available for deterministic tests; pause the clock before manually stepping a demonstration.
+
+Controls and the Operator Dashboard show the same simulated instance states, assignments and recent events. Recovering is amber, healthy is green, failed is red and standby is grey. The dashboard also shows separately labelled live heartbeat reports, per-bus sensor health and central's live failure/reassignment event history. Simulated failures do not stop live OS processes or write simulated bus states into PostgreSQL.
+
+Bus controls publish the existing `/commands` API through MQTT to running publishers: pause/resume, peak/off-peak demand, traffic factor and sensor failure rate, scoped to west or east. A published command is not an application acknowledgement. Pause/resume and sensor faults apply before the next reading; demand and traffic apply at the next stop segment. Resume does not start a stopped publisher process. Clock speed affects the edge model only; live bus publishers keep their configured update interval.
+
+Verification covered real-time modeled recovery on both pages, west-only bus pause while east continued, sensor fault/restoration in the dashboard, and live worker failure/takeover/recovery. After handback, all four live workers stayed healthy beyond the heartbeat timeout. Handed-back cache entries retain replay protection but no longer inflate their former owner's active/pending heartbeat counts. BUS-02 is complete for the agreed west/east map scope. The controlled demo supports start/stop and full bus-state transitions; starting an OS publisher process remains a CLI operation. Operator authorization remains separate CENTRAL-09/UI-06 work.
 
 Each edge queue holds at most 50 waiting messages; the default modeled processing delay is 5 ms. `EdgeClusterSimulation` in `main.py` starts two active instances per region and a standby third instance in each region. It uses actual shared-route telemetry with the existing validator, processor, cache and central mapper. Its central-shaped output is visible in `central_states`; it does not publish experiments into the live database or change running MQTT workers. Use one central API process: simulation state and replicas are in memory and reset on restart. Existing `/requests` remains a synthetic queue-only experiment; use `/telemetry` or `/telemetry/generate` to exercise bus processing and stateful handoffs.
 
@@ -453,13 +494,15 @@ Each edge queue holds at most 50 waiting messages; the default modeled processin
 | POST | `/telemetry` | Submit a complete shared-format telemetry object |
 | POST | `/telemetry/generate` | `{"bus_id":"bus-302-1","count":20}` generates valid repeated sensor readings from a shared-route sample |
 | POST | `/advance` | `{"seconds":6}` advances virtual time; no real sleeping |
+| PATCH | `/demo` | Optional `running`, `bus_id` plus `condition`, or `central_available` controls the repeatable fleet demonstration |
+| PATCH | `/clock` | `{"running":true,"speed":2.0}` controls automatic real-time progression (speed greater than 0, at most 10) |
 | POST | `/instances/{edge_id}/fail` | Lose the worker's local cache/queue and trigger takeover using surviving replicas and the coordinator's journal |
 | POST | `/instances/{edge_id}/recover` | Synchronize before a 2-second modeled recovery window; no assignments while recovering |
 | POST | `/instances` | Register `edge_id`, `region_id`, optional `capacity` and `processing_ms` |
 | POST | `/transfer` | `{"bus_id":"bus-302-1","target_id":"edge-west-3"}`; target must already be healthy/active |
 | POST | `/instances/{edge_id}/scale-down` | Preflight capacity and transfer all owned buses before stopping |
 | PATCH | `/policy` | `{"auto_scale":true}` enables the standby third instance |
-| POST | `/reset` | Optional `{"fleet_size":50}`; accepted sizes 1-50, default restores the configured ten buses |
+| POST | `/reset` | Optional `{"fleet_size":50}`; accepted sizes 1-50, default restores the configured twenty buses |
 
 The coordinator serializes changes under one lock. Accepted bus states and sequence floors are copied to healthy/recovering instances in the same city, including the other region so both local failures can be demonstrated. Accepted pending telemetry is retained in the coordinator's journal. A handoff installs the latest surviving replica, advances an ownership version, changes the registry owner and transfers that bus's queued updates in order. Only the current owner/version may commit. Old owners, duplicate/stale sequences and conflicting replays cannot overwrite a newer state. A full target delays takeover without dropping accepted journal entries. Loss of every replica prevents recovery rather than resetting sequence history. These are explicit simulation assumptions; network consensus and loss of the coordinator are outside this model.
 
@@ -467,7 +510,7 @@ Normal ownership aims for equal bus counts (difference at most one). Queue press
 
 If both regional queues remain at least 80% full for 6 modeled seconds, the standby third worker synchronizes and starts processing reassigned buses. After all active regional queues stay below 20% for 10 modeled seconds, the automatically started third worker transfers its buses back and stops when capacity permits. Failed standby workers are not automatically resurrected. Dynamic registration also synchronizes state before transfers. Insufficient capacity blocks scale-down without losing ownership or queued telemetry.
 
-Repeatable demonstration in `/docs`: reset; set `processing_ms` to 60000 on both west workers (deliberately slow stress settings); generate 40 readings each for `bus-302-1` and `bus-302-2`; advance 5 seconds (third still inactive); advance 1 (third active with real telemetry assignments); set the two original workers back to 5 ms; advance 1 to drain the readings; advance 10 to observe safe scale-down. Failure/recovery and dynamic registration have their own routes above. No UI screen is added; these APIs supply the controls for Danial's UI.
+Repeatable demonstration in `/docs`: reset; set `processing_ms` to 60000 on both west workers (deliberately slow stress settings); generate 40 readings each for `bus-302-1` and `bus-302-2`; advance 5 seconds (third still inactive); advance 1 (third active with real telemetry assignments); set the two original workers back to 5 ms; advance 1 to drain the readings; advance 10 to observe safe scale-down. Failure/recovery and dynamic registration have their own routes above. Danial's included UI uses these backend controls; complete browser integration and remaining simulator controls still need verification.
 
 ### Fleet performance evidence (EDGE-10)
 
@@ -533,6 +576,6 @@ Signing authenticates incoming publisher data but does not encrypt it. The clien
 
 Broker enforcement is separate: `mosquitto_acl(load_network())` generates ACL text for the fixed shared topology. Bus broker usernames are the **bare bus IDs**, edge usernames are edge IDs, and the central reader is `central`. Buses may write only their telemetry/heartbeat topics; edges may read their regional feeds and write their own assigned state/health topics; central may read state and edge health. Install the generated ACL and a hashed password file on the broker, disable anonymous access and configure server certificates for TLS. See the official [Paho credential/TLS API](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html) and [Mosquitto password/ACL settings](https://mosquitto.org/man/mosquitto-conf-5.html). This change leaves the team's shared demo broker configuration unchanged; dynamic simulated ownership is not automatically deployed into live broker ACLs.
 
-The full suite passed **292 tests, no skips**, with isolated PostgreSQL, the existing demo broker and a separate password/ACL-enabled Mosquitto broker. The live security test rejects anonymous/wrong-password logins and cross-bus, forged-state and forged-edge-heartbeat publishes. It confirms unauthorized reads are not delivered (Mosquitto may acknowledge the subscription itself), while an authorized signed message reaches the edge queue. The authenticated broker test uses `EDGE_AUTH_LIVE_MQTT_HOST`, `EDGE_AUTH_LIVE_MQTT_PORT` and `EDGE_AUTH_LIVE_PASSWORD` against dedicated test accounts `edge-west-1` and `bus-302-1`; its local transport is intentionally plaintext. Certificate-verification configuration is covered separately; a live TLS handshake is not demonstrated here. Without service settings, 289 offline tests pass and three integration tests skip. Temporary test credentials and containers are removed after verification.
+An earlier service-enabled snapshot passed **292 tests, no skips**, with isolated PostgreSQL, the existing demo broker and a separate password/ACL-enabled Mosquitto broker. The live security test rejects anonymous/wrong-password logins and cross-bus, forged-state and forged-edge-heartbeat publishes. It confirms unauthorized reads are not delivered (Mosquitto may acknowledge the subscription itself), while an authorized signed message reaches the edge queue. The authenticated broker test uses `EDGE_AUTH_LIVE_MQTT_HOST`, `EDGE_AUTH_LIVE_MQTT_PORT` and `EDGE_AUTH_LIVE_PASSWORD` against dedicated test accounts `edge-west-1` and `bus-302-1`; its local transport is intentionally plaintext. Certificate-verification configuration is covered separately; a live TLS handshake is not demonstrated here. For the integrated snapshot, the latest local verification is 417 passed and 18 service-dependent skips; those earlier 289/3 counts no longer describe the current suite. Temporary test credentials and containers are removed after verification.
 
 These additions demonstrate edge publisher authentication, authorization and input-format interoperability. Broker credentials and ACLs are now deployable through `compose.secure.yaml` (MQTT-07, [infrastructure/README.md](infrastructure/README.md#authentication-and-topic-authorization-mqtt-07)); central UI login/roles (CENTRAL-09) and TLS certificates remain separate work; the whole project's security should not be marked complete solely from these edge tests.

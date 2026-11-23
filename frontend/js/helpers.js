@@ -1,3 +1,40 @@
+// Controls and dashboard read the same backend simulation state and clock.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, function (character) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character];
+  });
+}
+
+function simulationTable(simulation, actions = false) {
+  const rows = simulation.workers.map(function (worker) {
+    const edgeId = escapeHtml(worker.edge_id);
+    const failed = worker.state === "failed";
+    const kind = failed ? "bad" : worker.state === "recovering" ? "warn" :
+      worker.state === "healthy" ? "good" : "grey";
+    const row = [edgeId, escapeHtml(worker.region_id), tag(worker.state, kind),
+      Math.round(worker.queue_utilization_percent) + "%", escapeHtml(worker.assigned_buses.join(", ")) || "-"];
+    if (actions) {
+      row.push('<button data-id="' + edgeId + '" data-action="fail"' +
+        (failed ? " disabled" : "") + '>Fail</button> <button data-id="' + edgeId +
+        '" data-action="recover"' + (failed ? "" : " disabled") + '>Recover</button>');
+    }
+    return row;
+  });
+  const headers = ["Edge server", "Region", "State", "Queue", "Assigned buses"];
+  if (actions) headers.push("Action");
+  const events = (simulation.events || []).slice(-5).reverse().map(function (event) {
+    return '<li>' + Number(event.time || 0).toFixed(1) + ' s: ' + escapeHtml(event.action) +
+      ' ' + escapeHtml(event.edge_id || event.bus_id || '') + '</li>';
+  }).join('');
+  return tableHtml(headers, rows) + '<p>Recent simulation events</p><ul>' + events + '</ul>';
+}
+
+function simulationClockText(simulation) {
+  const clock = simulation.clock || { running: false, speed: 1 };
+  return (clock.running ? "Running" : "Paused") + " · " + clock.speed +
+    "× real time · " + Number(simulation.virtual_seconds || 0).toFixed(1) + " simulation seconds";
+}
+
 function hasValidPosition(bus) {
   return Number.isFinite(bus.lat) && Number.isFinite(bus.lon) &&
     bus.lat >= -90 && bus.lat <= 90 &&
@@ -6,12 +43,14 @@ function hasValidPosition(bus) {
 }
 
 function ageSeconds(bus) {
+  if (bus.simulation_age_seconds !== undefined) return bus.simulation_age_seconds;
   return (Date.now() - new Date(bus.last_updated).getTime()) / 1000;
 }
 
 function isStale(bus) {
   const age = ageSeconds(bus);
-  return isNaN(age) || age > STALE_SECONDS || bus.bus_status === "idle";
+  return isNaN(age) || age > STALE_SECONDS || ["idle", "out_of_service"].includes(bus.bus_status) ||
+    ["unknown", "unavailable", "degraded", "paused"].includes(bus.simulation_status);
 }
 
 function crowdingOf(bus) {

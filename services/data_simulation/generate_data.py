@@ -177,6 +177,180 @@ def generate_messages(
                 time.sleep(update_seconds)
 
 
+class DemoFleet:
+    """Repeatable UI conditions, using the coordinator's simulation seconds.
+
+    This is a controlled demonstration, not evidence of a real OS process crash.
+    Local GPS, received heartbeats and accepted telemetry are tracked separately.
+    """
+
+    CONDITIONS = frozenset({"normal", "stopped", "traffic", "peak", "sensor_fault",
+                            "invalid_reading", "sensors_stopped", "connection_loss",
+                            "process_failure", "silence", "out_of_service"})
+    TIMEOUT = 6.0
+    RETRY = 2.0
+
+    def __init__(self, network_path, definitions, now, event):
+        self.event = event
+        self.buses = {}
+        self.network_path = network_path
+        for bus in definitions:
+            self.add_bus(bus, now)
+
+    def add_bus(self, bus, now, condition="normal"):
+        stops = load_stops(bus["route_id"], bus.get("direction_id", 0), network_path=self.network_path)
+        # Keep configured starting positions so a fleet does not stack at a terminal.
+        start = min(bus.get("scenario", {}).get("start_stop_index", 0), len(stops) - 2)
+        template = next(generate_messages(bus["route_id"], bus.get("direction_id", 0),
+            network_path=self.network_path, max_updates=1, update_seconds=0))
+        template.update(bus_id=bus["bus_id"], capacity=bus["capacity"])
+        self.buses[bus["bus_id"]] = dict(definition=bus, stops=stops, segment=start,
+            metres=0.0, distance_m=0.0, condition=condition, speed=0.0, dwell=0.0,
+            sequence=0, template=template, local=None, heartbeat=None, valid=None,
+            report_at=now, pending=None, retry_at=now, attempts=0, rejected=0,
+            recovery_until=now, started=now)
+
+    def configure(self, bus_id, condition, now):
+        if bus_id not in self.buses or condition not in self.CONDITIONS:
+            raise ValueError("Choose a registered bus and supported condition")
+        bus = self.buses[bus_id]
+        previous = bus["condition"]
+        bus["condition"] = condition
+        if condition == "normal" and previous != "normal":
+            bus["recovery_until"] = now + 2
+        self.event(dict(time=now, action="condition", bus_id=bus_id,
+                        condition=condition, evidence="operator_injected"))
+
+    def _move(self, bus, seconds):
+        if bus["condition"] in {"stopped", "process_failure", "out_of_service"}:
+            bus["speed"] = 0.0
+            return
+        remaining = max(0.0, seconds - bus["dwell"])
+        bus["dwell"] = max(0.0, bus["dwell"] - seconds)
+        speed = SPEED_KMH * (0.3 if bus["condition"] == "traffic" else 1.0)
+        bus["speed"] = speed if remaining else 0.0
+        while remaining > 1e-9 and bus["segment"] < len(bus["stops"]) - 1:
+            start, end = bus["stops"][bus["segment"]:bus["segment"] + 2]
+            length = distance_metres(start, end)
+            travel = min(speed / 3.6 * remaining, max(0.0, length - bus["metres"]))
+            bus["metres"] += travel
+            bus["distance_m"] += travel
+            remaining -= travel / (speed / 3.6)
+            if bus["metres"] + 1e-8 < length:
+                break
+            bus["segment"] += 1
+            bus["metres"] = 0.0
+            # Three modeled seconds at each stop, even at accelerated clock speeds.
+            wait = min(3.0, remaining)
+            remaining -= wait
+            bus["dwell"] = 3.0 - wait
+            bus["speed"] = 0.0 if bus["dwell"] else speed
+        if bus["segment"] == len(bus["stops"]) - 1:
+            bus["speed"] = 0.0
+
+    def phase(self, bus):
+        if bus["condition"] == "process_failure":
+            return "unknown"
+        if bus["condition"] == "out_of_service":
+            return "out_of_service"
+        if bus["condition"] == "stopped" or bus["segment"] == len(bus["stops"]) - 1:
+            return "stopped"
+        if bus["dwell"] > 0:
+            return "stopped" if bus["dwell"] > 2 else "boarding" if bus["dwell"] > 1 else "departing"
+        start, end = bus["stops"][bus["segment"]:bus["segment"] + 2]
+        return "arriving" if distance_metres(start, end) - bus["metres"] <= 15 else "travelling"
+
+    def _reading(self, bus):
+        stops, index = bus["stops"], bus["segment"]
+        current = stops[index]
+        following = stops[min(index + 1, len(stops) - 1)]
+        length = distance_metres(current, following)
+        progress = bus["metres"] / length if length else 0.0
+        bus["sequence"] += 1
+        source = dict(bus["template"], sequence_number=bus["sequence"],
+            lamport_clock=bus["sequence"], timestamp=datetime.now(UTC).isoformat(),
+            latitude=round(current["lat"] + (following["lat"] - current["lat"]) * progress, 6),
+            longitude=round(current["lon"] + (following["lon"] - current["lon"]) * progress, 6),
+            speed_kmh=bus["speed"], bus_status=self.phase(bus),
+            current_stop_id=current["stop_id"], current_stop_city_id=current["city_id"],
+            passengers=min(bus["definition"]["capacity"], 0 if bus["condition"] == "out_of_service" else 40 if bus["condition"] == "peak" else 10))
+        source.pop("next_stop_id", None)
+        source.pop("next_stop_city_id", None)
+        if index + 1 < len(stops):
+            source.update(next_stop_id=following["stop_id"], next_stop_city_id=following["city_id"])
+        return source
+
+    def step(self, seconds, now, submit):
+        for bus_id, bus in self.buses.items():
+            self._move(bus, seconds)
+            if now + 1e-9 < bus["report_at"]:
+                continue
+            bus["report_at"] = now + 1
+            condition = bus["condition"]
+            if condition == "process_failure":
+                continue
+            source = self._reading(bus)
+            if condition != "sensors_stopped":
+                bus["local"] = source
+            if condition not in {"connection_loss", "sensors_stopped", "silence"}:
+                bus["heartbeat"] = now
+            if condition in {"sensors_stopped", "silence"}:
+                continue
+            if condition == "sensor_fault":
+                source = dict(source, sensor_status="faulty")
+            if condition == "invalid_reading":
+                source = dict(source, latitude=999.0)
+            bus["pending"] = source  # latest reading only, not an unbounded history
+            if now + 1e-9 < bus["retry_at"]:
+                continue
+            bus["attempts"] += 1
+            result = {"accepted": False, "reason": "simulated connection unavailable"}
+            if condition != "connection_loss":
+                result = submit(source)
+            if result["accepted"]:
+                bus["pending"] = None
+                if condition != "sensor_fault":
+                    bus["valid"] = now
+                bus["retry_at"] = now
+            else:
+                bus["rejected"] += condition == "invalid_reading"
+                bus["retry_at"] = now + self.RETRY
+            if not result["accepted"] or condition in {"invalid_reading", "sensor_fault"}:
+                self.event(dict(time=now, action="delivery_attempt", bus_id=bus_id,
+                    accepted=result["accepted"], reason=result.get("reason", "faulty_sensor_not_forwardable")))
+
+    def snapshot(self, now):
+        result = {}
+        for bus_id, bus in self.buses.items():
+            age = now - (bus["heartbeat"] if bus["heartbeat"] is not None else bus["started"])
+            condition = bus["condition"]
+            status = "unavailable" if age >= self.TIMEOUT else "unknown" if bus["heartbeat"] is None else "healthy"
+            if status == "healthy":
+                if condition in {"sensor_fault", "invalid_reading"}:
+                    status = "degraded"
+                elif now < bus["recovery_until"]:
+                    status = "recovering"
+            sensors = {name: "healthy" for name in SENSORS}
+            if condition == "sensor_fault":
+                sensors["occupancy"] = "faulty"
+            if condition == "sensors_stopped":
+                sensors = dict.fromkeys(SENSORS, "unavailable" if age >= self.TIMEOUT else "unknown")
+            evidence = {
+                "connection_loss": "injected_connection_loss; local GPS continues",
+                "process_failure": "injected_process_failure; no local updates",
+                "sensor_fault": "occupancy reports faulty; GPS and heartbeat continue",
+                "invalid_reading": "reading rejected by validator; sensor failure unconfirmed",
+                "sensors_stopped": "all sensor channels silent; no crash inferred",
+                "silence": "cause unknown; no received heartbeat",
+            }.get(condition, "valid readings and heartbeat" if bus["heartbeat"] is not None else "awaiting first heartbeat")
+            result[bus_id] = dict(condition=condition, phase=self.phase(bus), status=status, evidence=evidence,
+                sensors=sensors, heartbeat_age_seconds=age, distance_m=bus["distance_m"],
+                local=bus["local"], attempts=bus["attempts"], rejected_readings=bus["rejected"],
+                delivery_pending=bus["pending"] is not None, retry_at=bus["retry_at"],
+                region_id=bus["definition"]["region_id"], route_id=bus["definition"]["route_id"])
+        return result
+
+
 def main(
     route_id,
     direction,

@@ -501,3 +501,267 @@ def test_cluster_ui_api_runs_telemetry_takeover_registration_and_recovery(monkey
         client.post("/health/simulation/reset", json={"fleet_size": 51}).status_code
         == 422
     )
+
+
+def test_recovery_clock_runs_without_browser_steps_and_supports_pause_speed(monkeypatch):
+    from services.central import health
+    from services.central.main import app
+    from services.edge.main import EdgeClusterSimulation
+
+    now = [0.0]
+    monkeypatch.setattr(health, "simulation", EdgeClusterSimulation())
+    clock = health.SimulationClock(clock=lambda: now[0])
+    monkeypatch.setattr(health, "simulation_clock", clock)
+    client = TestClient(app)
+    client.post("/health/simulation/instances/edge-west-1/fail")
+    client.post("/health/simulation/instances/edge-west-1/recover")
+    # Polling from multiple pages must not advance time or accelerate recovery.
+    assert client.get("/health/simulation").json()["virtual_seconds"] == 0
+    assert client.get("/health/simulation").json()["virtual_seconds"] == 0
+    client.patch("/health/simulation/clock", json={"running": False, "speed": 2.0})
+    now[0] = 20
+    clock.tick()
+    assert health.simulation.workers["edge-west-1"].state == "recovering"
+    client.patch("/health/simulation/clock", json={"running": True, "speed": 2.0})
+    now[0] = 21
+    clock.tick()  # central's background task calls this even with no browser open
+    result = client.get("/health/simulation").json()
+    assert result["virtual_seconds"] == 2
+    assert health.simulation.workers["edge-west-1"].state == "healthy"
+    assert result["clock"] == {"running": True, "speed": 2.0}
+    assert client.patch("/health/simulation/clock", json={"running": True, "speed": 0.0}).status_code == 422
+    assert client.post("/health/simulation/reset").json()["virtual_seconds"] == 0
+    now[0] = 21.5
+    clock.tick()
+    assert health.simulation.time == 1
+
+
+@pytest.fixture
+def demo_client(monkeypatch):
+    # These endpoints are in memory; importing the app still requires a DB URL.
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused/controlled-demo")
+    from services.central import health
+    from services.central.main import app
+    from services.edge.main import EdgeClusterSimulation
+
+    monkeypatch.setattr(health, "simulation", EdgeClusterSimulation())
+    monkeypatch.setattr(health, "simulation_clock", health.SimulationClock(clock=lambda: 0.0))
+    client = TestClient(app)
+    assert client.patch("/health/simulation/demo", json={"running": True}).status_code == 200
+    return client
+
+
+def demo_step(client, seconds=2):
+    response = client.post("/health/simulation/advance", json={"seconds": float(seconds)})
+    assert response.status_code == 200
+    return response.json()
+
+
+def demo_condition(client, condition):
+    response = client.patch("/health/simulation/demo", json={"bus_id": "bus-302-1", "condition": condition})
+    assert response.status_code == 200
+
+
+def test_demo_movement_stops_traffic_demand_and_runtime_controls(demo_client):
+    client = demo_client
+    state = demo_step(client)
+    assert len(state["central_states"]) == 20
+    original = state["demo_buses"]["bus-302-1"]["distance_m"]
+    demo_condition(client, "stopped")
+    state = demo_step(client, 3)
+    assert state["demo_buses"]["bus-302-1"]["distance_m"] == original
+    assert state["central_states"]["bus-302-1"]["speed"] == 0
+    assert state["demo_buses"]["bus-302-1"]["status"] == "healthy"
+    demo_condition(client, "traffic")
+    state = demo_step(client, 3)
+    assert state["central_states"]["bus-302-1"]["speed"] == 9
+    assert state["demo_buses"]["bus-302-1"]["distance_m"] - original == pytest.approx(7.5)
+    demo_condition(client, "peak")
+    state = demo_step(client)
+    assert state["central_states"]["bus-302-1"]["occupancy"] == 40
+    demo_condition(client, "out_of_service")
+    state = demo_step(client)
+    assert state["central_states"]["bus-302-1"]["occupancy"] == 0
+    assert state["central_states"]["bus-302-1"]["bus_status"] == "out_of_service"
+    demo_condition(client, "normal")
+    from services.central import health
+    from services.data_simulation.generate_data import distance_metres
+    bus = health.simulation.demo.buses["bus-302-1"]
+    a, b = bus["stops"][bus["segment"]:bus["segment"] + 2]
+    bus["metres"] = max(0.0, distance_metres(a, b) - 20)
+    phases = [demo_step(client, 1)["demo_buses"]["bus-302-1"]["phase"] for _ in range(7)]
+    assert all(phase in phases for phase in ("arriving", "stopped", "boarding", "departing", "travelling"))
+    state = client.get("/health/simulation").json()
+    client.patch("/health/simulation/demo", json={"running": False})
+    distance = state["demo_buses"]["bus-302-1"]["distance_m"]
+    assert demo_step(client)["demo_buses"]["bus-302-1"]["distance_m"] == distance
+    client.patch("/health/simulation/demo", json={"running": True})
+    assert demo_step(client)["demo_buses"]["bus-302-1"]["distance_m"] > distance
+
+
+def test_demo_sensor_fault_invalid_reading_silence_and_recovery(demo_client):
+    client = demo_client
+    state = demo_step(client)
+    accepted = state["central_states"]["bus-302-1"]["sequence_number"]
+    demo_condition(client, "sensor_fault")
+    state = demo_step(client, 3)
+    bus = state["demo_buses"]["bus-302-1"]
+    assert bus["sensors"]["occupancy"] == "faulty" and bus["sensors"]["gps"] == "healthy"
+    assert bus["status"] == "degraded"
+    assert state["central_states"]["bus-302-1"]["sequence_number"] == accepted
+    demo_condition(client, "invalid_reading")
+    state = demo_step(client, 3)
+    assert state["demo_buses"]["bus-302-1"]["rejected_readings"] > 0
+    assert "unconfirmed" in state["demo_buses"]["bus-302-1"]["evidence"]
+    assert state["central_states"]["bus-302-1"]["sequence_number"] == accepted
+    for condition in ("sensors_stopped", "silence"):
+        demo_condition(client, condition)
+        state = demo_step(client, 7)
+        assert state["demo_buses"]["bus-302-1"]["status"] == "unavailable"
+    assert "cause unknown" in state["demo_buses"]["bus-302-1"]["evidence"]
+    demo_condition(client, "normal")
+    assert client.get("/health/simulation").json()["demo_buses"]["bus-302-1"]["status"] != "healthy"
+    state = demo_step(client, 3)
+    assert state["demo_buses"]["bus-302-1"]["status"] == "healthy"
+    assert state["central_states"]["bus-302-1"]["sequence_number"] > accepted
+
+
+def test_demo_transport_process_outage_retries_takeover_and_recovery(demo_client):
+    client = demo_client
+    demo_step(client)
+    demo_condition(client, "connection_loss")
+    state = demo_step(client, 7)
+    bus = state["demo_buses"]["bus-302-1"]
+    assert bus["status"] == "unavailable" and bus["delivery_pending"]
+    assert bus["local"]["sequence_number"] > state["central_states"]["bus-302-1"]["sequence_number"]
+    attempts = [e["time"] for e in state["events"] if e["action"] == "delivery_attempt" and e.get("bus_id") == "bus-302-1"]
+    assert all(b - a >= 2 for a, b in zip(attempts, attempts[1:]))
+    demo_condition(client, "process_failure")
+    distance = bus["distance_m"]
+    assert demo_step(client, 7)["demo_buses"]["bus-302-1"]["distance_m"] == distance
+    demo_condition(client, "normal")
+    demo_step(client, 3)
+    client.patch("/health/simulation/demo", json={"central_available": False})
+    state = demo_step(client, 3)
+    assert state["central_pending"] == 20
+    delivered = state["central_states"]["bus-302-1"]["sequence_number"]
+    client.post("/health/simulation/instances/edge-west-1/fail")
+    state = demo_step(client, 3)
+    assert state["ownership"]["bus-302-1"]["edge_id"] == "edge-west-2"
+    client.patch("/health/simulation/demo", json={"central_available": True})
+    client.post("/health/simulation/instances/edge-west-1/recover")
+    state = demo_step(client, 3)
+    assert state["central_pending"] == 0
+    assert state["central_states"]["bus-302-1"]["sequence_number"] > delivered
+    assert next(w for w in state["workers"] if w["edge_id"] == "edge-west-1")["state"] == "healthy"
+    client.patch("/health/simulation/demo", json={"central_available": False})
+    demo_step(client, 3)
+    demo_condition(client, "process_failure")
+    state = demo_step(client, 35)
+    delivered = state["central_states"]["bus-302-1"]["sequence_number"]
+    client.patch("/health/simulation/demo", json={"central_available": True})
+    state = demo_step(client, 3)
+    assert state["central_states"]["bus-302-1"]["sequence_number"] == delivered
+    assert any(e["action"] == "central_expired" for e in state["events"])
+    # A delayed payload from the former owner must not bypass central's fence.
+    from services.edge.main import EdgeClusterSimulation
+    cluster = EdgeClusterSimulation()
+    cluster.configure_demo(central_available=False)
+    cluster.generate("bus-302-1", 1)
+    cluster.advance(1)
+    cluster.fail("edge-west-1")
+    cluster.configure_demo(central_available=True)
+    result = cluster.advance(3)
+    assert "bus-302-1" not in result["central_states"]
+    assert any(e["action"] == "central_fenced" for e in result["events"])
+
+
+def test_demo_api_rejects_invalid_controls_and_preserves_other_region(demo_client):
+    client = demo_client
+    routes = client.get("/health/simulation/routes").json()
+    assert {route["region_id"] for route in routes} == {"west", "east"}
+    assert client.get("/health/simulation/routes/302/stops").json()[0]["direction_id"] == 0
+    assert client.get("/health/simulation/routes/unknown/stops").status_code == 404
+    for body in ({}, {"bus_id": "bus-302-1"}, {"bus_id": "unknown", "condition": "normal"},
+                 {"bus_id": "bus-302-1", "condition": "guess_crash"}, {"running": "yes"}):
+        assert client.patch("/health/simulation/demo", json=body).status_code == 422
+    demo_step(client)
+    demo_condition(client, "process_failure")
+    state = demo_step(client, 7)
+    assert state["demo_buses"]["bus-302-1"]["status"] == "unavailable"
+    assert state["demo_buses"]["bus-407-1"]["status"] == "healthy"
+    from shared.schema.bus_state import BusStateUpdate
+    for payload in state["central_states"].values():
+        BusStateUpdate.model_validate(payload, strict=True)
+
+
+def test_fleet_presets_generate_exact_valid_stream_counts(demo_client):
+    client = demo_client
+    for size in (5, 10, 25, 50):
+        assert client.post("/health/simulation/reset", json={"fleet_size": size}).status_code == 200
+        client.patch("/health/simulation/demo", json={"running": True})
+        state = demo_step(client)
+        ids = {bus["bus_id"] for bus in state["registered_buses"]}
+        assert len(ids) == size
+        assert set(state["central_states"]) == ids
+        assert set(state["demo_buses"]) == ids
+        assert all(bus["route_id"] in {"302", "407", "409", "900", "901"} for bus in state["registered_buses"])
+    for size in (0, 51, True):
+        assert client.post("/health/simulation/reset", json={"fleet_size": size}).status_code == 422
+        assert len(client.get("/health/simulation").json()["registered_buses"]) == 50
+
+
+def register_demo_bus(client, name):
+    return client.post("/health/simulation/buses", json={
+        "schema_version": "bus-config-v1", "bus_id": name, "route_id": "302", "capacity": 60, "direction_id": 0})
+
+
+def test_versioned_bus_registration_preserves_existing_streams_and_rejects_bad_config(demo_client):
+    client = demo_client
+    before = demo_step(client)
+    assert register_demo_bus(client, "bus-extra-1").status_code == 201
+    state = demo_step(client)
+    assert len(state["registered_buses"]) == 21
+    assert state["central_states"]["bus-extra-1"]["bus_status"] == "out_of_service"
+    assert state["central_states"]["bus-407-1"]["sequence_number"] > before["central_states"]["bus-407-1"]["sequence_number"]
+    assert register_demo_bus(client, "bus-extra-1").status_code == 422
+    base = dict(schema_version="bus-config-v1", bus_id="bad-bus", route_id="302")
+    for change in ({"schema_version": "v99"}, {"route_id": "unknown"}, {"capacity": 0},
+                   {"bus_id": "bad/id"}, {"direction_id": True}, {"sensors": ["new-sensor"]}):
+        assert client.post("/health/simulation/buses", json={**base, **change}).status_code == 422
+    assert len(client.get("/health/simulation").json()["registered_buses"]) == 21
+
+
+def test_scheduler_dispatch_and_changed_headway_appear_in_central_telemetry(demo_client):
+    client = demo_client
+    for name in ("reserve-1", "reserve-2"):
+        assert register_demo_bus(client, name).status_code == 201
+    demo_step(client)
+    assert client.post("/health/simulation/schedule", json={"route_id": "302", "action": "set_headway", "headway_seconds": 5.0}).status_code == 200
+    for name in ("reserve-1", "reserve-2"):
+        assert client.post("/health/simulation/schedule", json={"route_id": "302", "action": "dispatch", "bus_id": name}).status_code == 200
+    state = demo_step(client, 4)
+    assert state["central_states"]["reserve-1"]["speed"] == 0
+    state = demo_step(client, 1)
+    assert state["central_states"]["reserve-1"]["speed"] > 0
+    assert state["central_states"]["reserve-2"]["speed"] == 0
+    # Changing the interval also changes an already queued departure.
+    client.post("/health/simulation/schedule", json={"route_id": "302", "action": "set_headway", "headway_seconds": 2.0})
+    state = demo_step(client, 2)
+    assert state["central_states"]["reserve-2"]["speed"] > 0
+    assert state["schedules"]["302"]["pending"] == []
+    events = [e for e in state["events"] if e["action"] == "bus_dispatched"]
+    assert events[-1]["time"] - events[-2]["time"] == 2
+
+
+def test_scheduler_rejects_unavailable_wrong_route_and_duplicate_requests(demo_client):
+    client = demo_client
+    assert register_demo_bus(client, "reserve-1").status_code == 201
+    request = {"route_id": "302", "action": "dispatch", "bus_id": "reserve-1"}
+    for body in ({**request, "route_id": "407"}, {**request, "bus_id": "unknown"},
+                 {**request, "bus_id": "bus-302-1"}, {**request, "headway_seconds": 2.0},
+                 {"route_id": "302", "action": "set_headway", "headway_seconds": 0.0}):
+        assert client.post("/health/simulation/schedule", json=body).status_code == 422
+    assert client.post("/health/simulation/schedule", json=request).status_code == 200
+    assert client.post("/health/simulation/schedule", json=request).status_code == 422
+    assert client.get("/health/simulation").json()["schedules"]["302"]["pending"] == ["reserve-1"]

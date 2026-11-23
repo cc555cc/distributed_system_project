@@ -8,11 +8,6 @@ const eventsBox = document.getElementById("events");
 
 let loading = false;
 
-// Real edge status changes, detected by comparing /health/edges between refreshes.
-// Central has no event-history endpoint, so this only covers the time the page is open.
-let lastEdgeStatus = {};
-const statusChanges = [];
-
 function edgeKind(status) {
   if (status === "healthy") {
     return "good";
@@ -52,23 +47,6 @@ function crowdKind(crowding) {
   return "grey";
 }
 
-function recordStatusChanges(health) {
-  if (!health) {
-    return;
-  }
-  const now = new Date().toLocaleTimeString();
-  health.edges.forEach(function (edge) {
-    const before = lastEdgeStatus[edge.edge_id];
-    if (before !== undefined && before !== edge.status) {
-      statusChanges.push({ time: now, edge_id: edge.edge_id, from: before, to: edge.status });
-    }
-    lastEdgeStatus[edge.edge_id] = edge.status;
-  });
-  while (statusChanges.length > 20) {
-    statusChanges.shift();
-  }
-}
-
 function buildAlerts(buses, health) {
   const alerts = [];
 
@@ -85,6 +63,12 @@ function buildAlerts(buses, health) {
   });
 
   if (health) {
+    (health.buses || []).forEach(function (bus) {
+      if (bus.health && bus.health.status !== "healthy") {
+        alerts.push({ kind: ["unknown", "paused"].includes(bus.health.status) ? "grey" : "warn",
+          text: bus.bus_id + ": " + bus.health.status + " (" + (bus.health.reasons || []).join(", ") + ")" });
+      }
+    });
     health.edges.forEach(function (edge) {
       if (edge.status === "unavailable") {
         alerts.push({ kind: "bad", text: edge.edge_id + " is not sending heartbeats" });
@@ -161,10 +145,15 @@ function showAlerts(alerts) {
   alertsBox.innerHTML = html + "</ul>";
 }
 
-function showBuses(buses) {
+function showBuses(buses, health) {
   const rows = buses.map(function (bus) {
+    const report = health && (health.buses || []).find(function (item) { return item.bus_id === bus.id; });
+    const busHealth = report && report.health ? report.health.status : "unknown";
+    const sensors = report ? Object.entries(report.sensors || {}).map(function ([name, state]) {
+      return name + ": " + (state.health_status || state.status || "unknown");
+    }).join(", ") : "No sensor report";
     if (bus.data === null) {
-      return [bus.id, bus.route, "no data", "-", "-", "-", "-"];
+      return [bus.id, bus.route, "no data", "-", "-", "-", "-", busHealth, sensors];
     }
     const stale = isStale(bus.data);
     return [
@@ -174,10 +163,12 @@ function showBuses(buses) {
       Math.round(bus.data.speed) + " km/h",
       occupancyText(bus.data),
       tag(crowdingOf(bus.data), crowdKind(crowdingOf(bus.data))),
-      Math.round(ageSeconds(bus.data)) + " s ago"
+      Math.round(ageSeconds(bus.data)) + " s ago",
+      tag(busHealth, busHealth === "healthy" ? "good" : busHealth === "unknown" ? "grey" : "warn"),
+      sensors
     ];
   });
-  busesBox.innerHTML = tableHtml(["Bus", "Route", "Status", "Speed", "Passengers", "Crowding", "Last update"], rows);
+  busesBox.innerHTML = tableHtml(["Bus", "Route", "Status", "Speed", "Passengers", "Crowding", "Last update", "Health", "Sensors"], rows);
 }
 
 function showRoutes(routes, buses) {
@@ -230,7 +221,7 @@ function showEdges(health) {
       return bus.bus_id;
     });
     const heartbeat = edge.age_seconds === null || edge.age_seconds === undefined
-      ? "never"
+      ? (demoView() ? "simulation clock" : "never")
       : Math.round(edge.age_seconds) + " s ago";
     return [
       edge.edge_id,
@@ -245,17 +236,19 @@ function showEdges(health) {
   edgesBox.innerHTML = tableHtml(["Edge server", "Region", "Status", "Last heartbeat", "Workload", "Queue", "Buses"], rows);
 }
 
-function showEvents() {
-  if (statusChanges.length === 0) {
-    eventsBox.innerHTML = "<p>No edge status changes since this page was opened.</p>";
+function showEvents(events) {
+  if (events === null) {
+    eventsBox.textContent = "Central event history unavailable.";
     return;
   }
-  let html = "<ul class='plain'>";
-  statusChanges.slice(-10).reverse().forEach(function (change) {
-    html += "<li>" + change.time + ": " + change.edge_id + " " +
-      tag(change.from, edgeKind(change.from)) + " &rarr; " + tag(change.to, edgeKind(change.to)) + "</li>";
-  });
-  eventsBox.innerHTML = html + "</ul>";
+  eventsBox.innerHTML = events.length ? "<ul class='plain'>" + events.slice(0, 10).map(function (event) {
+    const description = event.action ? event.action + " " + (event.bus_id || event.edge_id || "") + " " +
+      (event.reason || event.condition || "") : event.type === "bus_reassigned"
+      ? event.bus_id + ": " + event.from_edge + " -> " + event.to_edge
+      : event.edge_id + ": " + event.from_status + " -> " + event.to_status;
+    const time = event.action ? event.time.toFixed(1) + " simulation s" : new Date(event.time).toLocaleTimeString();
+    return "<li>" + escapeHtml(time + ": " + description) + "</li>";
+  }).join("") + "</ul>" : "<p>No central events yet.</p>";
 }
 
 async function loadAll() {
@@ -275,12 +268,12 @@ async function loadAll() {
       problems.push("routes");
     }
 
-    const ids = [];
-    routes.forEach(function (route) {
-      for (let i = 1; i <= BUSES_PER_ROUTE; i++) {
-        ids.push({ id: "bus-" + route.route_id + "-" + i, route: route.route_id });
-      }
-    });
+    let ids = [];
+    try {
+      ids = await getFleetIds(routes);
+    } catch (error) {
+      problems.push("fleet");
+    }
 
     const results = await Promise.all(ids.map(function (item) {
       return getBus(item.id).catch(function () {
@@ -310,14 +303,28 @@ async function loadAll() {
       problems.push("edge health");
     }
 
-    recordStatusChanges(health);
+    try {
+      const simulation = await getSimulation();
+      document.getElementById("simulation-edges").innerHTML = simulationTable(simulation);
+      document.getElementById("simulation-clock").textContent = simulationClockText(simulation);
+    } catch (error) {
+      problems.push("simulation");
+      document.getElementById("simulation-edges").textContent = "Simulation unavailable.";
+      document.getElementById("simulation-clock").textContent = "Clock unavailable.";
+    }
+    let events = null;
+    try {
+      events = await getHealthEvents();
+    } catch (error) {
+      problems.push("event history");
+    }
     const alerts = buildAlerts(buses, health);
     showSummary(buses, health, alerts);
     showAlerts(alerts);
-    showBuses(buses);
+    showBuses(buses, health);
     showRoutes(routes, buses);
     showEdges(health);
-    showEvents();
+    showEvents(events);
 
     if (problems.length > 0) {
       updatedText.textContent = "Could not load: " + problems.join(", ") + ". Is the server running?";

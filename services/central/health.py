@@ -328,10 +328,39 @@ def get_events(limit: int = Query(default=50, ge=1, le=200)):
 # telemetry, start OS processes or alter the live ownership registry.
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from services.edge.main import EdgeClusterSimulation
 
 simulation = EdgeClusterSimulation()
+
+
+class SimulationClock:
+    """Use elapsed real seconds once in central, regardless of open browser tabs."""
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.last = clock()
+        self.running = True
+        self.speed = 1.0
+        self.lock = RLock()
+
+    def tick(self):
+        with self.lock:
+            now = self.clock()
+            elapsed = max(0.0, now - self.last)
+            self.last = now
+            remaining = elapsed * self.speed if self.running else 0.0
+            while remaining > 1e-9:
+                step = min(60.0, remaining)
+                simulation.advance(step)
+                remaining -= step
+
+    def snapshot(self):
+        return {"running": self.running, "speed": self.speed}
+
+
+simulation_clock = SimulationClock()
 
 
 class SimulationInput(BaseModel):
@@ -347,6 +376,33 @@ class SimulationStep(SimulationInput):
     seconds: float = Field(gt=0, le=60)
 
 
+class SimulationTiming(SimulationInput):
+    running: bool
+    speed: float = Field(gt=0, le=10)
+
+
+class SimulationDemo(SimulationInput):
+    running: bool | None = None
+    bus_id: str | None = None
+    condition: str | None = None
+    central_available: bool | None = None
+
+
+class BusConfiguration(SimulationInput):
+    schema_version: Literal["bus-config-v1"]
+    bus_id: str = Field(pattern=r"^[A-Za-z0-9_.:-]+$", min_length=1, max_length=64)
+    route_id: str = Field(min_length=1, max_length=64)
+    capacity: int = Field(default=50, ge=1, le=200)
+    direction_id: int = Field(default=0, ge=0, le=1)
+
+
+class DispatchRequest(SimulationInput):
+    action: Literal["dispatch", "set_headway"]
+    route_id: str = Field(min_length=1, max_length=64)
+    bus_id: str | None = None
+    headway_seconds: float | None = Field(default=None, ge=1, le=3600)
+
+
 class SimulationCharacteristics(SimulationInput):
     capacity: int | None = Field(default=None, ge=1, le=50)
     processing_ms: float | None = Field(default=None, ge=1, le=60000)
@@ -359,7 +415,60 @@ class SimulationPolicy(SimulationInput):
 
 @router.get("/simulation")
 def get_simulation():
-    return simulation.snapshot()
+    with simulation_clock.lock:
+        return {**simulation.snapshot(), "clock": simulation_clock.snapshot()}
+
+
+@router.get("/simulation/routes")
+def simulation_routes():
+    return load_network(simulation.network_path)["routes"]
+
+
+@router.get("/simulation/routes/{route_id}/stops")
+def simulation_route_stops(route_id: str):
+    from shared.schema.network import route_stops
+
+    network = load_network(simulation.network_path)
+    try:
+        return route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.patch("/simulation/clock")
+def configure_simulation_clock(body: SimulationTiming):
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_clock.running, simulation_clock.speed = body.running, body.speed
+        return get_simulation()
+
+
+@router.patch("/simulation/demo")
+def configure_demo(body: SimulationDemo):
+    if (body.bus_id is None) != (body.condition is None):
+        raise HTTPException(422, "Provide both bus_id and condition")
+    if not body.model_dump(exclude_none=True):
+        raise HTTPException(422, "Provide a demo setting")
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_action(simulation.configure_demo, **body.model_dump(exclude_none=True))
+        return get_simulation()
+
+
+@router.post("/simulation/buses", status_code=201)
+def register_simulated_bus(body: BusConfiguration):
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_action(simulation.register_bus, **body.model_dump(exclude={"schema_version"}))
+        return get_simulation()
+
+
+@router.post("/simulation/schedule")
+def schedule_simulated_service(body: DispatchRequest):
+    with simulation_clock.lock:
+        simulation_clock.tick()
+        simulation_action(simulation.schedule, **body.model_dump())
+        return get_simulation()
 
 
 @router.post("/simulation/requests")
@@ -409,13 +518,15 @@ class SimulationTransfer(SimulationInput):
 @router.post("/simulation/reset")
 def reset_simulation(body: SimulationReset | None = None):
     global simulation
-    simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
-    return simulation.snapshot()
+    with simulation_clock.lock:
+        simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
+        simulation_clock.last = simulation_clock.clock()
+        return get_simulation()
 
 
-def simulation_action(action, *args, **kwargs):
+def simulation_action(operation, *args, **kwargs):
     try:
-        return action(*args, **kwargs)
+        return operation(*args, **kwargs)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
