@@ -353,10 +353,12 @@ class SimulationClock:
             remaining = elapsed * self.speed if self.running else 0.0
             while remaining > 1e-9:
                 step = min(60.0, remaining)
-                simulation.advance(step)
-                if getattr(simulation, "demo_running", False):
-                    from services.central.scheduling import observe_demo
-                    observe_demo()
+                from services.central.simulation_scenarios import advance_live
+                if not advance_live(step):
+                    simulation.advance(step)
+                    if getattr(simulation, "demo_running", False):
+                        from services.central.scheduling import observe_demo
+                        observe_demo()
                 remaining -= step
 
     def snapshot(self):
@@ -477,7 +479,9 @@ def system_overview(source: Literal["demo", "live"] = "demo"):
                     next_stop_id=target, eta_minutes=round(estimate, 2) if estimate is not None else None))
         except psycopg.Error:
             pass  # health remains available; no database means no arrival predictions
+        from services.central.simulation_scenarios import live_status
         return dict(source=source, clock=clock, workers=workers, sensor_issues=issues, arrivals=arrivals,
+                    live_scenario=live_status() if source == "demo" else None,
                     assistance=state.get("assistance", {}) if source == "demo" else {},
                     bus_count=len(buses), healthy_buses=sum(b["health"]["status"] in {"healthy", "stationary"} for b in buses),
                     events=events)

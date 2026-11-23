@@ -15,6 +15,7 @@ document.getElementById("operator-login").addEventListener("submit", async funct
     const response = await fetch("/auth/login", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({username: document.getElementById("username").value, password: document.getElementById("password").value})});
     if (!response.ok) throw new Error("Invalid username or password.");
+    localStorage.setItem('transit-auth-revision',String(Date.now()));
     const next = new URLSearchParams(location.search).get("next");
     location.assign(["/control.html", "/health.html", "/operator.html", "/controls.html"].includes(next) ? next : "/control.html");
   } catch (error) { result.textContent = error.message; }

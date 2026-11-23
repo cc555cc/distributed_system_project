@@ -326,6 +326,11 @@ function showBus(item, bus) {
 }
 
 async function loadBuses(myNumber) {
+  try {
+    const snapshot = await getPublicSnapshot();
+    if (snapshot.clock) passengerFeed.textContent = 'Demonstration · ' + (snapshot.clock.running ? 'running' : 'paused') +
+      ' · ' + snapshot.clock.speed + '× · ' + snapshot.clock.seconds.toFixed(1) + ' simulated s';
+  } catch (error) { /* existing fleet error handling below reports unavailable data */ }
   let busIds;
   try {
     busIds = await getFleetIds(routes);

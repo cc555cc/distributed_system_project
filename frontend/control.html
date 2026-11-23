@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operator Control Panel</title>
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=16">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
@@ -20,8 +20,16 @@
 
   <main class="page">
     <h2>Control: change the simulation</h2>
+    <div class="card">
+      <p id="simulation-clock">Loading clock...</p>
+      <div id="clock-controls" class="control-row">
+        <label for="clock-speed">Simulation speed</label>
+        <select id="clock-speed"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select>
+        <button data-running="true">Run clock</button>
+        <button data-running="false">Pause clock</button>
+      </div><p id="live-case-status" role="status">Live demo</p></div>
     <div class="card" id="combined-cases"><h2>Combined failure tests</h2>
-      <p class="note">Run a situation, then inspect its measured steps. Each run resets the controlled demo and pauses at the final outcome. Pass means the expected response occurred.</p>
+      <p class="note">Each situation starts a fresh demo and unfolds in real time. Speed and pause apply to movement, balancing, failures and recovery. Health and Passenger update together.</p>
       <button id="run-all-cases">Run all situations</button><p id="case-feedback" role="status">Loading situations...</p>
       <div id="case-table" class="table-wrap"></div>
       <details id="case-evidence"><summary>Observed steps and verification</summary><div id="case-details" class="table-wrap">Run a situation to see evidence.</div></details>
@@ -33,7 +41,7 @@
         <button data-scenario="sensor_fault">Show sensor fault</button><button data-scenario="traffic">Show traffic delay</button>
         <button data-scenario="peak">Show peak demand</button><button data-scenario="scheduling">Show scheduling loop</button><button data-scenario="central_outage">Show central outage</button>
         <button data-scenario="recovery">Recover service</button><button data-scenario="security">Check access security</button>
-      </div><p id="scenario-feedback" role="status">Choose a demonstration. Health and Passenger use the same backend state.</p><div id="scenario-status" class="table-wrap"></div>
+      </div><p id="scenario-feedback" role="status">Choose a demonstration. Health and Passenger use the same running backend.</p><div id="scenario-status" class="table-wrap"></div>
     </div>
     <div class="card" id="system-overview" aria-live="polite">Loading system...</div>
     <p class="note"><a href="user.html">Passenger: arrivals</a> | <a href="health.html">Health: status</a> | Control: settings</p>
@@ -106,13 +114,7 @@
         <button id="load-send">Send burst</button><p id="load-feedback" role="status"></p>
       </div>
       <p class="note">Two active edges per region. Third starts after both queues stay at 70% for 6 s.</p>
-      <p id="simulation-clock">Loading clock...</p>
-      <div id="clock-controls" class="control-row">
-        <label for="clock-speed">Simulation speed</label>
-        <select id="clock-speed"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select>
-        <button data-running="true">Run clock</button>
-        <button data-running="false">Pause clock</button>
-      </div>
+
       <p class="note">Burst = requests, not additional buses. Slow processing makes queues visible.</p>
       <div class="table-wrap" id="edge-table">Loading...</div>
       <p id="message" class="message"></p>
@@ -157,8 +159,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=14"></script>
-  <script src="js/helpers.js?v=14"></script>
-  <script src="js/controls.js?v=14"></script>
+  <script src="js/api.js?v=16"></script>
+  <script src="js/helpers.js?v=16"></script>
+  <script src="js/controls.js?v=16"></script>
 </body>
 </html>

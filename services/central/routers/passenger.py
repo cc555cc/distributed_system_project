@@ -68,7 +68,8 @@ def snapshot(source: Source = "demo"):
             stamp = state.get("last_updated")
             clean["last_updated"] = stamp.isoformat() if hasattr(stamp, "isoformat") else metadata.get("source_timestamp")
         public.append(dict(bus_id=bus_id, route_id=definition["route_id"], region_id=definition["region_id"], state=clean))
-    return {"source": source, "buses": public}
+    from services.central import health
+    return {"source": source, "buses": public, "clock": dict(seconds=data["time"], **health.simulation_clock.snapshot()) if source == "demo" else None}
 
 
 @router.get("/arrivals")

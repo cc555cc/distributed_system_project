@@ -3,6 +3,25 @@ import pytest
 from services.central.simulation_scenarios import CASES
 
 
+@pytest.fixture(autouse=True)
+def clean_live_runner():
+    from services.central.simulation_scenarios import stop_live
+    stop_live()
+    yield
+    stop_live()
+
+
+def real_clock(health):
+    now = [0.0]
+    health.simulation_clock.clock = lambda: now[0]
+    health.simulation_clock.last = 0.0
+    def elapsed(seconds):
+        now[0] += seconds
+        health.simulation_clock.tick()
+    return elapsed
+
+
+
 @pytest.mark.parametrize("case",CASES,ids=[case["id"] for case in CASES])
 def test_combined_edge_sensor_and_central_situations(system,case):
     _, operator, health, _ = system
@@ -46,3 +65,88 @@ def test_run_all_cases_reports_every_observed_outcome_and_preserves_evidence(sys
     assert all(c["result"]["passed"] for c in catalogue)
     evidence = operator.get("/health/simulation/cases/busy_peer_failed").json()
     assert evidence["timeline"][0]["edges"] and evidence["checks"]
+
+
+def test_live_clock_drives_health_public_updates_and_continues_after_case(system):
+    public, operator, health, _ = system
+    elapsed = real_clock(health)
+    from services.central.simulation_scenarios import live_status
+    response = operator.post("/health/simulation/live-cases/central_outage/start")
+    assert response.status_code == 200 and response.json()["elapsed_seconds"] == 0
+    initial_time = health.simulation.time
+    for _ in range(3):
+        operator.get("/health/overview?source=demo")
+        public.get("/passenger/snapshot")
+    assert health.simulation.time == initial_time  # page polling never advances the clock
+    elapsed(3)
+    assert live_status()["phase"] == "observation" and not health.simulation.central_available
+    saved = health.simulation.central_states["bus-302-1"]["sequence_number"]
+    distance = health.simulation.demo.buses["bus-302-1"]["distance_m"]
+    elapsed(4)
+    overview = operator.get("/health/overview?source=demo").json()
+    assert overview["live_scenario"]["running"] and overview["clock"]["speed"] == 1
+    assert health.simulation.central_pending and health.simulation.demo.buses["bus-302-1"]["distance_m"] > distance
+    bus = next(b for b in public.get("/passenger/snapshot").json()["buses"] if b["bus_id"] == "bus-302-1")
+    assert bus["state"]["sequence_number"] == saved  # local movement is not invented central delivery
+    elapsed(6)
+    assert live_status()["status"] == "completed" and live_status()["passed"]
+    assert health.simulation_clock.running and not health.simulation.central_pending
+    sequence = health.simulation.central_states["bus-302-1"]["sequence_number"]
+    elapsed(2)
+    assert health.simulation.central_states["bus-302-1"]["sequence_number"] > sequence
+
+
+def test_live_speed_and_pause_apply_to_scenario_and_bus_movement(system):
+    _, operator, health, _ = system
+    elapsed = real_clock(health)
+    from services.central.simulation_scenarios import live_status
+    operator.post("/health/simulation/live-cases/busy_peer_failed/start")
+    elapsed(1)
+    assert live_status()["elapsed_seconds"] == 1
+    source_time = health.simulation.time
+    operator.patch("/health/simulation/clock",json={"running":False,"speed":1.0})
+    elapsed(10)
+    assert health.simulation.time == source_time and live_status()["elapsed_seconds"] == 1
+    operator.patch("/health/simulation/clock",json={"running":True,"speed":5.0})
+    elapsed(1)
+    assert live_status()["elapsed_seconds"] == 6
+    assert health.simulation.time == pytest.approx(source_time+5)
+    assert health.simulation.workers["edge-west-2"].state == "failed"
+
+
+def test_live_sensor_fault_changes_health_and_passenger_suggestions_together(system):
+    public, operator, health, _ = system
+    elapsed = real_clock(health)
+    operator.post("/health/simulation/live-cases/sensor_fault/start")
+    elapsed(3)
+    report = operator.get("/buses/bus-302-1/health?source=demo").json()
+    sensors = operator.get("/buses/bus-302-1/sensors?source=demo").json()
+    assert report["health"]["status"] == "degraded" and sensors["sensors"]["occupancy"]["health_status"] == "faulty"
+    assert sensors["sensors"]["gps"]["health_status"] == "healthy"
+    from shared.schema.network import load_network,route_stops
+    stop = route_stops(load_network(),"302",0)[-1]["stop_id"]
+    arrivals = public.get("/passenger/arrivals",params={"stop_id":stop,"region_id":"west"}).json()
+    assert all(bus["bus_id"] != "bus-302-1" for bus in arrivals["arrivals"])
+    elapsed(8)
+    assert operator.get("/buses/bus-302-1/health?source=demo").json()["health"]["status"] == "healthy"
+    assert any(bus["bus_id"] == "bus-302-1" for bus in public.get("/passenger/arrivals",params={"stop_id":stop,"region_id":"west"}).json()["arrivals"])
+
+
+def test_live_sequence_all_cases_and_manual_reset_do_not_fast_forward_or_leak_actions(system):
+    _, operator, health, _ = system
+    elapsed = real_clock(health)
+    from services.central.simulation_scenarios import live_status
+    start = operator.post("/health/simulation/live-cases/start").json()
+    assert start["running"] and start["queued"] == len(CASES)-1
+    assert not any(case["result"] for case in operator.get("/health/simulation/cases").json())
+    for _ in range(sum(c["seconds"]+3 for c in CASES)):
+        elapsed(1)
+    assert not live_status()["running"] and health.simulation_clock.running
+    assert all(case["result"]["passed"] for case in operator.get("/health/simulation/cases").json())
+    operator.post("/health/simulation/live-cases/standby_failure/start")
+    assert operator.post("/health/simulation/reset",json={"fleet_size":5,"active_buses":50}).status_code == 422
+    assert live_status()["running"]
+    operator.post("/health/simulation/scenarios/normal")
+    assert live_status()["status"] == "interrupted"
+    elapsed(20)
+    assert all(w.state != "failed" for w in health.simulation.workers.values())

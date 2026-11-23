@@ -159,6 +159,8 @@ async function loadWorkers() {
     const simulation = await getSimulation();
     edgeTable.innerHTML = simulationTable(simulation, true);
     document.getElementById("simulation-clock").textContent = simulationClockText(simulation);
+    if (document.activeElement !== document.getElementById('clock-speed')) document.getElementById('clock-speed').value = String(simulation.clock.speed);
+    await loadCombinedCases();
     await drawDemo(simulation);
     const demand = await getJson("/scheduling/status?source=demo");
     const selectedDemand = demand.routes.find(r => r.route_id === document.getElementById('demand-route').value);
@@ -313,12 +315,23 @@ document.getElementById('scenario-controls').addEventListener('click', async fun
 
 // The case table reads backend checks and per-second evidence; it never assumes a click passed.
 async function loadCombinedCases() {
-  const cases = await getJson('/health/simulation/cases');
-  document.getElementById('case-table').innerHTML = tableHtml(['Situation', 'Expected response', 'Result', 'Test'], cases.map(function (c) {
-    return [escapeHtml(c.title), escapeHtml(c.expected), c.result ? tag(c.result.passed ? 'PASS' : 'FAIL', c.result.passed ? 'good' : 'bad') : 'Not run',
-      '<button data-case="' + escapeHtml(c.id) + '" aria-label="Run ' + escapeHtml(c.title) + '">Run</button> ' +
-      '<button data-evidence="' + escapeHtml(c.id) + '" aria-label="Evidence for ' + escapeHtml(c.title) + '"' + (c.result ? '' : ' disabled') + '>Evidence</button>'];
+  const [cases, live] = await Promise.all([getJson('/health/simulation/cases'),getJson('/health/simulation/live-cases')]);
+  document.getElementById('live-case-status').textContent = live.running ?
+    (live.paused ? 'Paused · ' : '') + live.title + ' · ' + live.phase + ' · ' + live.elapsed_seconds + '/' + live.duration_seconds + ' simulated s' :
+    live.message || 'Live demo · no scripted situation running';
+  if (live.running) document.getElementById('case-feedback').textContent = (live.paused ? 'Paused. Resume the clock to continue. ' : 'Running live. ') + ' Watch Health, queues and passenger suggestions; evidence is recorded as it happens.';
+  else if (live.status === 'completed' || live.status === 'failed') document.getElementById('case-feedback').textContent =
+    cases.filter(c => c.result?.passed).length + '/' + cases.length + ' situations verified. Simulation continues; open Evidence for recorded checks.';
+  else if (live.status === 'interrupted') document.getElementById('case-feedback').textContent = live.message;
+  else document.getElementById('case-feedback').textContent = 'Choose a situation to watch live.';
+  const html = tableHtml(['Situation', 'Expected response', 'Result', 'Test'], cases.map(function (c) {
+    const state = c.running ? tag(live.paused ? 'PAUSED' : 'RUNNING','warn') : c.queued ? 'Queued' : c.result ? tag(c.result.status === 'interrupted' ? 'STOPPED' : c.result.passed ? 'PASS' : 'FAIL', c.result.status === 'interrupted' ? 'grey' : c.result.passed ? 'good' : 'bad') : 'Not run';
+    return [escapeHtml(c.title), escapeHtml(c.expected), state,
+      '<button data-case="' + escapeHtml(c.id) + '" aria-label="Run ' + escapeHtml(c.title) + '">Run live</button> ' +
+      '<button data-evidence="' + escapeHtml(c.id) + '" aria-label="Evidence for ' + escapeHtml(c.title) + '"' + (c.result || c.running ? '' : ' disabled') + '>Evidence</button>'];
   }));
+  const box = document.getElementById('case-table');
+  if (box.dataset.rendered !== html) { box.innerHTML = html; box.dataset.rendered = html; }
   return cases;
 }
 function showCaseEvidence(result) {
@@ -327,7 +340,7 @@ function showCaseEvidence(result) {
     return escapeHtml(w.state) + (w.emergency ? ' · takeover' : '') + '<br>' + w.queue + '/' + w.capacity + ' queued · ' + w.assigned.length + ' buses';
   };
   document.getElementById('case-details').innerHTML = '<h3>' + escapeHtml(result.case_id.replaceAll('_',' ')) + ' ' +
-    tag(result.passed ? 'PASS' : 'FAIL', result.passed ? 'good' : 'bad') + '</h3><ul>' + result.checks.map(function (c) {
+    tag(result.status === 'interrupted' ? 'STOPPED' : result.passed === null ? 'RUNNING' : result.passed ? 'PASS' : 'FAIL', result.status === 'interrupted' ? 'grey' : result.passed === null ? 'warn' : result.passed ? 'good' : 'bad') + '</h3><ul>' + result.checks.map(function (c) {
       return '<li>' + tag(c.passed ? 'PASS' : 'FAIL', c.passed ? 'good' : 'bad') + ' ' + escapeHtml(c.label) + '</li>';
     }).join('') + '</ul>' + tableHtml(['Time', 'Edge A', 'Edge B', 'Standby', 'Selected bus', 'Central ACKs', 'Central pending', 'Accepted journal'], result.timeline.map(function (f) {
       return [f.second + ' s', edge(f,'edge-west-1'), edge(f,'edge-west-2'), edge(f,'edge-west-3'), escapeHtml(f.bus_health) +
@@ -346,17 +359,23 @@ document.getElementById('combined-cases').addEventListener('click', async functi
     if (button.dataset.evidence) {
       showCaseEvidence(await getJson('/health/simulation/cases/' + button.dataset.evidence));
     } else {
-      status.textContent = 'Running accelerated simulation; measuring queues, ownership and delivery...';
-      const result = await sendPost('/health/simulation/cases' + (button.dataset.case ? '/' + button.dataset.case : ''));
+      status.textContent = 'Starting live situation...';
+      const result = await sendPost('/health/simulation/live-cases/' + (button.dataset.case ? button.dataset.case + '/start' : 'start'));
       chooseDemo();
-      const outcomes = Array.isArray(result) ? result : [result];
-      const passed = outcomes.filter(r => r.passed).length;
-      status.textContent = passed + '/' + outcomes.length + ' expected outcomes verified. Demo paused; open Health or start Normal service.';
-      showCaseEvidence(outcomes.find(r => !r.passed) || outcomes[outcomes.length-1]);
+      status.textContent = result.title + ' started. Watch it unfold in Health and Passenger.';
       await loadWorkers();
     }
   } catch (error) { status.textContent = error.message; }
   finally { controls.forEach(b => b.disabled = false); await loadCombinedCases(); }
 });
-loadCombinedCases().then(function () { document.getElementById('case-feedback').textContent = 'Choose a situation to verify.'; })
+loadCombinedCases().then(function () { if (!document.getElementById('case-feedback').textContent) document.getElementById('case-feedback').textContent = 'Choose a situation to watch live.'; })
   .catch(function (error) { document.getElementById('case-feedback').textContent = error.message; });
+
+// Changing speed applies immediately; polling never advances simulation time.
+document.getElementById('clock-speed').addEventListener('change',async function () {
+  try {
+    const current = await getSimulation();
+    await setSimulationClock(current.clock.running,Number(this.value));
+    await loadWorkers();
+  } catch (error) { showMessage(error.message,true); }
+});

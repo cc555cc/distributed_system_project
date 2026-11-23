@@ -8,23 +8,47 @@ function chooseDemo() {
   if (select) select.value = "demo";
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-  const logout = document.getElementById("operator-logout");
-  if (logout) logout.addEventListener("click", async function () {
-    await fetch(API_URL + "/auth/logout", {method: "POST"});
-    location.assign("/user.html");
+async function refreshAuthNavigation() {
+  try {
+    const response = await fetch(API_URL + '/auth/status', {cache:'no-store'});
+    const auth = await response.json();
+    const entry = document.getElementById('operator-entry');
+    if (entry) entry.hidden = auth.authenticated;
+    document.querySelectorAll('.operator-link').forEach(link => link.hidden = !auth.authenticated);
+    const logout = document.getElementById('operator-logout');
+    if (logout) logout.hidden = !auth.authenticated;
+    if (!auth.authenticated && ['/control.html','/controls.html','/health.html','/operator.html'].includes(location.pathname)) {
+      location.assign('/login.html?next=' + encodeURIComponent(location.pathname));
+    }
+  } catch (error) { console.error('Session status unavailable',error); }
+}
+document.addEventListener('DOMContentLoaded', function () {
+  refreshAuthNavigation();
+  if (document.getElementById('operator-entry')) setInterval(refreshAuthNavigation,3000);
+  const logout = document.getElementById('operator-logout');
+  if (logout) logout.addEventListener('click', async function () {
+    try {
+      const response = await fetch(API_URL + '/auth/logout', {method:'POST'});
+      if (!response.ok) throw new Error('Sign-out failed');
+      localStorage.setItem('transit-auth-revision',String(Date.now()));
+      location.assign('/user.html');
+    } catch (error) { logout.textContent = 'Retry sign out'; }
   });
-  const select = document.getElementById("data-source");
+  const select = document.getElementById('data-source');
   if (!select) return;
-  select.value = demoView() ? "demo" : "live";
-  select.addEventListener("change", function () {
-    localStorage.setItem("transit-data-source", select.value);
+  select.value = demoView() ? 'demo' : 'live';
+  select.addEventListener('change',function () {
+    localStorage.setItem('transit-data-source',select.value);
     location.reload();
   });
 });
-window.addEventListener("storage", function (event) {
-  if (event.key === "transit-data-source") location.reload();
+window.addEventListener('storage',function (event) {
+  if (event.key === 'transit-data-source') location.reload();
+  if (event.key === 'transit-auth-revision') refreshAuthNavigation();
 });
+
+window.addEventListener('focus',refreshAuthNavigation);
+document.addEventListener('visibilitychange',function () { if (!document.hidden) refreshAuthNavigation(); });
 
 let simulationRead = null;
 let simulationReadAt = 0;

@@ -72,6 +72,12 @@ The excluded report/presentation/contribution tickets are not restored by this t
 | Central delivery outage | Bounded latest-state pending delivery retries after restoration |
 | All edges and replicas lost | Last-known central data remains; recovery without replicas is rejected |
 
-Cases use accelerated simulated seconds and pause the final demo for inspection. PASS means the expected result occurred, including deliberate unavailability in the total-loss case. It does not mean that all nodes are healthy. Evidence includes per-second queues, assignments, sensor status, accepted journal and central pending counts. Normal service restarts the demo afterward.
+Deterministic verification uses accelerated simulated seconds and pauses its final observation. Interactive Run live uses the shared elapsed-time clock and keeps the demo moving afterward. PASS means the expected result occurred, including deliberate unavailability in the total-loss case. It does not mean that all nodes are healthy. Evidence includes per-second queues, assignments, sensor status, accepted journal and central pending counts. Normal service restarts the demo afterward.
 
 Emergency takeover is distinct from normal load assistance: a failed owner plus a busy/full peer can activate standby immediately. The ordinary two-primary 70% / 6-second / one-batch rule remains. Healthy-peer balancing accounts for waiting time and processing capacity rather than equal bus counts alone. Recovery rebuilds accepted journal entries when their owner returns before a peer has room.
+
+## Real-time playback checks
+
+Interactive cases start through `/health/simulation/live-cases/<id>/start`, or `/health/simulation/live-cases/start` for the sequence. These endpoints return immediately. A three-source-second healthy baseline precedes injection. Only central's monotonic elapsed-time clock advances phases; polling Health or Passenger does not. Pause freezes both movement and scenario progress. Speed multiplies movement, queue processing, heartbeat thresholds and recovery timing together.
+
+The four live-clock tests in `simulation_test.py` inject real elapsed time without sleeping: they check no fast-forward on GET, continued movement after completion, pause/5x speed, sensor-to-health-to-passenger consistency, queued playback and interruption on manual reset. Health and Passenger expose the same clock. Authenticated operators see Control/Health/Sign out on Passenger; unauthenticated passengers see Operator login and retain public transit access.

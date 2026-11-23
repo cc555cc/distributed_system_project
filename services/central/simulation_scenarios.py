@@ -1,8 +1,8 @@
 """Repeatable combined failure cases. Runtime evidence and pytest use the same setup.
 
-Each run uses accelerated source time, real edge processing and an isolated demo
-cluster. No OS worker or live MQTT data is changed. The final demo is left paused
-so the operator can inspect Health and the observed timeline.
+Interactive cases run on the shared elapsed-time clock; verification can also
+replay the same phases deterministically. No OS worker or live MQTT data changes.
+Health, passenger recommendations and evidence read the same running cluster.
 """
 from copy import deepcopy
 from services.edge.main import EdgeClusterSimulation
@@ -19,6 +19,10 @@ CASES = [
     dict(id="total_outage", title="Every edge and replica lost", expected="No invented recovery; last-known data is retained as unavailable", seconds=8),
 ]
 results = {}
+_live = None
+_live_queue = []
+_live_fraction = 0.0
+_last_live = None
 BUS = "bus-302-1"
 A, B, C = "edge-west-1", "edge-west-2", "edge-west-3"
 
@@ -148,6 +152,7 @@ def run_case(case_id):
     definition = next((case for case in CASES if case["id"] == case_id), None)
     if definition is None: raise ValueError("Unknown simulation case")
     with health.simulation_clock.lock:
+        stop_live("Replaced by deterministic verification")
         cluster = EdgeClusterSimulation(fleet_size=20)
         health.simulation = cluster
         from services.central import scheduling
@@ -177,12 +182,128 @@ def run_case(case_id):
 
 
 def catalogue():
-    # Poll small summaries; detailed per-second evidence is loaded only on request.
-    return [dict(case, result=dict(passed=results[case["id"]]["passed"], checks=results[case["id"]]["checks"])
+    # Poll small summaries; evidence remains available while a case is still running.
+    status = live_status()
+    return [dict(case, running=status.get("running",False) and status.get("case_id") == case["id"],
+                 queued=case["id"] in _live_queue,
+                 result=dict(passed=results[case["id"]]["passed"], checks=results[case["id"]]["checks"],status=results[case["id"]].get("status","completed"))
                  if case["id"] in results else None) for case in CASES]
 
 
 def evidence(case_id):
+    if _live and _live["definition"]["id"] == case_id:
+        return dict(case_id=case_id,passed=None,checks=[],timeline=deepcopy(_live["timeline"]),status="running")
     if case_id not in results:
         raise ValueError("Run this case first")
     return deepcopy(results[case_id])
+
+
+# Interactive cases advance only through SimulationClock.tick(), never through page polling.
+def stop_live(reason="Stopped by operator"):
+    global _live, _live_queue, _live_fraction, _last_live
+    if _live:
+        case_id = _live["definition"]["id"]
+        _last_live = dict(running=False,status="interrupted",case_id=case_id,title=_live["definition"]["title"],message=reason)
+        results[case_id] = dict(case_id=case_id,passed=False,status="interrupted",checks=[dict(label=reason,passed=False)],
+                               timeline=deepcopy(_live["timeline"]),baseline=_live["baseline"])
+    _live, _live_queue, _live_fraction = None, [], 0.0
+
+
+def _start_live_case(case_id):
+    global _live, _last_live
+    from services.central import health, scheduling
+    definition = next(case for case in CASES if case["id"] == case_id)
+    cluster = EdgeClusterSimulation(fleet_size=20)
+    cluster.configure_demo(running=True)
+    cluster.advance(2)  # establish replicas and initial telemetry before the visible baseline
+    health.simulation = cluster
+    scheduling.demo_scheduler = scheduling.DemandScheduler()
+    _live = dict(definition=definition,cluster=cluster,baseline={},timeline=[],warmup=0,second=0)
+    _last_live = None
+    results.pop(case_id,None)
+
+
+def start_live(case_id=None):
+    """Start one or all cases; return immediately so their transitions stay visible."""
+    global _live_queue
+    from services.central import health
+    if case_id is not None and case_id not in {case["id"] for case in CASES}:
+        raise ValueError("Unknown simulation case")
+    with health.simulation_clock.lock:
+        stop_live("Replaced by another live case")
+        if case_id is None:
+            results.clear()
+            names = [case["id"] for case in CASES]
+        else:
+            names = [case_id]
+        _start_live_case(names[0])
+        _live_queue = names[1:]
+        health.simulation_clock.running = True
+        health.simulation_clock.last = health.simulation_clock.clock()
+        return live_status()
+
+
+def live_status():
+    from services.central import health
+    if _live and health.simulation is not _live["cluster"]:
+        stop_live("Interrupted by a simulation reset")
+    if not _live:
+        return dict(_last_live or dict(running=False,status="idle"))
+    definition = _live["definition"]
+    return dict(running=True,status="running",case_id=definition["id"],title=definition["title"],
+                phase="baseline" if _live["warmup"] < 3 else "observation",paused=not health.simulation_clock.running,
+                elapsed_seconds=_live["warmup"]+_live["second"],duration_seconds=3+definition["seconds"],
+                observation_seconds=_live["second"],queued=len(_live_queue))
+
+
+def advance_live(seconds):
+    """Consume elapsed source time; pause/speed are controlled by the shared real-time clock."""
+    global _live, _live_fraction, _last_live
+    from services.central import health, scheduling
+    if not live_status()["running"]:
+        return False
+    _live_fraction += seconds
+    while _live_fraction + 1e-9 >= 1:
+        _live_fraction = max(0.0,_live_fraction-1)
+        if _live is None:
+            health.simulation.advance(1)
+            scheduling.observe_demo()
+            continue
+        session = _live
+        cluster, definition = session["cluster"], session["definition"]
+        try:
+            if session["warmup"] < 3:
+                cluster.advance(1)
+                scheduling.observe_demo()
+                session["warmup"] += 1
+                if session["warmup"] == 3:
+                    session["baseline"] = {bus:state["sequence_number"] for bus,state in cluster.central_states.items()}
+                    _prepare(cluster,definition["id"])
+                    session["timeline"].append(_frame(cluster,0))
+                continue
+            second = session["second"]+1
+            _actions(cluster,definition["id"],second)
+            cluster.advance(1)
+            scheduling.observe_demo()
+            session["second"] = second
+            session["timeline"].append(_frame(cluster,second))
+            if second < definition["seconds"]:
+                continue
+            checks = _checks(cluster,definition["id"],session["timeline"],session["baseline"])
+            outcome = dict(case_id=definition["id"],passed=all(c["passed"] for c in checks),checks=checks,
+                           timeline=deepcopy(session["timeline"]),baseline=session["baseline"],status="completed",
+                           model="elapsed real time multiplied by selected simulation speed")
+        except (ValueError,RuntimeError,KeyError) as error:
+            outcome = dict(case_id=definition["id"],passed=False,status="failed",checks=[dict(label=str(error),passed=False)],
+                           timeline=deepcopy(session["timeline"]),baseline=session["baseline"])
+        results[definition["id"]] = outcome
+        _last_live = dict(running=False,status=outcome["status"],case_id=definition["id"],title=definition["title"],
+                          passed=outcome["passed"],message="Observed checks complete; the simulation continues.")
+        _live = None
+        if _live_queue:
+            _start_live_case(_live_queue.pop(0))
+    if _live is None and _live_fraction > 0:
+        health.simulation.advance(_live_fraction)
+        scheduling.observe_demo()
+        _live_fraction = 0.0
+    return True

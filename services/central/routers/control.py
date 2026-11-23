@@ -127,6 +127,10 @@ def submit_simulation_requests(body: SimulationRequests):
 
 @router.post("/simulation/advance")
 def advance_simulation(body: SimulationStep):
+    from services.central.simulation_scenarios import advance_live
+    with health.simulation_clock.lock:
+        if advance_live(body.seconds):
+            return get_simulation()
     result = health.simulation.advance(body.seconds)
     if getattr(health.simulation, "demo_running", False):
         from services.central.scheduling import observe_demo
@@ -172,6 +176,8 @@ def reset_simulation(body: SimulationReset | None = None):
     with health.simulation_clock.lock:
         if body and body.active_buses is not None and body.active_buses > (body.fleet_size or 20):
             raise HTTPException(422, "Active buses cannot exceed the fleet limit")
+        from services.central.simulation_scenarios import stop_live
+        stop_live("Interrupted by a simulation reset")
         health.simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
         if body:
             health.simulation.fleet_limit = body.fleet_size or 50
@@ -188,7 +194,13 @@ def reset_simulation(body: SimulationReset | None = None):
 
 def simulation_action(operation, *args, **kwargs):
     try:
-        return operation(*args, **kwargs)
+        with health.simulation_clock.lock:
+            result = operation(*args, **kwargs)
+            # An explicit manual mutation takes over from the scripted case. Clock controls do not use this path.
+            if getattr(operation,"__self__",None) is health.simulation:
+                from services.central.simulation_scenarios import stop_live
+                stop_live("Interrupted by a manual simulation command")
+            return result
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -260,6 +272,8 @@ def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault"
     """Named use cases call the same controls as the manual inputs; no separate fake state."""
     with health.simulation_clock.lock:
         body = body or Scenario()
+        from services.central.simulation_scenarios import stop_live
+        stop_live("Interrupted by a manual demonstration action")
         if name in {"normal", "capacity", "balancing", "scheduling"}:
             reset_simulation(SimulationReset(fleet_size=50, active_buses=50 if name == "capacity" else 20, processing_ms=100.0))
             health.simulation.configure_demo(running=True)
@@ -330,3 +344,22 @@ def simulation_case_evidence(case_id: str):
     from services.central import simulation_scenarios
     with health.simulation_clock.lock:
         return simulation_action(simulation_scenarios.evidence, case_id)
+
+
+@router.get("/simulation/live-cases")
+def live_case_status():
+    from services.central.simulation_scenarios import live_status
+    with health.simulation_clock.lock:
+        return live_status()
+
+
+@router.post("/simulation/live-cases/start")
+def start_all_live_cases():
+    from services.central.simulation_scenarios import start_live
+    return simulation_action(start_live)
+
+
+@router.post("/simulation/live-cases/{case_id}/start")
+def start_live_case(case_id: str):
+    from services.central.simulation_scenarios import start_live
+    return simulation_action(start_live,case_id)

@@ -56,6 +56,12 @@ Click the Passenger map or **Try a nearby location** for pickup recommendations 
 
 ## Clickable failure-case table
 
-Control starts with **Combined failure tests**. Each row has **Run** and **Evidence**; **Run all situations** verifies all nine cases. These checks use accelerated source time and leave the controlled demo paused at its final observation so Health can be inspected. Expand the evidence for actual per-second queues, owners, sensors and delivery counts. A pass is based on those observations, never just a successful command response. Start **Normal service** to resume ordinary movement.
+Control starts with **Combined failure tests**. Each row has **Run** and **Evidence**; **Run all situations** verifies all nine cases. Run live starts immediately and follows the central elapsed-time clock. Health and Passenger update every second while the situation unfolds; the demo keeps moving after its checks complete. Expand the evidence for actual per-second queues, owners, sensors and delivery counts. A pass is based on those observations, never just a successful command response. Use **Normal service** to reset the demo, or the visible clock controls to pause/resume and change speed.
 
 The total-loss case is expected to remain unavailable: cached central positions are last-known data, and lost replica sequence floors are not invented. The table marks that correct fail-closed response as PASS.
+
+## Shared real-time clock and navigation
+
+Speed and pause are visible above the scenario table. One second at 1x advances one source second; 5x advances five. A three-second normal baseline precedes each live failure injection. Run all queues the situations on this same clock. Completed evidence is retained while the fleet continues moving. Manual scenario changes interrupt the prior script instead of letting old failure actions leak into the new scene.
+
+Health shows current speed, source time and live case progress with its queues and sensor reports. Passenger shows that same clock and refreshes arrivals/recommendations from current central state. Its navigation offers Operator login when signed out, and Control/Health/Sign out for an authenticated operator. Login/logout changes propagate to the other open pages; passenger data remains public.
