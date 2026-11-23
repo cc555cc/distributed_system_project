@@ -478,6 +478,7 @@ def system_overview(source: Literal["demo", "live"] = "demo"):
         except psycopg.Error:
             pass  # health remains available; no database means no arrival predictions
         return dict(source=source, clock=clock, workers=workers, sensor_issues=issues, arrivals=arrivals,
+                    assistance=state.get("assistance", {}) if source == "demo" else {},
                     bus_count=len(buses), healthy_buses=sum(b["health"]["status"] in {"healthy", "stationary"} for b in buses),
                     events=events)
 

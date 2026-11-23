@@ -34,7 +34,7 @@ Open js/config.js.
 5. Apply traffic, sensor, connection or edge failure conditions. Compare passenger availability with Health; restore the component and verify current readings return. Unknown causes remain unknown rather than being labelled crashes.
 6. Sign out. Passenger tracking remains public; operator pages redirect to login and management APIs reject unauthenticated requests.
 
-Journeys support direct routes and one transfer between shared stop IDs in the selected area. Times use ordered stop geometry, current speed, demo traffic and stop dwell; they are estimates rather than road-navigation predictions. Service changes here control the demonstration. Native live MQTT dispatch, durable shared login sessions and controlled scheduling-effect evaluation remain separate work.
+Journeys support direct routes and one transfer between shared stop IDs in the selected area. Times use ordered stop geometry, current speed, demo traffic and stop dwell; they are estimates rather than road-navigation predictions. Service changes here control the demonstration. Native live MQTT dispatch and durable shared login sessions remain separate work. Matched scheduling-effect evaluation is covered by the central tests.
 
 ## Bus Health
 
@@ -44,6 +44,12 @@ Open `health.html` or use **Bus Health** in the navigation. Select the live or c
 
 Set **Fleet limit = 50** and **Active buses = 20** to retain 30 reserve buses. Reserves do not move or publish sensor requests until dispatched. The fleet limit caps registration; it is not queue occupancy. Setting both values to 50 starts 50 streams. With the demonstration's 100 ms processing setting, east receives more traffic and activates its third edge after sustained backlog.
 
-For a short balancing demonstration, start 20 buses, select West, processing **250 ms**, and send **100 requests**. Watch the queue bars reach the 80% threshold, the third edge activate after 6 simulation seconds, assignments transfer, queues drain and safe scale-down follow. Slower processing can exceed even three workers' capacity; overload remains visible instead of being reported as fixed.
+For a short balancing demonstration, start 20 buses, select West, processing **250 ms**, and send **100 requests**. Watch the queue bars reach the 70% threshold, the third edge activate after 6 simulation seconds, assignments transfer, the accepted batch drains and ownership returns before standby. Slower processing can exceed even three workers' capacity; overload remains visible instead of being reported as fixed.
 
 Health and Control refresh their shared overview every second. Sensor faults appear in **Sensor issues - all buses**, even if a different bus is selected. The passenger page removes unreliable predictions. Restore the bus to watch healthy readings return. Use **Custom %** to set route occupancy, such as 50%, 80% or 100%; these values enter normal telemetry before reaching passenger recommendations.
+
+## Named use cases
+
+Use the buttons at the top of Control instead of entering request counts. **Show load balancing** demonstrates one batch at a 70% crossing, then standby; it rearms only after both primary queues fall below 70%. **Show scheduling loop** resets the demo, applies peak demand and enables the real demo scheduler. The result table shows the decision, departure interval and central confirmation. **Check access security** verifies actual unauthenticated responses without signing out.
+
+Click the Passenger map or **Try a nearby location** for pickup recommendations at real nearby stops. Walking time is estimated using straight-line distance; buses that arrive before walking plus a boarding margin are excluded. A no-service result is valid and never filled with guessed buses.

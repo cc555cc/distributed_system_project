@@ -92,3 +92,24 @@ def journeys(origin: str, destination: str, region_id: str | None = None,
 def recommendations(origin: str, destination: str | None = None, region_id: str | None = None,
                     party_size: int = Query(1, ge=1, le=20), source: Source = "demo"):
     return journeys(origin, destination, region_id, party_size, source) if destination else stop_arrivals(origin, region_id, party_size, source)
+
+
+@router.get("/nearby")
+def nearby(lat: float = Query(ge=-90, le=90), lon: float = Query(ge=-180, le=180),
+           region_id: str | None = None, party_size: int = Query(1, ge=1, le=20), source: Source = "demo"):
+    from services.central.eta import distance_km
+    network_stops = stops(region_id, source)
+    data = context(source)
+    closest = sorted(network_stops, key=lambda stop: distance_km(lat, lon, stop["lat"], stop["lon"]))[:5]
+    choices = []
+    for stop in closest:
+        walking_km = distance_km(lat, lon, stop["lat"], stop["lon"])
+        for bus in arrivals(data, stop["stop_id"], region_id):
+            # Allow walking at 4.5 km/h plus a boarding margin. Do not suggest a bus already missed.
+            walking_minutes = walking_km / 4.5 * 60
+            if walking_minutes + .5 > bus["eta_minutes"]:
+                continue
+            choices.append(dict(bus, stop_id=stop["stop_id"], stop_name=stop["name"],
+                walking_metres=round(walking_km*1000), walking_minutes=round(walking_minutes, 2)))
+    return dict(nearest_stops=[dict(stop_id=s["stop_id"], name=s["name"], distance_metres=round(distance_km(lat,lon,s["lat"],s["lon"])*1000)) for s in closest],
+                **rank_options(choices, party_size), message="No bus can currently be reached at the nearest five stops" if not choices else "Nearby stop options")

@@ -197,6 +197,7 @@ class DemoFleet:
         self.route_demand = {}
         self.route_occupancy = {}
         self.waiting = {}
+        self.waiting_passenger_seconds, self.boarded_passengers = {}, {}
         for bus in definitions:
             self.add_bus(bus, now)
 
@@ -230,6 +231,8 @@ class DemoFleet:
         from shared.schema.network import route_stops
         stops = route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
         rng = random.Random(zlib.crc32((route_id + profile).encode()))
+        self.waiting_passenger_seconds[route_id] = 0.0
+        self.boarded_passengers[route_id] = 0
         self.route_demand[route_id] = profile
         self.waiting[route_id] = {stop["stop_id"]: rng.randint(20, 50) if profile == "peak" else rng.randint(0, 5) for stop in stops}
 
@@ -253,6 +256,7 @@ class DemoFleet:
                 boarded = min(queue, capacity - bus["passengers"])
                 bus["passengers"] += boarded
                 self.waiting[route][stop_id] = max(0, queue - boarded)
+                self.boarded_passengers[route] += boarded
         return bus["passengers"]
 
     def configure(self, bus_id, condition, now):
@@ -328,6 +332,9 @@ class DemoFleet:
         return source
 
     def step(self, seconds, now, submit):
+        # Queue area is measured in passenger-seconds, not a guessed per-person wait.
+        for route, stops in self.waiting.items():
+            self.waiting_passenger_seconds[route] += sum(stops.values()) * seconds
         for bus_id, bus in self.buses.items():
             if bus.get("reserved"):
                 continue  # registered reserve: no movement or sensor requests until dispatch

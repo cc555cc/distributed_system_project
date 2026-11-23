@@ -53,6 +53,7 @@ class DemandScheduler:
                 self.changed_at.clear()
                 self.automatic = False
                 self.generation = context["generation"]
+                self.last_scan = -10  # a new clock must not wait for the previous scenario's elapsed time
                 from services.central.eta import ArrivalEvaluation
                 self.evaluation = ArrivalEvaluation()
             now = context["time"]
@@ -153,6 +154,7 @@ class DemandScheduler:
                          "headway_seconds": context.get("snapshot", {}).get("schedules", {}).get(metric["route_id"], {}).get("headway_seconds", 10),
                          "recommendation": self.decisions.get(metric["route_id"])} for metric in self.metrics(context)],
                 history=history, eta_evaluation=self.evaluation.view(),
+                demand_measurements=context.get("snapshot", {}).get("demand_measurements", {}),
                 comparisons={route: {profile: dict(samples=len(samples),
                     occupancy_percent=sum(sample["occupancy_percent"] for sample in samples)/len(samples),
                     average_speed_kmh=sum(sample["average_speed_kmh"] for sample in samples)/len(samples),

@@ -161,6 +161,13 @@ async function loadWorkers() {
     document.getElementById("simulation-clock").textContent = simulationClockText(simulation);
     await drawDemo(simulation);
     const demand = await getJson("/scheduling/status?source=demo");
+    const selectedDemand = demand.routes.find(r => r.route_id === document.getElementById('demand-route').value);
+    const latest = demand.history.filter(h => h.route_id === selectedDemand?.route_id).slice(-1)[0];
+    document.getElementById('scenario-status').innerHTML = selectedDemand ? tableHtml(['Route', 'Occupancy', 'Interval', 'Decision', 'Result'], [[
+      escapeHtml(selectedDemand.route_id), selectedDemand.occupancy_percent === null ? 'Waiting for readings' : Math.round(selectedDemand.occupancy_percent) + '%',
+      selectedDemand.headway_seconds + ' s', selectedDemand.recommendation ? escapeHtml(selectedDemand.recommendation.action.replaceAll('_',' ') + ' / ' + selectedDemand.recommendation.status) : selectedDemand.samples + '/3 samples',
+      latest ? escapeHtml(latest.execution) : 'No dispatch yet'
+    ]]) : '';
     document.getElementById("demand-status").innerHTML = tableHtml(["Route", "Occupancy", "Waiting", "Samples", "Interval", "Recommendation", "Action"],
       demand.routes.map(function (route) {
         const decision = route.recommendation;
@@ -274,4 +281,31 @@ document.getElementById('load-send').addEventListener('click', async function ()
     chooseDemo(); feedback.textContent = r.accepted + ' accepted | ' + r.rejected + ' backpressured | watch third edge';
     await loadWorkers();
   } catch (error) { feedback.textContent = error.message; }
+});
+
+// Named use cases call existing backend controls, so every page sees the same experiment.
+document.getElementById('scenario-controls').addEventListener('click', async function (event) {
+  const button = event.target.closest('button[data-scenario]');
+  if (!button) return;
+  const output = document.getElementById('scenario-feedback');
+  const actions = document.querySelectorAll('#scenario-controls button');
+  actions.forEach(b => b.disabled = true);
+  output.textContent = 'Applying ' + button.textContent.toLowerCase() + '...';
+  try {
+    if (button.dataset.scenario === 'security') {
+      // Deliberately omit the session; this proves access is enforced on the backend.
+      const responses = await Promise.all([
+        fetch('/user.html', {credentials:'omit'}), fetch('/health/overview', {credentials:'omit'}),
+        fetch('/health/simulation/workload', {method:'POST', credentials:'omit', headers:{'Content-Type':'application/json'}, body:JSON.stringify({region_id:'west',count:1})})
+      ]);
+      output.textContent = responses[0].status === 200 && responses[1].status === 401 && responses[2].status === 401 ?
+        'PASS: passenger public; health and commands reject unauthenticated access.' : 'Access check failed: ' + responses.map(r => r.status).join('/');
+    } else {
+      const payload = ['normal','capacity','balancing','scheduling'].includes(button.dataset.scenario) ? {} : {bus_id:demoBus.value || undefined};
+      const result = await sendPost('/health/simulation/scenarios/' + button.dataset.scenario, payload);
+      chooseDemo(); output.textContent = result.message;
+      await loadWorkers();
+    }
+  } catch (error) { output.textContent = error.message; }
+  finally { actions.forEach(b => b.disabled = false); }
 });

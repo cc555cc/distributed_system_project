@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operator Control Panel</title>
-  <link rel="stylesheet" href="css/style.css?v=11">
+  <link rel="stylesheet" href="css/style.css?v=13">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
@@ -20,10 +20,20 @@
 
   <main class="page">
     <h2>Control: change the simulation</h2>
+    <div class="card" id="scenario-controls"><h2>Demonstrate a feature</h2>
+      <div class="scenario-buttons">
+        <button data-scenario="normal">Normal service</button><button data-scenario="capacity">50 active buses</button>
+        <button data-scenario="balancing">Show load balancing</button><button data-scenario="failover">Show edge takeover</button>
+        <button data-scenario="sensor_fault">Show sensor fault</button><button data-scenario="traffic">Show traffic delay</button>
+        <button data-scenario="peak">Show peak demand</button><button data-scenario="scheduling">Show scheduling loop</button><button data-scenario="central_outage">Show central outage</button>
+        <button data-scenario="recovery">Recover service</button><button data-scenario="security">Check access security</button>
+      </div><p id="scenario-feedback" role="status">Choose a demonstration. Health and Passenger use the same backend state.</p><div id="scenario-status" class="table-wrap"></div>
+    </div>
     <div class="card" id="system-overview" aria-live="polite">Loading system...</div>
     <p class="note"><a href="user.html">Passenger: arrivals</a> | <a href="health.html">Health: status</a> | Control: settings</p>
     <label for="data-source">Map and dashboard feed</label>
     <select id="data-source"><option value="live">Live MQTT</option><option value="demo">Controlled demonstration</option></select>
+    <details><summary>Manual settings: demand, fleet, failures and requests</summary>
     <div class="card" id="demand-controls"><h2>Passenger demand & scheduling</h2>
       <div class="control-row"><label for="demand-route">Route</label><select id="demand-route"></select>
         <label for="demand-profile">Demand profile</label><select id="demand-profile"><option value="normal">Normal</option><option value="peak">Peak</option><option value="off_peak">Free</option><option value="custom">Custom %</option></select>
@@ -89,7 +99,7 @@
         <label for="load-count">Requests at once</label><input id="load-count" type="number" min="1" max="1000" value="100">
         <button id="load-send">Send burst</button><p id="load-feedback" role="status"></p>
       </div>
-      <p class="note">Two active edges per region. Third starts after both queues stay at 80% for 6 s.</p>
+      <p class="note">Two active edges per region. Third starts after both queues stay at 70% for 6 s.</p>
       <p id="simulation-clock">Loading clock...</p>
       <div id="clock-controls" class="control-row">
         <label for="clock-speed">Simulation speed</label>
@@ -103,6 +113,7 @@
       <button id="reset-button">Reset simulation</button>
     </div>
 
+    </details>
     <details class="card" id="bus-controls">
       <summary>Advanced: live MQTT publisher controls</summary>
       <p class="note">Commands go through central and MQTT to running bus publishers. Resume continues a paused bus; it does not launch a stopped process. Demand and traffic apply at the next stop segment; sensor faults apply at the next reading.</p>
@@ -140,8 +151,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=11"></script>
-  <script src="js/helpers.js?v=11"></script>
-  <script src="js/controls.js?v=11"></script>
+  <script src="js/api.js?v=13"></script>
+  <script src="js/helpers.js?v=13"></script>
+  <script src="js/controls.js?v=13"></script>
 </body>
 </html>

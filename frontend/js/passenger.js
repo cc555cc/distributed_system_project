@@ -8,12 +8,20 @@ const busList = document.getElementById("bus-list");
 const originSelect = document.getElementById("origin-stop");
 const destinationSelect = document.getElementById("destination-stop");
 let tripRequest = 0;
+let selectedLocation = null, locationMarker = null, tripStops = [];
 // Keep the passenger's selection when another tab changes the feed.
 const savedTrip = JSON.parse(sessionStorage.getItem('transit-trip') || '{}');
+
+function clearLocation() {
+  selectedLocation = null;
+  if (locationMarker) { map.removeLayer(locationMarker); locationMarker = null; }
+  document.getElementById('location-status').textContent = '';
+}
 
 async function loadTripStops(regionId, request) {
   const stops = await getJson("/passenger/stops?region_id=" + regionId + "&source=" + passengerSource());
   if (request !== loadNumber) return;
+  tripStops = stops;
   originSelect.replaceChildren();
   destinationSelect.replaceChildren(new Option("Show approaching buses", ""));
   stops.forEach(function (stop) {
@@ -39,7 +47,7 @@ async function updateTrip() {
   const status = document.getElementById("journey-status");
   const results = document.getElementById("journey-results");
   const arrivalsList = document.getElementById("stop-arrivals");
-  if (!originSelect.value) return;
+  if (!originSelect.value && !selectedLocation) return;
   if (originSelect.value === destinationSelect.value) {
     status.textContent = "Choose a destination different from your starting stop.";
     results.replaceChildren(); arrivalsList.replaceChildren(); return;
@@ -49,16 +57,27 @@ async function updateTrip() {
   const params = new URLSearchParams({source: passengerSource(), region_id: regionSelect.value,
     party_size: document.getElementById("party-size").value, stop_id: originSelect.value});
   try {
-    const arriving = await getJson("/passenger/arrivals?" + params);
-    let choices = arriving;
-    if (destinationSelect.value) {
+    let arriving, choices;
+    if (selectedLocation) {
+      const nearby = new URLSearchParams({lat:selectedLocation.lat, lon:selectedLocation.lng,
+        region_id:regionSelect.value, party_size:document.getElementById('party-size').value, source:passengerSource()});
+      choices = await getJson('/passenger/nearby?' + nearby);
+      if (request !== tripRequest) return;
+      if (choices.recommended) originSelect.value = choices.recommended.stop_id;
+      arriving = {arrivals:choices.options.concat(choices.unavailable), message:choices.message};
+    } else {
+      arriving = await getJson("/passenger/arrivals?" + params);
+      choices = arriving;
+    }
+    if (destinationSelect.value && !selectedLocation) {
       params.delete("stop_id"); params.set("origin", originSelect.value); params.set("destination", destinationSelect.value);
       choices = await getJson("/passenger/journeys?" + params);
     }
     if (request !== tripRequest) return;
+    document.getElementById('arrivals-heading').textContent = selectedLocation ? 'Nearby pickups' : 'Arriving at your stop';
     arrivalsList.innerHTML = tableHtml(['Bus / route', 'Occupancy', 'Arrives'], arriving.arrivals.slice(0,10).map(function (bus) {
       const full = bus.free_seats < Number(document.getElementById('party-size').value);
-      return [escapeHtml(bus.bus_id) + '<br><small>Route ' + escapeHtml(bus.route_id) + '</small>',
+      return [escapeHtml(bus.bus_id) + '<br><small>Route ' + escapeHtml(bus.route_id) + '</small>' + (bus.stop_name ? '<br><small>' + escapeHtml(bus.stop_name) + '</small>' : ''),
         tag(Math.round(bus.occupancy_percent) + '%', full ? 'bad' : bus.occupancy_percent >= 80 ? 'warn' : 'good') +
         '<br><small>' + bus.free_seats + ' seats free</small>', bus.eta_minutes.toFixed(1) + ' min'];
     }));
@@ -76,7 +95,7 @@ async function updateTrip() {
         '<div class="summary-strip"><span>Arrives <b>' + wait.toFixed(1) + ' min</b></span><span>' +
         (choice.legs ? 'Trip <b>' + total.toFixed(1) + ' min</b>' : 'Direct arrival') + '</span></div>' +
         '<small>' + Math.round(Math.max(...legs.map(l => l.occupancy_percent))) + '% occupied · ' + Math.min(...legs.map(l => l.free_seats)) + ' seats free · ' + (choice.transfers || 0) + ' transfers</small>' +
-        '<small>Ranked by time, seats and transfers. Current estimate.</small>';
+        '<small>' + (choice.stop_name ? escapeHtml(choice.stop_name) + ' · walk ' + choice.walking_metres + ' m' : 'Ranked by time, seats and transfers.') + '</small>';
       results.appendChild(item);
     });
     if (destinationSelect.value && choices.alternatives.length) {
@@ -97,13 +116,47 @@ async function updateTrip() {
 }
 
 document.getElementById("journey-form").addEventListener("submit", function (event) { event.preventDefault(); updateTrip(); });
-[originSelect, destinationSelect].forEach(function (select) { select.addEventListener("change", updateTrip); });
+[originSelect, destinationSelect].forEach(function (select) { select.addEventListener("change", function () {
+  clearLocation();
+  updateTrip();
+}); });
 
 const map = L.map("map").setView([43.9, -78.9], 11);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors",
   maxZoom: 19
 }).addTo(map);
+
+// A map point is converted to nearby reachable stops; no invented bus position is used.
+function chooseLocation(point) {
+  selectedLocation = point;
+  destinationSelect.value = '';
+  if (locationMarker) map.removeLayer(locationMarker);
+  locationMarker = L.marker([point.lat, point.lng]).addTo(map).bindPopup('Your selected location').openPopup();
+  document.getElementById('location-status').textContent = 'Nearby stops from ' + point.lat.toFixed(4) + ', ' + point.lng.toFixed(4);
+  updateTrip();
+}
+map.on('click', function (event) { chooseLocation(event.latlng); });
+document.getElementById('random-location').addEventListener('click', async function () {
+  const button = document.getElementById('random-location');
+  button.disabled = true;
+  try {
+    if (!tripStops.length) return;
+    // Pick a demonstration point ahead of a real bus; the backend still checks reachability.
+    const fleet = await getPublicSnapshot();
+    const vehicle = fleet.buses.find(b => b.region_id === regionSelect.value && b.state && b.state.service_status === 'healthy' && b.state.next_stop_id);
+    let candidates = tripStops;
+    if (vehicle) {
+      const ordered = (await getRouteStops(vehicle.route_id)).filter(s => s.direction_id === vehicle.state.direction_id);
+      const next = ordered.findIndex(s => s.stop_id === vehicle.state.next_stop_id);
+      if (next >= 0 && next + 1 < ordered.length) candidates = ordered.slice(next + 1);
+    }
+    const stop = candidates[Math.floor(Math.random()*candidates.length)];
+    const point = {lat:stop.lat + (Math.random()-.5)*.0004, lng:stop.lon + (Math.random()-.5)*.0004};
+    map.panTo([point.lat,point.lng]); chooseLocation(point);
+  } catch (error) { document.getElementById('location-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
 
 const routeLayer = L.layerGroup().addTo(map);
 const busLayer = L.layerGroup().addTo(map);
@@ -139,13 +192,14 @@ function drawRoute(route, stops, color) {
 
     const marker = L.circleMarker([stop.lat, stop.lon], {
       radius: 4,
+      bubblingMouseEvents: false,
       color: color,
       fillColor: "#ffffff",
       fillOpacity: 1,
       weight: 2
     });
     marker.bindPopup("<b>" + stop.name + "</b><br>Stop " + stop.stop_id + "<br>" + route.name);
-    marker.on("click", function () { originSelect.value = stop.stop_id; updateTrip(); });
+    marker.on("click", function () { clearLocation(); originSelect.value = stop.stop_id; updateTrip(); });
     marker.addTo(routeLayer);
     bounds.extend([stop.lat, stop.lon]);
   });
@@ -165,6 +219,7 @@ function drawRoute(route, stops, color) {
 }
 
 async function loadRegion(regionId) {
+  clearLocation();
   loadNumber++;
   tripRequest++;
   document.getElementById("journey-results").replaceChildren();

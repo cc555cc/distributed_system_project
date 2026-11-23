@@ -249,8 +249,7 @@ def test_real_request_burst_scales_third_worker_and_central_state_keeps_advancin
     fleet.configure_demo(running=True)
     for w in fleet.workers.values(): w.processing_ms = 100.0
     fleet.advance(18)
-    assert fleet.workers["edge-east-3"].state == "healthy"
-    assert fleet._assigned("edge-east-3")
+    assert any(e["action"] == "assistance_batch" and e["edge_id"] == "edge-east-3" for e in fleet.events)
 
 
 def test_custom_demand_and_sensor_fault_propagate_to_passenger_and_health(system):

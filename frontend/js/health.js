@@ -122,6 +122,12 @@ async function loadHealth() {
           "; waiting before/after " + history.waiting_before + " / " + history.waiting_after;
         document.getElementById("health-demand").appendChild(execution);
       }
+      const measured = demand.demand_measurements[bus.route_id];
+      if (measured) {
+        const totals = document.createElement('p');
+        totals.textContent = measured.boarded_passengers + ' boarded from stop queues | ' + Math.round(measured.waiting_passenger_seconds) + ' passenger-seconds waiting';
+        document.getElementById('health-demand').appendChild(totals);
+      }
       const evaluation = demand.eta_evaluation;
       if (evaluation) {
         const eta = document.createElement("p");

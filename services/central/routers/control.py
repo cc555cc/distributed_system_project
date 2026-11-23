@@ -248,3 +248,58 @@ def workload(body: Workload):
                 if worker.region_id == body.region_id:
                     health.simulation.configure(worker.edge_id, processing_ms=body.processing_ms)
         return simulation_action(health.simulation.request_burst, body.count, body.region_id)
+
+
+class Scenario(SimulationInput):
+    bus_id: str | None = None
+    route_id: str | None = None
+
+
+@router.post("/simulation/scenarios/{name}")
+def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault", "recovery", "traffic", "peak", "scheduling", "failover", "central_outage"], body: Scenario | None = None):
+    """Named use cases call the same controls as the manual inputs; no separate fake state."""
+    with health.simulation_clock.lock:
+        body = body or Scenario()
+        if name in {"normal", "capacity", "balancing", "scheduling"}:
+            reset_simulation(SimulationReset(fleet_size=50, active_buses=50 if name == "capacity" else 20, processing_ms=100.0))
+            health.simulation.configure_demo(running=True)
+        health.simulation.configure_demo()
+        bus_id = body.bus_id or next(iter(health.simulation.demo.buses))
+        if bus_id not in health.simulation.demo.buses:
+            raise HTTPException(422, "Unknown bus")
+        bus = health.simulation.demo.buses[bus_id]
+        route = body.route_id or bus["definition"]["route_id"]
+        if name == "balancing":
+            # Slow the regional workers, then send an actual telemetry burst.
+            for worker in health.simulation.workers.values():
+                if worker.region_id == "west": worker.processing_ms = 250.0
+            health.simulation.advance(1)
+            result = health.simulation.request_burst(100, "west")
+            message = f"{result['accepted']} requests accepted. Watch 70% crossing, one handoff and standby."
+        elif name in {"sensor_fault", "traffic"}:
+            health.simulation.configure_demo(bus_id=bus_id, condition="sensor_fault" if name == "sensor_fault" else "traffic")
+            message = "Watch the selected bus in Health and Passenger."
+        elif name == "failover":
+            health.simulation.fail(health.simulation.registry.get(bus_id).edge_id)
+            message = "Edge failed. Watch takeover, ownership and sensor availability in Health."
+        elif name == "central_outage":
+            health.simulation.configure_demo(central_available=False)
+            message = "Central delivery paused. Local GPS continues; pending updates retry on recovery."
+        elif name in {"peak", "scheduling"}:
+            from services.central import scheduling
+            simulation_action(health.simulation.demo.set_demand, route, "peak")
+            scheduling.demo_scheduler.invalidate(route, health.simulation.time)
+            if name == "scheduling":
+                from services.central.journeys import transit_context
+                scheduling.demo_scheduler.observe(transit_context("demo"))
+                scheduling.demo_scheduler.automatic = True
+            message = "Watch demand, automatic dispatch and central confirmation." if name == "scheduling" else "Peak demand applied. Wait for three fresh samples, then approve or enable automatic scheduling."
+        elif name == "recovery":
+            health.simulation.configure_demo(running=True, bus_id=bus_id, condition="normal", central_available=True)
+            for worker in health.simulation.workers.values():
+                if worker.state == "failed": health.simulation.recover(worker.edge_id)
+                worker.processing_ms = 100.0
+            message = "Recovery requested. Health reports the observed recovery window."
+        else:
+            message = "50 active streams: watch regional load." if name == "capacity" else "20 active buses, 30 reserves."
+        return dict(scenario=name, message=message, state=get_simulation())

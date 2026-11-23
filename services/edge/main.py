@@ -426,6 +426,10 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         self.headways, self.departures, self.last_departure = {}, {}, {}
         self.dispatch_queues = {}
         self.fleet_limit = 50
+        self.assistance_threshold = 70
+        self.assistance_armed = dict.fromkeys(self.regions, True)
+        self.assistance_grants = set()
+        self.assistance_draining = set()
         for worker in self.workers.values():
             worker.on_telemetry = self._complete
 
@@ -685,6 +689,9 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             bus_id = checked["bus_id"]
             owner = self.registry.get(bus_id).edge_id
             worker = self.workers[owner]
+            if owner in self.assistance_draining and len(self._primary_workers(worker.region_id)) == 2:
+                self.rejected += 1
+                return {"accepted": False, "reason": "Third edge draining accepted batch; source retains latest reading for retry"}
             if worker.state != "healthy" or len(worker.queue) >= worker.capacity:
                 self.rejected += 1
                 return {"accepted": False, "reason": "Owner unavailable or queue full"}
@@ -860,6 +867,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             worker.credit_ms = 0.0
             self.recover_at.pop(edge_id, None)
             self.auto_workers.discard(edge_id)
+            self.assistance_draining.discard(edge_id)
             self.low_since.pop(edge_id, None)
             for bus_id in self._assigned(edge_id):
                 self.epochs[bus_id] += 1
@@ -977,20 +985,59 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 self.workers[edge_id].state = "healthy" if active else "standby"
             return self.snapshot()
 
+    def _primary_workers(self, region):
+        return [w for w in self._eligible(region) if w.edge_id in
+                {"edge-" + region + "-1", "edge-" + region + "-2"}]
+
+    def _observe(self):
+        # One grant per sustained crossing. Both queues must fall below 70% to rearm.
+        if not hasattr(self, "assistance_armed"):
+            return super()._observe()
+        for region in self.regions:
+            primary = self._primary_workers(region)
+            loads = [len(w.queue) / w.capacity * 100 for w in primary]
+            if len(primary) == 2 and all(load < self.assistance_threshold for load in loads):
+                self.assistance_armed[region] = True
+            hot = len(primary) == 2 and all(load >= self.assistance_threshold for load in loads)
+            if not hot or not self.assistance_armed[region]:
+                self.overload_since.pop(region, None)
+                continue
+            since = self.overload_since.setdefault(region, self.time)
+            if self.auto_scale and self.time - since >= 6:
+                self.assistance_grants.add(region)
+                self.assistance_armed[region] = False
+                self.events.append(dict(time=self.time, action="assistance_threshold_crossed", region_id=region))
+
     def _balance(self, region):
         third = self.workers["edge-" + region + "-3"]
+        grant = region in self.assistance_grants
+        if grant:
+            self.assistance_grants.discard(region)
+            if third.state == "standby" and not third.active:
+                third.active = True
+                self.events.append(dict(time=self.time, action="start_simulated_instance", edge_id=third.edge_id))
         if third.active and third.state == "standby":
             self._synchronize(third)
             third.state = "healthy"
             self.auto_workers.add(third.edge_id)
-        workers = self._eligible(region)
+        # Normal traffic stays with the primaries. Failover is allowed to use any healthy edge.
+        workers = [w for w in self._eligible(region) if w is not third or grant or len(self._primary_workers(region)) < 2]
+        before = set(self._assigned(third.edge_id))
+        self._balance_workers(region, workers)
+        if grant:
+            self.assistance_draining.add(third.edge_id)
+            self.events.append(dict(time=self.time, action="assistance_batch", edge_id=third.edge_id,
+                                    buses=sorted(set(self._assigned(third.edge_id)) - before)))
+
+    def _balance_workers(self, region, workers):
         # Keep per-bus FIFO and one owner: move a bus, never individual telemetry.
         if not any(len(job) > 3 for worker in workers for job in worker.queue):
-            super()._balance(region)
+            if not self.assistance_draining:
+                super()._balance(region)
         for _ in range(len(self.bus_regions)):
             if len(workers) < 2:
                 return
-            under_pressure = any(len(w.queue) / w.capacity >= 0.8 for w in workers)
+            under_pressure = any(len(w.queue) / w.capacity >= self.assistance_threshold / 100 for w in workers)
             ordering = (
                 (lambda w: (self._waiting_ms(w), len(self._assigned(w.edge_id))))
                 if under_pressure
@@ -998,7 +1045,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             )
             source = max(workers, key=ordering)
             target = min(workers, key=ordering)
-            overloaded = len(source.queue) / source.capacity >= 0.8
+            overloaded = len(source.queue) / source.capacity >= self.assistance_threshold / 100
             if source is target or (
                 len(self._assigned(source.edge_id))
                 - len(self._assigned(target.edge_id))
@@ -1060,6 +1107,14 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 self._takeover()
                 for region in sorted(self.regions):
                     self._balance(region)
+                for edge_id in list(self.assistance_draining):
+                    worker = self.workers[edge_id]
+                    if worker.state == "healthy" and not worker.queue and len(self._primary_workers(worker.region_id)) == 2:
+                        try:
+                            self.scale_down(edge_id)
+                            self.assistance_draining.discard(edge_id)
+                        except ValueError:
+                            pass  # a full primary queue delays handback; never drop accepted work
                 for edge_id in list(self.auto_workers):
                     worker = self.workers[edge_id]
                     active_sources = sum(bus["definition"]["region_id"] == worker.region_id
@@ -1087,6 +1142,9 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 return result
             result.update(
                 telemetry_mode=True,
+                overload_percent=self.assistance_threshold,
+                assistance={region: dict(armed=self.assistance_armed[region], threshold_percent=self.assistance_threshold,
+                    third_draining="edge-" + region + "-3" in self.assistance_draining) for region in self.regions},
                 fleet_limit=self.fleet_limit,
                 active_buses=sum(bus["condition"] != "out_of_service" for bus in self.demo.buses.values()) if self.demo else 0,
                 demo_running=self.demo_running,
@@ -1098,6 +1156,9 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                     for route in set(self.headways) | set(self.dispatch_queues)},
                 demo_buses=self.demo.snapshot(self.time) if self.demo is not None else {},
                 route_demand=dict(self.demo.route_demand) if self.demo else {},
+                demand_measurements={route: dict(waiting_passenger_seconds=value,
+                    boarded_passengers=self.demo.boarded_passengers[route])
+                    for route, value in self.demo.waiting_passenger_seconds.items()} if self.demo else {},
                 waiting_passengers={route: sum(stops.values()) for route, stops in self.demo.waiting.items()} if self.demo else {},
                 central_available=self.central_available,
                 central_pending=len(self.central_pending),
@@ -1120,6 +1181,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 },
             )
             for worker in result["workers"]:
+                worker["overload_percent"] = self.assistance_threshold
+                worker["assistance_draining"] = worker["edge_id"] in self.assistance_draining
                 worker["assigned_buses"] = self._assigned(worker["edge_id"])
                 worker["active_assigned_buses"] = sum(self.demo.buses[bus_id]["condition"] != "out_of_service"
                     for bus_id in worker["assigned_buses"]) if self.demo else 0
