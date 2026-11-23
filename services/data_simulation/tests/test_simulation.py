@@ -252,12 +252,22 @@ def test_start_sequence_continues_numbering_and_limit_counts_readings():
 
 def test_resume_sequence_starts_above_central(monkeypatch):
     monkeypatch.setattr(run_buses.urllib.request, "urlopen",
-                        lambda url, timeout: io.BytesIO(b'{"sequence_number": 300}'))
-    assert run_buses.resume_sequence("bus-302-1", "http://central") == 300 + run_buses.SEQUENCE_MARGIN
+                        lambda url, timeout: io.BytesIO(b'{"sequence_number": 300, "next_stop_id": "173", "direction_id": 0}'))
+    assert run_buses.resume_state("bus-302-1", "http://central") == (300 + run_buses.SEQUENCE_MARGIN, "173", 0)
 
 
 def test_resume_sequence_starts_at_zero_for_unknown_bus(monkeypatch):
     def not_found(url, timeout):
         raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
     monkeypatch.setattr(run_buses.urllib.request, "urlopen", not_found)
-    assert run_buses.resume_sequence("bus-302-1", "http://central") == 0
+    assert run_buses.resume_state("bus-302-1", "http://central") == (0, None, None)
+
+
+def test_resume_next_stop_starts_on_the_segment_toward_it():
+    stops = [s["stop_id"] for s in generate_data.load_stops("302", 0)]
+    first = next(generate_data.generate_messages(
+        "302", 0, "bus-302-1", max_updates=1, update_seconds=0,
+        resume_next_stop_id=stops[10],
+    ))
+    assert first["next_stop_id"] == stops[10]
+    

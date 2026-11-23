@@ -50,6 +50,7 @@ def generate_messages(
     controls=None,
     start_stop_index=0,
     start_sequence=0,
+    resume_next_stop_id=None,
 ):
     """Yield standard messages so stdout, MQTT and tests use identical data.
 
@@ -85,6 +86,11 @@ def generate_messages(
         raise ValueError("Bus is not registered on the requested route")
     bus = buses[0]
     stops = load_stops(route_id, direction, network=network)
+    if resume_next_stop_id is not None:
+        stop_ids = [stop["stop_id"] for stop in stops]
+        #start on segmennt that is heading to the stop central last saw, so then the first reading will repeat that next stop instead of jumping backward
+        if resume_next_stop_id in stop_ids[1:]:
+            start_stop_index = stop_ids.index(resume_next_stop_id) - 1
     if (
         isinstance(start_stop_index, bool)
         or not isinstance(start_stop_index, int)
