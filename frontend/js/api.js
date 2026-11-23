@@ -61,6 +61,11 @@ async function getBus(busId) {
   if (USE_MOCK) {
     return mockBus(busId);
   }
+  //getFleetIds just fetched every bus in one request; use that copy.
+  if (busId in fleetRows) {
+    const row = fleetRows[busId];
+    return row.last_updated === null ? null : row;  //never reported
+  }
   const response = await fetch(API_URL + "/bus_states/" + busId);
   if (response.status === 404) {
     return null;
@@ -71,16 +76,27 @@ async function getBus(busId) {
   return response.json();
 }
 
+let fleetRows = {};
+
 async function getFleetIds(routes) {
   const ids = new Set(routes.map(function (route) { return route.route_id; }));
   if (demoView()) return (await getSimulation()).registered_buses.filter(function (bus) {
     return ids.has(bus.route_id);
   }).map(function (bus) { return {id: bus.bus_id, route: bus.route_id}; });
-  return routes.flatMap(function (route) {
-    return Array.from({length: BUSES_PER_ROUTE}, function (_, i) {
-      return {id: "bus-" + route.route_id + "-" + (i + 1), route: route.route_id};
+  if (USE_MOCK) {
+    //mock data uses the bus-*route*-*n* naming, guessing still works here.
+    return routes.flatMap(function (route) {
+      return Array.from({length: BUSES_PER_ROUTE}, function (_, i) {
+        return {id: "bus-" + route.route_id + "-" + (i + 1), route: route.route_id};
+      });
     });
-  });
+  }
+  // ask central which buses exist instead of just guessing bus name
+  const rows = await getJson("/buses");
+  fleetRows = {};
+  rows.forEach(function (row) { fleetRows[row.bus_id] = row; });
+  return rows.filter(function (row) { return ids.has(row.route_id); })
+    .map(function (row) { return {id: row.bus_id, route: row.route_id}; });
 }
 
 async function sendPost(path, body, method = "POST") {
