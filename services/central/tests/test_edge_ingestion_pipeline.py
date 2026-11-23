@@ -105,7 +105,7 @@ def pipeline(tmp_path, monkeypatch):
             CREATE TABLE buses(bus_id TEXT PRIMARY KEY, route_id TEXT);
             CREATE TABLE route_stops(route_id TEXT, direction_id INTEGER, position INTEGER, stop_id TEXT);
             CREATE TABLE bus_states(bus_id TEXT PRIMARY KEY, lat REAL, lon REAL, speed REAL,
-                direction_id INTEGER, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
+                direction_id INTEGER, current_stop_id TEXT, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
                 sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
             INSERT INTO routes VALUES ('R1','north');
             INSERT INTO buses VALUES ('A1','R1'), ('A2','R1');
@@ -228,6 +228,13 @@ def test_stale_duplicate_conflict_and_invalid_data_do_not_publish(pipeline):
     assert len(pipeline.transport.sent) == 1
     assert pipeline.api.get("/bus_states/A1").json() == before
 
+def test_terminal_endpoint_parks_bus_at_last_stop(pipeline):
+    deliver(pipeline, telemetry())
+    assert pipeline.api.put("/bus_states/A1/terminal").status_code == 200
+    stored = pipeline.api.get("/bus_states/A1").json()
+    assert stored["bus_status"] == "idle"
+    assert stored["current_stop_id"] == stored["next_stop_id"] == "S2"
+    assert pipeline.api.put("/bus_states/A2/terminal").status_code == 404
 
 def test_retry_keeps_only_newest_and_drops_expired_updates(pipeline):
     pipeline.transport.fail = True
@@ -349,7 +356,7 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
             CREATE TABLE buses(bus_id TEXT PRIMARY KEY, route_id TEXT);
             CREATE TABLE route_stops(route_id TEXT, direction_id INTEGER, position INTEGER, stop_id TEXT);
             CREATE TABLE bus_states(bus_id TEXT PRIMARY KEY, lat REAL, lon REAL, speed REAL,
-                direction_id INTEGER, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
+                direction_id INTEGER, current_stop_id TEXT, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
                 sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
         """)
         connection.executescript(seed_sql(network))
@@ -447,7 +454,7 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(
             CREATE TABLE buses(bus_id TEXT PRIMARY KEY, route_id TEXT);
             CREATE TABLE route_stops(route_id TEXT, direction_id INTEGER, position INTEGER, stop_id TEXT);
             CREATE TABLE bus_states(bus_id TEXT PRIMARY KEY, lat REAL, lon REAL, speed REAL,
-                direction_id INTEGER, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
+                direction_id INTEGER, current_stop_id TEXT, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
                 sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
         """)
         connection.executescript(seed_sql(load_network()))

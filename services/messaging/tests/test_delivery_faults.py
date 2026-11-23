@@ -79,7 +79,7 @@ def system(tmp_path, monkeypatch):
             CREATE TABLE buses(bus_id TEXT PRIMARY KEY, route_id TEXT);
             CREATE TABLE route_stops(route_id TEXT, direction_id INTEGER, position INTEGER, stop_id TEXT);
             CREATE TABLE bus_states(bus_id TEXT PRIMARY KEY, lat REAL, lon REAL, speed REAL,
-                direction_id INTEGER, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
+                direction_id INTEGER, current_stop_id TEXT, next_stop_id TEXT, bus_status TEXT, occupancy INTEGER,
                 sequence_number INTEGER, lamport INTEGER, edge_metadata TEXT, last_updated TEXT);
             INSERT INTO routes VALUES ('R1','north');
             INSERT INTO buses VALUES ('A1','R1'), ('A2','R1');

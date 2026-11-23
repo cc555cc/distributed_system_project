@@ -1,12 +1,14 @@
 """Check the shared BUS-01 format and BUS-02 network without a running broker."""
 
 import json
+import io
+import urllib.error
 from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
 
-from services.data_simulation import export_routes, generate_data
+from services.data_simulation import export_routes, generate_data, run_buses
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.transformation.central_mapper import map_bus_update
@@ -241,3 +243,40 @@ def test_invalid_assignments_are_rejected(change):
 def test_unknown_bus_cannot_generate_telemetry():
     with pytest.raises(ValueError, match="not registered"):
         list(generate_data.generate_messages("302", 0, "unknown", update_seconds=0))
+
+def test_start_sequence_continues_numbering_and_limit_counts_readings():
+    messages = list(generate_data.generate_messages("302", 0, "bus-302-1", max_updates=3,
+                                      update_seconds=0, start_sequence=500))
+    assert [m["sequence_number"] for m in messages] == [501, 502, 503]
+
+
+def test_resume_sequence_starts_above_central(monkeypatch):
+    monkeypatch.setattr(run_buses.urllib.request, "urlopen",
+                        lambda url, timeout: io.BytesIO(b'{"sequence_number": 300, "next_stop_id": "173", "direction_id": 0}'))
+    assert run_buses.resume_state("bus-302-1", "http://central") == (300 + run_buses.SEQUENCE_MARGIN, "173", 0)
+
+
+def test_resume_sequence_starts_at_zero_for_unknown_bus(monkeypatch):
+    def not_found(url, timeout):
+        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+    monkeypatch.setattr(run_buses.urllib.request, "urlopen", not_found)
+    assert run_buses.resume_state("bus-302-1", "http://central") == (0, None, None)
+
+
+def test_resume_next_stop_starts_on_the_segment_toward_it():
+    stops = [s["stop_id"] for s in generate_data.load_stops("302", 0)]
+    first = next(generate_data.generate_messages(
+        "302", 0, "bus-302-1", max_updates=1, update_seconds=0,
+        resume_next_stop_id=stops[10],
+    ))
+    assert first["next_stop_id"] == stops[10]
+
+def test_repeat_trips_start_again_from_the_first_stop():
+    stops = [s["stop_id"] for s in generate_data.load_stops("302", 0)]
+    messages = list(generate_data.generate_messages(
+        "302", 0, "bus-302-1", max_updates=60, update_seconds=0,
+        resume_next_stop_id=stops[-1], repeat_trips=True,
+    ))
+    next_stops = [m.get("next_stop_id") for m in messages]
+    assert stops[-1] in next_stops            # finished the old trip
+    assert next_stops.index(stops[1]) > 0     # then headed for stop 2 on a new trip

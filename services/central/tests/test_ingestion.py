@@ -17,6 +17,8 @@ from services.central.ingestion_check import check_update, next_stop_check
         ("S1", "S2", True),
         ("S1", "S3", True),
         ("S2", "S1", False),
+        ("S3", "S2", True),  #finished at the terminal; new trip heading to stop 2
+        ("S3", "S1", True),  #new trip reporting the first stop itself
     ],
 )
 def test_next_stop_membership_and_progress(current, following, expected):

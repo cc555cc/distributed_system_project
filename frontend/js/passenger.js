@@ -17,8 +17,11 @@ let routes = [];
 let routeBounds = {};
 let stopNames = {};
 let busMarkers = {};
+let busEtas = {};
 let loadNumber = 0;
 let timer = null;
+
+const ETA_STOPS_SHOWN = 3;
 
 function fillRegions() {
   REGIONS.forEach(function (region) {
@@ -79,6 +82,7 @@ async function loadRegion(regionId) {
   routeBounds = {};
   stopNames = {};
   busMarkers = {};
+  busEtas = {};
   statusText.textContent = "Loading routes...";
 
   let regionRoutes = [];
@@ -118,6 +122,24 @@ async function loadRegion(regionId) {
   }, REFRESH_SECONDS * 1000);
 }
 
+async function refreshEta(busId) {
+  try {
+    const result = await getBusEta(busId);
+    if (result !== null) busEtas[busId] = result.stops;
+  } catch (error) { // Keep the popup working without arrival times.
+  }
+}
+
+function etaText(busId) {
+  const stops = busEtas[busId];
+  if (stops === undefined) return "<br><i>Loading arrival times…</i>";
+  if (stops.length === 0) return "<br>No upcoming stops (end of route)";
+  return "<br><b>Next stops:</b><br>" + stops.slice(0, ETA_STOPS_SHOWN).map(function (stop) {
+    const name = escapeHtml(stopNames[stop.stop_id] || stop.stop_id);
+    return name + ": " + (stop.eta_minutes < 1 ? "arriving" : Math.round(stop.eta_minutes) + " min");
+  }).join("<br>");
+}
+
 function busPopup(busId, bus, stale) {
   const nextStop = stopNames[bus.next_stop_id] || bus.next_stop_id || "unknown";
   let text = "<b>" + busId + "</b><br>";
@@ -129,6 +151,9 @@ function busPopup(busId, bus, stale) {
   if (bus.distance_m !== undefined) text += "Local distance travelled: " + (bus.distance_m / 1000).toFixed(2) + " km<br>";
   text += "Passengers: " + occupancyText(bus) + "<br>";
   text += "Next stop: " + nextStop;
+    if (!stale && demoView() === false) {
+    text += etaText(busId);
+  }
   return text;
 }
 
@@ -147,12 +172,18 @@ function showBus(item, bus) {
   const popup = busPopup(item.id, bus, stale);
 
   if (busMarkers[item.id]) {
+    if (busMarkers[item.id].isPopupOpen()) {
+      refreshEta(item.id);
+    }
     busMarkers[item.id].setLatLng([bus.lat, bus.lon]);
     busMarkers[item.id].setIcon(icon);
     busMarkers[item.id].setPopupContent(popup);
   } else {
     const marker = L.marker([bus.lat, bus.lon], { icon: icon });
     marker.bindPopup(popup);
+    marker.on("popupopen", function () {
+      refreshEta(item.id);
+    });
     marker.addTo(busLayer);
     busMarkers[item.id] = marker;
   }

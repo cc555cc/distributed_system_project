@@ -4,6 +4,8 @@ import psycopg
 from fastapi import APIRouter
 from psycopg.rows import dict_row
 
+from services.central.freshness import freshness
+
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]
 
@@ -27,4 +29,4 @@ def get_all_buses(region_id: str | None = None, route_id: str | None = None):
             """,
             (region_id, region_id, route_id, route_id),
         ).fetchall()
-    return rows
+    return [{**row, "freshness": freshness(row["last_updated"])} for row in rows]

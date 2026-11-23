@@ -48,8 +48,10 @@ function ageSeconds(bus) {
 }
 
 function isStale(bus) {
-  const age = ageSeconds(bus);
-  return isNaN(age) || age > STALE_SECONDS || ["idle", "out_of_service"].includes(bus.bus_status) ||
+  //central reports freshness from its own clock; prefer it to the browser's clock.
+  const old = bus.freshness !== undefined ? bus.freshness !== "current"
+    : isNaN(ageSeconds(bus)) || ageSeconds(bus) > STALE_SECONDS;
+  return old || ["idle", "out_of_service"].includes(bus.bus_status) ||
     ["unknown", "unavailable", "degraded", "paused"].includes(bus.simulation_status);
 }
 

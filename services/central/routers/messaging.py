@@ -13,24 +13,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from services.messaging import mqtt_client, topics
 from services.messaging.commands import Action
 from shared.schema.network import load_network
+from services.central.alert_folding import fold_repeats
 
 router = APIRouter(tags=["messaging"])
 
 _network = load_network()
 REGIONS = {region["region_id"] for region in _network["regions"]}
 BUS_REGIONS = {bus["bus_id"]: bus["region_id"] for bus in _network["buses"]}
-
-
-@router.get("/alerts")
-def list_alerts(
-    region_id: str | None = None,
-    severity: Literal["info", "warning", "critical"] | None = None,
-    limit: int = Query(default=100, ge=1, le=500),
-):
-    return mqtt_client.alert_store.list(
-        region_id=region_id, severity=severity, limit=limit
-    )
-
 
 class CommandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -68,3 +57,16 @@ def send_command(body: CommandRequest):
         "lamport_clock": command.lamport_clock,
         "status": "published",
     }
+
+@router.get("/alerts")
+def list_alerts(
+    region_id: str | None = None,
+    severity: Literal["info", "warning", "critical"] | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    fold: bool = True,
+):
+    store = mqtt_client.alert_store
+    alerts = store.list(region_id=region_id, severity=severity, limit=store.limit)
+    if fold:
+        alerts = fold_repeats(alerts)
+    return alerts[:limit]

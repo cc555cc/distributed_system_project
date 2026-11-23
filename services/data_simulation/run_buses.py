@@ -4,6 +4,8 @@ import argparse
 import json
 import logging
 import os
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 from multiprocessing import Process
 from threading import Event, RLock, Thread
@@ -20,6 +22,7 @@ from shared.schema.network import DEFAULT_NETWORK_PATH, load_network
 
 logger = logging.getLogger(__name__)
 
+SEQUENCE_MARGIN = 1000
 
 class SimulatorHeartbeats:
     """Four logical sensor channels share the simulated bus's MQTT client."""
@@ -76,6 +79,19 @@ class SimulatorHeartbeats:
                 )
             stop.wait(interval)
 
+
+def resume_state(bus_id, central_url, margin=SEQUENCE_MARGIN):
+    """continue above central's last stored state so a revived bus process is not stale"""
+    try:
+        with urllib.request.urlopen(
+            f"{central_url}/bus_states/{bus_id}", timeout=3
+        ) as response:
+            state = json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return 0, None, None  # central has never seen this bus
+        raise
+    return state["sequence_number"] + margin, state["next_stop_id"], state["direction_id"]
 
 def bus_credentials(bus_id):
     """Per-bus broker account from MQTT_BUS_PASSWORDS_JSON (MQTT-07), if configured.
@@ -134,6 +150,8 @@ class SensorAlerts:
 
 def run_bus(bus, network_path, updates, interval, publish, host, port):
     """Keep each bus's random state, counters and connection independent."""
+    start_sequence = 0
+    resume_stop = None
     client = publisher = None
     heartbeat_source = SimulatorHeartbeats(bus)
     scenario = dict(bus.get("scenario", {}))
@@ -158,6 +176,18 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
                 if credentials
                 else configure_mqtt_client
             )
+            central_url = os.getenv("CENTRAL_URL")
+            if central_url:
+                start_sequence, next_stop, direction = resume_state(
+                    bus["bus_id"], central_url
+                )
+                # Only resume the position on the same directional route.
+                if direction == bus.get("direction_id", 0):
+                    resume_stop = next_stop
+                logger.info(
+                    "bus=%s resumes at sequence %s before stop %s",
+                    bus["bus_id"], start_sequence, resume_stop,
+                )
             publisher = ReliablePublisher(
                 bus["bus_id"] + "-publisher", host, port, configure=configure
             )
@@ -213,6 +243,9 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             sensor_health=sensor_health,
             clock=clock,
             controls=controls,
+            start_sequence=start_sequence,
+            resume_next_stop_id=resume_stop,
+            repeat_trips=True,
             **scenario,
         )
     finally:

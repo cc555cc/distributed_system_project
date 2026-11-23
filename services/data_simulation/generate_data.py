@@ -18,6 +18,13 @@ UPDATE_SECONDS = 1
 MAX_UPDATES = 100
 CAPACITY = 50
 
+def trip_stop_indexes(first, segments, repeat):
+    """Segment indexes for this trip, then whole new trips if repeat is set."""
+    while True:
+        yield from range(first, segments)
+        if not repeat:
+            return
+        first = 0  # a new trip starts at the first stop
 
 def load_stops(route_id, direction, *, network=None, network_path=DEFAULT_NETWORK_PATH):
     return export_routes.main(
@@ -49,6 +56,9 @@ def generate_messages(
     clock=None,
     controls=None,
     start_stop_index=0,
+    start_sequence=0,
+    resume_next_stop_id=None,
+    repeat_trips=False,
 ):
     """Yield standard messages so stdout, MQTT and tests use identical data.
 
@@ -84,6 +94,11 @@ def generate_messages(
         raise ValueError("Bus is not registered on the requested route")
     bus = buses[0]
     stops = load_stops(route_id, direction, network=network)
+    if resume_next_stop_id is not None:
+        stop_ids = [stop["stop_id"] for stop in stops]
+        #start on segmennt that is heading to the stop central last saw, so then the first reading will repeat that next stop instead of jumping backward
+        if resume_next_stop_id in stop_ids[1:]:
+            start_stop_index = stop_ids.index(resume_next_stop_id) - 1
     if (
         isinstance(start_stop_index, bool)
         or not isinstance(start_stop_index, int)
@@ -97,11 +112,12 @@ def generate_messages(
     sensors = random.Random(43)
     speed = SPEED_KMH * traffic_factor
     occupancy = 0
-    sequence = 0
+    sequence = start_sequence
+    sent = 0
     # Pass a clock in when something else in this bus process also receives
     # messages (commands): its receive() calls then raise later send stamps.
     clock = clock if clock is not None else LamportClock()
-    for index in range(start_stop_index, len(stops) - 1):
+    for index in trip_stop_indexes(start_stop_index, len(stops) - 1, repeat_trips):
         start, end = stops[index : index + 2]
         if controls is not None:
             demand, speed = controls.demand, SPEED_KMH * controls.traffic_factor
@@ -113,7 +129,7 @@ def generate_messages(
         metres_per_update = speed / 3.6 * (update_seconds or UPDATE_SECONDS)
         steps = max(1, math.ceil(distance_metres(start, end) / metres_per_update))
         for step in range(steps + 1):
-            if sequence >= max_updates:
+            if sent >= max_updates:
                 return
             # A paused bus generates nothing; it resumes from the same point.
             if controls is not None and not controls.wait_while_paused():
@@ -121,6 +137,7 @@ def generate_messages(
             progress = step / steps
             at_stop = step == 0 or step == steps
             sequence += 1
+            sent += 1
             # Send rule: every reading is a new local event on this bus.
             logical_clock = clock.tick()
             current = end if step == steps else start

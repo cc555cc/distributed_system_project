@@ -824,6 +824,22 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 except ValueError:
                     continue  # Keep the journal; retry after capacity or a replica returns.
 
+    #move buses from an edge  to the least-loaded healthy edge in its home region after a recovery
+    def _return_home(self):
+        for bus_id, home in self.bus_regions.items():
+            owner = self.workers[self.registry.get(bus_id).edge_id]
+            if owner.region_id == home:
+                continue #already in its home region
+            for target in sorted(
+                self._eligible(home),
+                key = lambda w: (len(w.queue), len(self._assigned(w.edge_id)), w.edge_id)
+            ):
+                try:
+                    self.transfer(bus_id, target.edge_id)
+                    break
+                except ValueError:
+                    continue #try next home edge on error, or retry on next tick
+
     def fail(self, edge_id):
         with self.lock:
             if edge_id not in self.workers:
@@ -1035,6 +1051,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                             }
                         )
                 self._takeover()
+                self._return_home() 
                 for region in sorted(self.regions):
                     self._balance(region)
                 for edge_id in list(self.auto_workers):
@@ -1165,7 +1182,6 @@ def benchmark_cluster():
             }
         )
     return results
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Launch registered edge workers.")
