@@ -345,6 +345,7 @@ class DemoFleet:
             }.get(condition, "valid readings and heartbeat" if bus["heartbeat"] is not None else "awaiting first heartbeat")
             result[bus_id] = dict(condition=condition, phase=self.phase(bus), status=status, evidence=evidence,
                 sensors=sensors, heartbeat_age_seconds=age, distance_m=bus["distance_m"],
+                valid_telemetry_age_seconds=now - bus["valid"] if bus["valid"] is not None else None,
                 local=bus["local"], attempts=bus["attempts"], rejected_readings=bus["rejected"],
                 delivery_pending=bus["pending"] is not None, retry_at=bus["retry_at"],
                 region_id=bus["definition"]["region_id"], route_id=bus["definition"]["route_id"])

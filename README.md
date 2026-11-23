@@ -16,9 +16,9 @@ A public-transit simulation connecting bus telemetry, MQTT messaging, regional e
 | Shared integration | 7 | 6 | 7 | 20 |
 | **Total** | **48** | **13** | **16** | **77** |
 
-These statuses cover verified work across the pushed branches under the agreed controlled-demonstration scope. The latest fleet, bus registration, scheduler controls, frontend and recovery changes are on [ali](https://github.com/cc555cc/distributed_system_project/tree/ali), with implementation through commit `ccdda4b`. This README-only update does not merge that code into `main`; use `ali` to run those features. Completion does not imply optional sensor extensions, dynamic live MQTT registration or automatic demand-based scheduling were implemented.
+These statuses cover verified work across the pushed branches under the agreed controlled-demonstration scope. `main` now includes the earlier fleet, bus registration, scheduler, frontend and recovery implementation through merge `3b36916`. The new dedicated bus/sensor health dashboard and health/alert endpoints are being developed on [ali](https://github.com/cc555cc/distributed_system_project/tree/ali). Completion does not imply optional sensor extensions, dynamic live MQTT registration or automatic demand-based scheduling were implemented.
 
-Verification on `ali`: **426 tests passed, 18 opt-in service tests skipped (444 collected)**. Browser checks verified fleet sizing, newly registered buses on the map/dashboard, dispatch, movement, fault status, recovery and API error handling. Four new fleet/scheduler tests also pass independently. Live MQTT and controlled-demonstration feeds remain explicitly selectable; modeled failures do not stop OS processes or write experiments into the live database.
+Verification on `ali`: **430 tests passed, 18 opt-in service tests skipped (448 collected)**. Browser checks verified fleet sizing, newly registered buses on the map/dashboard, dispatch, movement, fault status, recovery and API error handling. Four new fleet/scheduler tests also pass independently. Live MQTT and controlled-demonstration feeds remain explicitly selectable; modeled failures do not stop OS processes or write experiments into the live database.
 
 Remaining work includes route-based ETA and demand scheduling, A-to-B planning and recommendations, backend operator authorization, remaining UI acceptance/tests, complete scheduling feedback, and report/presentation/submission tasks. All 77 ticket rows below distinguish Done, Partial and Pending. BUS-02 uses the agreed west/east map scope; BUS-11 covers adding buses only. BUS-01's telemetry contract remains unchanged.
 
@@ -441,6 +441,24 @@ Build one web application containing three interfaces: Passenger Journey Planner
 
 The current map uses logical route boundaries: west owns routes 302/900 (four buses per instance), east owns 407/409/901 (six buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. The simulation starts from these assignments, balances buses within their home region and permits controlled cross-region takeover when local workers fail. It keeps the original route region and coordinates when a remote instance hosts that work. The MQTT launcher starts from that plan and follows subsequent central ownership assignments.
 
+
+### Bus, sensor, route health and alerts
+
+Open `frontend/health.html` (**Bus Health** in navigation) for a dedicated read-only health page, separate from the passenger planner and operator controls. Select live MQTT or the controlled demonstration, then region, route, bus and an individual sensor or all four sensors. The backend supplies observed health, evidence, valid-reading age, demo central-delivery age/status, route service availability, verified passenger capacity and relevant edge queues/assignments. Alerts are filtered to the selected bus/region, while applicable central/edge alerts remain visible.
+
+| Endpoint | Responsibility | Router |
+|---|---|---|
+| `GET /buses/health?source=live` | Registered bus choices and overall health; optional region/route filters | `routers/buses.py` |
+| `GET /buses/{bus_id}/health?source=demo` | Selected bus evidence, owner and data ages | `routers/buses.py` |
+| `GET /sensors` | Supported sensor names | `routers/sensors.py` |
+| `GET /buses/{bus_id}/sensors` | All four sensor reports | `routers/sensors.py` |
+| `GET /buses/{bus_id}/sensors/{sensor_name}` | One selected sensor | `routers/sensors.py` |
+| `GET /routes/{route_id}/health` | Availability, capacity samples and owning edge workload | `routers/routes.py` |
+| `GET /alerts?source=demo&bus_id=bus-302-1` | Current demo warnings and recent events; live remains the default MQTT alert store | `routers/messaging.py` |
+
+Health endpoints accept `source=live` or `source=demo`. Missing buses/sensors/routes return 404; invalid sources return 422. Unknown or stale evidence is not presented as a confirmed sensor defect or invented occupancy. Configured passenger seats and edge waiting-message capacity are separate. Available seats/occupancy are calculated only from trusted current samples and their coverage is shown. A database outage preserves live health reporting but marks occupancy unavailable. Demo balancing reuses the existing coordinator; live health exposes actual ownership reports. This addition advances CENTRAL-05/06/11 and UI-04/06 but does not complete ETA, automatic demand scheduling, journey planning, recommendations or backend authorization.
+
+Four additional high-level tests cover selected sensors, source timeouts/recovery, capacity/alerts/stale delivery, and invalid/filtered requests including database unavailability. Completion totals remain unchanged.
 
 ### UI-controlled edge cluster simulation
 

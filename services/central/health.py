@@ -363,6 +363,73 @@ class SimulationClock:
 simulation_clock = SimulationClock()
 
 
+def bus_health_snapshot(source="live"):
+    """One backend view for bus, sensor and route health; missing data stays unknown."""
+    if source == "live":
+        definitions = load_network()["buses"]
+        reports = {bus["bus_id"]: bus for bus in monitor.snapshot()["buses"]}
+        result = []
+        for definition in definitions:
+            report = reports.get(definition["bus_id"], {})
+            result.append(dict(
+                bus_id=definition["bus_id"], route_id=definition["route_id"],
+                city_id=definition["city_id"], region_id=definition["region_id"],
+                edge_id=report.get("edge_id", definition["edge_id"]), source=source,
+                health=report.get("health", {"status": "unknown", "reasons": ["no_health_report"]}),
+                source_edge_status=report.get("source_edge_status", "unknown"),
+                valid_telemetry_age_seconds=report.get("valid_telemetry_age_seconds"),
+                sensors={name: deepcopy(report.get("sensors", {}).get(name,
+                    {"health_status": "unknown", "age_seconds": None})) for name in SENSORS},
+            ))
+        return result
+    if source != "demo":
+        raise ValueError("Choose live or demo")
+    with simulation_clock.lock:
+        state = simulation.snapshot()
+        pending_ids = set(simulation.central_pending)
+    workers = {worker["edge_id"]: worker for worker in state["workers"]}
+    result = []
+    for definition in state["registered_buses"]:
+        bus_id = definition["bus_id"]
+        bus = state["demo_buses"].get(bus_id)
+        owner = state["ownership"][bus_id]["edge_id"]
+        edge_status = workers[owner]["state"]
+        status = bus["status"] if bus else "unknown"
+        reasons = [bus["evidence"]] if bus else ["no_demo_reading"]
+        if bus and not state["demo_running"]:
+            status, reasons = "paused", ["demonstration_stopped_intentionally"]
+        elif edge_status not in ("healthy", "recovering"):
+            status, reasons = "unknown", ["source_edge_unavailable; sensor_failure_unconfirmed"]
+        age = bus["heartbeat_age_seconds"] if bus else None
+        sensors = {}
+        for name in SENSORS:
+            sensor_status = bus["sensors"][name] if bus else "unknown"
+            if status in ("unknown", "paused"):
+                sensor_status = "unknown"
+            elif status == "unavailable":
+                sensor_status = "unavailable"
+            elif status == "recovering" and sensor_status == "healthy":
+                sensor_status = "recovering"
+            sensors[name] = dict(health_status=sensor_status, age_seconds=age)
+        received = state["central_received_at"].get(bus_id)
+        result.append(dict(bus_id=bus_id, route_id=definition["route_id"],
+            city_id=definition["city_id"], region_id=definition["region_id"], edge_id=owner,
+            source=source, health={"status": status, "reasons": reasons},
+            source_edge_status=edge_status,
+            valid_telemetry_age_seconds=bus["valid_telemetry_age_seconds"] if bus else None,
+            central_update_age_seconds=(state["virtual_seconds"] - received if received is not None else None),
+            central_available=state["central_available"], central_delivery_pending=bus_id in pending_ids,
+            sensors=sensors))
+    return result
+
+
+def find_bus_health(bus_id, source="live"):
+    bus = next((bus for bus in bus_health_snapshot(source) if bus["bus_id"] == bus_id), None)
+    if bus is None:
+        raise HTTPException(404, "Bus is not registered in this data source")
+    return bus
+
+
 class SimulationInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
