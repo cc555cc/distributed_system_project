@@ -119,7 +119,7 @@ def on_message(client, userdata, msg):
                     "Rejected update for %s on %s: %s", bus_id, msg.topic, reason
                 )
         else:
-            logger.info(
+            logger.debug(
                 "Applied %s seq=%s from %s",
                 bus_id,
                 bus_state.sequence_number,
