@@ -270,4 +270,13 @@ def test_resume_next_stop_starts_on_the_segment_toward_it():
         resume_next_stop_id=stops[10],
     ))
     assert first["next_stop_id"] == stops[10]
-    
+
+def test_repeat_trips_start_again_from_the_first_stop():
+    stops = [s["stop_id"] for s in generate_data.load_stops("302", 0)]
+    messages = list(generate_data.generate_messages(
+        "302", 0, "bus-302-1", max_updates=60, update_seconds=0,
+        resume_next_stop_id=stops[-1], repeat_trips=True,
+    ))
+    next_stops = [m.get("next_stop_id") for m in messages]
+    assert stops[-1] in next_stops            # finished the old trip
+    assert next_stops.index(stops[1]) > 0     # then headed for stop 2 on a new trip

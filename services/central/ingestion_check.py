@@ -72,7 +72,11 @@ def next_stop_check(
     if current_stop not in stop_ids:
         return True
 
-    return stop_ids.index(next_stop) >= stop_ids.index(current_stop)
+    new, old = stop_ids.index(next_stop), stop_ids.index(current_stop)
+    # redirect bus that reached the terminal yto begin a new trip from the start.
+    if old == len(stop_ids) - 1 and new <= 1:
+        return True
+    return new >= old
 
 
 # bus belongs to the region

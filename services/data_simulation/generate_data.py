@@ -18,6 +18,13 @@ UPDATE_SECONDS = 1
 MAX_UPDATES = 100
 CAPACITY = 50
 
+def trip_stop_indexes(first, segments, repeat):
+    """Segment indexes for this trip, then whole new trips if repeat is set."""
+    while True:
+        yield from range(first, segments)
+        if not repeat:
+            return
+        first = 0  # a new trip starts at the first stop
 
 def load_stops(route_id, direction, *, network=None, network_path=DEFAULT_NETWORK_PATH):
     return export_routes.main(
@@ -51,6 +58,7 @@ def generate_messages(
     start_stop_index=0,
     start_sequence=0,
     resume_next_stop_id=None,
+    repeat_trips=False,
 ):
     """Yield standard messages so stdout, MQTT and tests use identical data.
 
@@ -109,7 +117,7 @@ def generate_messages(
     # Pass a clock in when something else in this bus process also receives
     # messages (commands): its receive() calls then raise later send stamps.
     clock = clock if clock is not None else LamportClock()
-    for index in range(start_stop_index, len(stops) - 1):
+    for index in trip_stop_indexes(start_stop_index, len(stops) - 1, repeat_trips):
         start, end = stops[index : index + 2]
         if controls is not None:
             demand, speed = controls.demand, SPEED_KMH * controls.traffic_factor

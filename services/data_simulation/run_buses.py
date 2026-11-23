@@ -245,6 +245,7 @@ def run_bus(bus, network_path, updates, interval, publish, host, port):
             controls=controls,
             start_sequence=start_sequence,
             resume_next_stop_id=resume_stop,
+            repeat_trips=True,
             **scenario,
         )
     finally:
