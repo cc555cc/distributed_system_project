@@ -232,7 +232,7 @@ def test_bus_balancing_cross_region_handoff_and_recovery():
     cluster.advance(1)
     assert cluster.workers["edge-west-1"].state == "healthy"
     assert cluster.workers["edge-west-1"].replicas[bus]["floor"] == 2
-    cluster.transfer(bus, "edge-west-1")
+    assert cluster.registry.get(bus).edge_id == "edge-west-1"  # returned home automatically
     cluster.generate(bus, 1)
     cluster.advance(1)
     assert cluster.central_states[bus]["sequence_number"] == 3
