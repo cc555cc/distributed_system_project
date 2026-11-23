@@ -21,6 +21,16 @@
       <p id="passenger-feed" class="note"></p>
       <label for="region-select">City / Region</label>
       <select id="region-select"></select>
+      <h2>Find your bus</h2>
+      <form id="journey-form">
+        <label for="origin-stop">Your stop</label><select id="origin-stop"></select>
+        <label for="destination-stop">Destination (optional)</label><select id="destination-stop"><option value="">Show approaching buses</option></select>
+        <label for="party-size">Travellers</label><input id="party-size" type="number" min="1" max="20" value="1">
+        <button>Find buses</button>
+      </form>
+      <p id="journey-status" role="status"></p>
+      <h2>Recommended option</h2><div id="journey-results"></div>
+      <h2>Arriving at your stop</h2><ul id="stop-arrivals" class="plain"></ul>
       <p id="status">Loading...</p>
 
       <h2>Routes</h2>
@@ -35,8 +45,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=9"></script>
-  <script src="js/helpers.js?v=9"></script>
-  <script src="js/passenger.js?v=9"></script>
+  <script src="js/api.js?v=10"></script>
+  <script src="js/helpers.js?v=10"></script>
+  <script src="js/passenger.js?v=10"></script>
 </body>
 </html>

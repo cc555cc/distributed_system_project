@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from fastapi.testclient import TestClient
+from services.central.tests.client import OperatorClient as TestClient
 
 from services.central.health import CentralHealthMonitor
 from services.edge.config import EdgeConfig, NetworkConfig
@@ -578,7 +578,7 @@ def test_demo_movement_stops_traffic_demand_and_runtime_controls(demo_client):
     assert state["demo_buses"]["bus-302-1"]["distance_m"] - original == pytest.approx(7.5)
     demo_condition(client, "peak")
     state = demo_step(client)
-    assert state["central_states"]["bus-302-1"]["occupancy"] == 40
+    assert 43 <= state["central_states"]["bus-302-1"]["occupancy"] <= 50
     demo_condition(client, "out_of_service")
     state = demo_step(client)
     assert state["central_states"]["bus-302-1"]["occupancy"] == 0
@@ -815,16 +815,18 @@ def test_live_health_routes_keep_cold_stale_and_failed_edge_reports_honest(demo_
 
 def test_route_capacity_health_alerts_and_stale_central_coverage(demo_client):
     client = demo_client
-    demo_step(client)
+    state = demo_step(client)
     route = client.get("/routes/302/health?source=demo").json()
     assert route["configured_capacity"] == route["verified_service_capacity"] == 200
     assert route["available_buses"] == route["occupancy_samples"] == 4
-    assert route["passengers"] == 40 and route["available_seats_in_samples"] == 160
+    total = sum(state["central_states"][f"bus-302-{index}"]["occupancy"] for index in range(1, 5))
+    assert route["passengers"] == total and route["available_seats_in_samples"] == 200 - total
     assert all(edge["queue_capacity"] == 50 for edge in route["edge_workload"])
     demo_condition(client, "sensor_fault")
-    demo_step(client)
+    state = demo_step(client)
     route = client.get("/routes/302/health?source=demo").json()
-    assert route["occupancy_samples"] == 3 and route["passengers"] == 30
+    expected = sum(state["central_states"][f"bus-302-{index}"]["occupancy"] for index in range(2, 5))
+    assert route["occupancy_samples"] == 3 and route["passengers"] == expected
     alerts = client.get("/alerts?source=demo&bus_id=bus-302-1").json()
     assert any("degraded" in alert["message"] for alert in alerts)
     assert sum(alert["message"].startswith("delivery_attempt:") for alert in alerts) == 1

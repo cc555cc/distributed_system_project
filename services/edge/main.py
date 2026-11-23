@@ -420,6 +420,9 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         self.central_available = True
         self.central_pending, self.central_received_at, self.central_pending_at = {}, {}, {}
         self.central_retry_at = 0.0
+        from uuid import uuid4
+        self.session_id = uuid4().hex
+        self.central_ack_count = 0
         self.headways, self.departures, self.last_departure = {}, {}, {}
         self.dispatch_queues = {}
         for worker in self.workers.values():
@@ -544,6 +547,7 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             if old is None or payload["sequence_number"] > old["sequence_number"]:
                 self.central_states[bus_id] = payload
                 self.central_received_at[bus_id] = self.time
+                self.central_ack_count += 1
             del self.central_pending[bus_id]
             del self.central_pending_at[bus_id]
             if self.central_retry_at > 0 or old is None:
@@ -1062,11 +1066,15 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             result.update(
                 telemetry_mode=True,
                 demo_running=self.demo_running,
+                session_id=self.session_id,
+                central_ack_count=self.central_ack_count,
                 registered_buses=deepcopy(self.bus_definitions),
                 schedules={route: dict(headway_seconds=self.headways.get(route, 10),
                     next_departure=self.departures.get(route), pending=list(self.dispatch_queues.get(route, [])))
                     for route in set(self.headways) | set(self.dispatch_queues)},
                 demo_buses=self.demo.snapshot(self.time) if self.demo is not None else {},
+                route_demand=dict(self.demo.route_demand) if self.demo else {},
+                waiting_passengers={route: sum(stops.values()) for route, stops in self.demo.waiting.items()} if self.demo else {},
                 central_available=self.central_available,
                 central_pending=len(self.central_pending),
                 central_received_at=dict(self.central_received_at),

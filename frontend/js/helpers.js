@@ -43,6 +43,7 @@ function hasValidPosition(bus) {
 }
 
 function ageSeconds(bus) {
+  if (bus.data_age_seconds !== undefined) return bus.data_age_seconds;
   if (bus.simulation_age_seconds !== undefined) return bus.simulation_age_seconds;
   return (Date.now() - new Date(bus.last_updated).getTime()) / 1000;
 }
@@ -50,7 +51,7 @@ function ageSeconds(bus) {
 function isStale(bus) {
   const age = ageSeconds(bus);
   return isNaN(age) || age > STALE_SECONDS || ["idle", "out_of_service"].includes(bus.bus_status) ||
-    ["unknown", "unavailable", "degraded", "paused"].includes(bus.simulation_status);
+    ["unknown", "unavailable", "degraded", "paused"].includes(bus.service_status || bus.simulation_status);
 }
 
 function crowdingOf(bus) {

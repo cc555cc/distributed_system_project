@@ -24,7 +24,7 @@ import pytest
 def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
     import paho.mqtt.client as mqtt
     import psycopg
-    from fastapi.testclient import TestClient
+    from services.central.tests.client import OperatorClient as TestClient
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
 
@@ -190,7 +190,7 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
 
     import paho.mqtt.client as mqtt
     import psycopg
-    from fastapi.testclient import TestClient
+    from services.central.tests.client import OperatorClient as TestClient
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
 

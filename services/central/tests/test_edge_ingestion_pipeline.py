@@ -5,7 +5,7 @@ import sqlite3
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+from services.central.tests.client import OperatorClient as TestClient
 from psycopg.types.json import Jsonb
 
 from services.edge.communication.data_to_edge import TelemetrySubscriber

@@ -22,7 +22,7 @@ if (typeof L !== "undefined") {
 async function drawDemo(simulation) {
   if (!fleetRoutesLoaded) {
     const routes = await getJson("/health/simulation/routes");
-    ["new-bus-route", "schedule-route"].forEach(function (name) {
+    ["new-bus-route", "schedule-route", "demand-route"].forEach(function (name) {
       const select = document.getElementById(name);
       select.replaceChildren(...routes.map(function (route) {
         const option = document.createElement("option");
@@ -159,6 +159,22 @@ async function loadWorkers() {
     edgeTable.innerHTML = simulationTable(simulation, true);
     document.getElementById("simulation-clock").textContent = simulationClockText(simulation);
     await drawDemo(simulation);
+    const demand = await getJson("/scheduling/status?source=demo");
+    document.getElementById("demand-status").innerHTML = tableHtml(["Route", "Occupancy", "Waiting", "Samples", "Interval", "Recommendation", "Action"],
+      demand.routes.map(function (route) {
+        const decision = route.recommendation;
+        return [escapeHtml(route.route_id), route.occupancy_percent === null ? "Unavailable" : Math.round(route.occupancy_percent) + "%",
+          route.waiting_passengers ?? "Unavailable", route.samples + " / 3", route.headway_seconds + " s",
+          decision ? escapeHtml(decision.reason + " · " + decision.status + " · " + (decision.feedback || "")) : "No sustained signal",
+          decision?.status === "pending" ? '<button data-approve="' + escapeHtml(route.route_id) + '">Approve</button>' : "-"];
+      }));
+    document.getElementById("demand-execution").textContent = demand.history.slice(-3).map(function (decision) {
+      return "Route " + decision.route_id + ": " + decision.execution +
+        (decision.confirmation_sequence ? " (sequence " + decision.confirmation_sequence + ")" : "") +
+        "; occupancy " + Math.round(decision.occupancy_before) + "% → " +
+        (decision.occupancy_after === null ? "unavailable" : Math.round(decision.occupancy_after) + "%") +
+        "; waiting " + decision.waiting_before + " → " + decision.waiting_after;
+    }).join(" · ");
   } catch (error) {
     console.error("Could not load simulation", error);
     document.getElementById("demo-summary").textContent = "Backend unavailable. Positions below are the last received readings.";
@@ -166,6 +182,23 @@ async function loadWorkers() {
     edgeTable.textContent = "Could not load the edge servers: " + error.message;
   }
 }
+
+document.getElementById("demand-controls").addEventListener("click", async function (event) {
+  const button = event.target.closest("button");
+  if (!button) return;
+  button.disabled = true;
+  const feedback = document.getElementById("demand-feedback");
+  try {
+    let result;
+    if (button.dataset.approve) result = await sendPost("/scheduling/" + encodeURIComponent(button.dataset.approve) + "/approve");
+    else if (button.id === "demand-apply") result = await sendPost("/scheduling/demand", {route_id: document.getElementById("demand-route").value, profile: document.getElementById("demand-profile").value});
+    else result = await sendPost("/scheduling/policy", {automatic: button.id === "automatic-on"});
+    chooseDemo();
+    feedback.textContent = result.feedback || (result.profile ? "Demand profile applied: " + result.profile + ". Waiting for sustained samples." : "Automatic scheduling: " + result.automatic);
+    await loadWorkers();
+  } catch (error) { feedback.textContent = error.message; }
+  finally { button.disabled = false; }
+});
 
 edgeTable.addEventListener("click", async function (event) {
   const button = event.target.closest("button");

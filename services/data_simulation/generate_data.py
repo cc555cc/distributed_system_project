@@ -194,6 +194,8 @@ class DemoFleet:
         self.event = event
         self.buses = {}
         self.network_path = network_path
+        self.route_demand = {}
+        self.waiting = {}
         for bus in definitions:
             self.add_bus(bus, now)
 
@@ -204,11 +206,45 @@ class DemoFleet:
         template = next(generate_messages(bus["route_id"], bus.get("direction_id", 0),
             network_path=self.network_path, max_updates=1, update_seconds=0))
         template.update(bus_id=bus["bus_id"], capacity=bus["capacity"])
+        import zlib
+        rng = random.Random(zlib.crc32(bus["bus_id"].encode()))
         self.buses[bus["bus_id"]] = dict(definition=bus, stops=stops, segment=start,
             metres=0.0, distance_m=0.0, condition=condition, speed=0.0, dwell=0.0,
             sequence=0, template=template, local=None, heartbeat=None, valid=None,
             report_at=now, pending=None, retry_at=now, attempts=0, rejected=0,
-            recovery_until=now, started=now)
+            recovery_until=now, started=now, random=rng, passengers=0, passenger_profile=None)
+        if bus["route_id"] not in self.waiting:
+            self.set_demand(bus["route_id"], "normal")
+
+    def set_demand(self, route_id, profile):
+        if profile not in {"normal", "peak", "off_peak"}:
+            raise ValueError("Choose normal, peak or off_peak demand")
+        import zlib
+        network = load_network(self.network_path)
+        from shared.schema.network import route_stops
+        stops = route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
+        rng = random.Random(zlib.crc32((route_id + profile).encode()))
+        self.route_demand[route_id] = profile
+        self.waiting[route_id] = {stop["stop_id"]: rng.randint(20, 50) if profile == "peak" else rng.randint(0, 5) for stop in stops}
+
+    def passenger_count(self, bus, *, at_stop=False):
+        if bus["condition"] == "out_of_service":
+            bus["passengers"], bus["passenger_profile"] = 0, None
+            return 0
+        route = bus["definition"]["route_id"]
+        profile = "peak" if bus["condition"] == "peak" else self.route_demand.get(route, "normal")
+        capacity = bus["definition"]["capacity"]
+        if at_stop or profile != bus["passenger_profile"]:
+            lower, upper = (math.ceil(capacity * 0.85), capacity) if profile == "peak" else (0, max(1, int(capacity * 0.3)))
+            bus["passengers"] = bus["random"].randint(lower, upper)
+            bus["passenger_profile"] = profile
+            if at_stop:
+                stop_id = bus["stops"][bus["segment"]]["stop_id"]
+                queue = self.waiting[route].get(stop_id, 0)
+                boarded = min(queue, capacity - bus["passengers"])
+                bus["passengers"] += boarded
+                self.waiting[route][stop_id] = max(0, queue - boarded)
+        return bus["passengers"]
 
     def configure(self, bus_id, condition, now):
         if bus_id not in self.buses or condition not in self.CONDITIONS:
@@ -240,6 +276,7 @@ class DemoFleet:
                 break
             bus["segment"] += 1
             bus["metres"] = 0.0
+            self.passenger_count(bus, at_stop=True)
             # Three modeled seconds at each stop, even at accelerated clock speeds.
             wait = min(3.0, remaining)
             remaining -= wait
@@ -273,7 +310,7 @@ class DemoFleet:
             longitude=round(current["lon"] + (following["lon"] - current["lon"]) * progress, 6),
             speed_kmh=bus["speed"], bus_status=self.phase(bus),
             current_stop_id=current["stop_id"], current_stop_city_id=current["city_id"],
-            passengers=min(bus["definition"]["capacity"], 0 if bus["condition"] == "out_of_service" else 40 if bus["condition"] == "peak" else 10))
+            passengers=self.passenger_count(bus))
         source.pop("next_stop_id", None)
         source.pop("next_stop_city_id", None)
         if index + 1 < len(stops):

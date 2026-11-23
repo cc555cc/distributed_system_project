@@ -14,6 +14,7 @@
       <a href="user.html">Passenger Map</a>
       <a href="health.html">Bus Health</a>
       <a href="control.html" class="active">Control Panel</a>
+      <button id="operator-logout">Sign out</button>
     </nav>
   </header>
 
@@ -22,6 +23,14 @@
     <p class="note">Change simulation conditions and service here. <a href="health.html">View health and alerts</a> or <a href="operator.html">open the detailed operator overview</a>.</p>
     <label for="data-source">Map and dashboard feed</label>
     <select id="data-source"><option value="live">Live MQTT</option><option value="demo">Controlled demonstration</option></select>
+    <div class="card" id="demand-controls"><h2>Demonstration demand and scheduling</h2>
+      <div class="control-row"><label for="demand-route">Route</label><select id="demand-route"></select>
+        <label for="demand-profile">Demand profile</label><select id="demand-profile"><option value="normal">Normal</option><option value="peak">Peak</option><option value="off_peak">Off-peak</option></select>
+        <button id="demand-apply">Apply route demand</button></div>
+      <div class="control-row"><button id="automatic-on">Enable automatic demo scheduling</button><button id="automatic-off">Require approval</button></div>
+      <p class="note">Three distinct fresh samples are required. A 30-second simulation cooldown prevents repeated changes. Live dispatch uses a separate simulator integration; these actions control the demonstration.</p>
+      <div class="table-wrap" id="demand-status"></div><div id="demand-execution"></div><p id="demand-feedback" role="status"></p>
+    </div>
     <div class="card" id="demo-controls">
       <h2>Bus conditions</h2>
       <p class="note">Repeatable demonstration using the real validation and processing code. These conditions do not stop OS processes or change the live MQTT fleet.</p>
@@ -123,8 +132,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=9"></script>
-  <script src="js/helpers.js?v=9"></script>
-  <script src="js/controls.js?v=9"></script>
+  <script src="js/api.js?v=10"></script>
+  <script src="js/helpers.js?v=10"></script>
+  <script src="js/controls.js?v=10"></script>
 </body>
 </html>

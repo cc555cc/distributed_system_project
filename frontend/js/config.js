@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000";
+const API_URL = window.location.origin;
 const USE_MOCK = false;
 const REFRESH_SECONDS = 3;
 const STALE_SECONDS = 30;

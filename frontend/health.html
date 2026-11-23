@@ -13,6 +13,7 @@
       <a href="user.html">Passenger Map</a>
       <a href="health.html" class="active">Bus Health</a>
       <a href="control.html">Control Panel</a>
+      <button id="operator-logout">Sign out</button>
     </nav>
   </header>
   <main class="page">
@@ -34,11 +35,13 @@
       <p class="note">Passenger seats and edge queue capacity are different limits. Demo balancing uses the existing coordinator; live reports show actual edge assignments.</p>
       <div class="table-wrap" id="edge-health"></div><a href="control.html">Open simulation and scheduling controls</a></div>
     <div class="card"><h2>Recent alerts</h2><div id="health-alerts"></div></div>
+    <div class="card"><h2>Demand and scheduling feedback</h2><div id="health-demand" class="table-wrap"></div></div>
+    <div class="card"><h2>Sensor → edge → central</h2><div id="health-pipeline" class="table-wrap"></div></div>
   </main>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=9"></script>
-  <script src="js/helpers.js?v=9"></script>
-  <script src="js/health.js?v=9"></script>
+  <script src="js/api.js?v=10"></script>
+  <script src="js/helpers.js?v=10"></script>
+  <script src="js/health.js?v=10"></script>
 </body>
 </html>

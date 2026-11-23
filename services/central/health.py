@@ -354,6 +354,9 @@ class SimulationClock:
             while remaining > 1e-9:
                 step = min(60.0, remaining)
                 simulation.advance(step)
+                if getattr(simulation, "demo_running", False):
+                    from services.central.scheduling import observe_demo
+                    observe_demo()
                 remaining -= step
 
     def snapshot(self):
@@ -419,6 +422,11 @@ def bus_health_snapshot(source="live"):
             valid_telemetry_age_seconds=bus["valid_telemetry_age_seconds"] if bus else None,
             central_update_age_seconds=(state["virtual_seconds"] - received if received is not None else None),
             central_available=state["central_available"], central_delivery_pending=bus_id in pending_ids,
+            pipeline={"bus_delivery_attempts": bus["attempts"] if bus else 0,
+                "bus_rejected_readings": bus["rejected_readings"] if bus else 0,
+                "global_edge_accepted": state["accepted"], "global_edge_rejected": state["rejected"],
+                "global_processing_outcomes": state["outcomes"], "global_central_acknowledged": state["central_ack_count"],
+                "global_central_pending_buses": state["central_pending"], "mapping_contract": "edge-central-v1"},
             sensors=sensors))
     return result
 
@@ -548,7 +556,11 @@ def submit_simulation_requests(body: SimulationRequests):
 
 @router.post("/simulation/advance")
 def advance_simulation(body: SimulationStep):
-    return simulation.advance(body.seconds)
+    result = simulation.advance(body.seconds)
+    if getattr(simulation, "demo_running", False):
+        from services.central.scheduling import observe_demo
+        observe_demo()
+    return result
 
 
 @router.patch("/simulation/instances/{edge_id}")

@@ -5,6 +5,76 @@ const regionSelect = document.getElementById("region-select");
 const statusText = document.getElementById("status");
 const routeList = document.getElementById("route-list");
 const busList = document.getElementById("bus-list");
+const originSelect = document.getElementById("origin-stop");
+const destinationSelect = document.getElementById("destination-stop");
+let tripRequest = 0;
+
+async function loadTripStops(regionId, request) {
+  const stops = await getJson("/passenger/stops?region_id=" + regionId + "&source=" + passengerSource());
+  if (request !== loadNumber) return;
+  originSelect.replaceChildren();
+  destinationSelect.replaceChildren(new Option("Show approaching buses", ""));
+  stops.forEach(function (stop) {
+    const name = stop.name + " (" + stop.stop_id + ")";
+    originSelect.add(new Option(name, stop.stop_id));
+    destinationSelect.add(new Option(name, stop.stop_id));
+  });
+  const snapshot = await getPublicSnapshot();
+  if (request !== loadNumber) return;
+  const approaching = snapshot.buses.find(function (bus) { return bus.region_id === regionId && bus.state && bus.state.next_stop_id; });
+  if (approaching && stops.some(function (stop) { return stop.stop_id === approaching.state.next_stop_id; })) {
+    originSelect.value = approaching.state.next_stop_id;
+  }
+}
+
+async function updateTrip() {
+  const request = ++tripRequest;
+  const status = document.getElementById("journey-status");
+  const results = document.getElementById("journey-results");
+  const arrivalsList = document.getElementById("stop-arrivals");
+  if (!originSelect.value) return;
+  if (originSelect.value === destinationSelect.value) {
+    status.textContent = "Choose a destination different from your starting stop.";
+    results.replaceChildren(); arrivalsList.replaceChildren(); return;
+  }
+  const params = new URLSearchParams({source: passengerSource(), region_id: regionSelect.value,
+    party_size: document.getElementById("party-size").value, stop_id: originSelect.value});
+  try {
+    const arriving = await getJson("/passenger/arrivals?" + params);
+    let choices = arriving;
+    if (destinationSelect.value) {
+      params.delete("stop_id"); params.set("origin", originSelect.value); params.set("destination", destinationSelect.value);
+      choices = await getJson("/passenger/journeys?" + params);
+    }
+    if (request !== tripRequest) return;
+    arrivalsList.replaceChildren();
+    arriving.arrivals.slice(0, 10).forEach(function (bus) {
+      const item = document.createElement("li");
+      item.textContent = bus.bus_id + " · Route " + bus.route_id + " · " + bus.eta_minutes.toFixed(1) + " min · " +
+        bus.free_seats + " seats free (" + Math.round(bus.occupancy_percent) + "%)" +
+        (bus.free_seats < Number(document.getElementById("party-size").value) ? " · Not enough seats for your group" : "");
+      arrivalsList.appendChild(item);
+    });
+    if (!arriving.arrivals.length) arrivalsList.textContent = arriving.message;
+    results.replaceChildren();
+    const all = choices.recommended ? [choices.recommended, ...choices.alternatives.slice(0, 2)] : [];
+    all.forEach(function (choice, index) {
+      const item = document.createElement("p");
+      const buses = choice.legs ? choice.legs.map(function (leg) { return leg.bus_id; }).join(" → ") : choice.bus_id;
+      item.textContent = (index === 0 ? "Recommended: " : "Alternative: ") + buses + ". " + choice.explanation;
+      results.appendChild(item);
+    });
+    if (!all.length) results.textContent = choices.unavailable.length ? "Suitable buses currently lack confirmed seats. Please compare later arrivals." : choices.message;
+    status.textContent = choices.notice;
+  } catch (error) {
+    if (request !== tripRequest) return;
+    status.textContent = "Predictions unavailable: " + error.message;
+    results.replaceChildren(); arrivalsList.replaceChildren();
+  }
+}
+
+document.getElementById("journey-form").addEventListener("submit", function (event) { event.preventDefault(); updateTrip(); });
+[originSelect, destinationSelect].forEach(function (select) { select.addEventListener("change", updateTrip); });
 
 const map = L.map("map").setView([43.9, -78.9], 11);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -51,6 +121,7 @@ function drawRoute(route, stops, color) {
       weight: 2
     });
     marker.bindPopup("<b>" + stop.name + "</b><br>Stop " + stop.stop_id + "<br>" + route.name);
+    marker.on("click", function () { originSelect.value = stop.stop_id; updateTrip(); });
     marker.addTo(routeLayer);
     bounds.extend([stop.lat, stop.lon]);
   });
@@ -71,6 +142,9 @@ function drawRoute(route, stops, color) {
 
 async function loadRegion(regionId) {
   loadNumber++;
+  tripRequest++;
+  document.getElementById("journey-results").replaceChildren();
+  document.getElementById("stop-arrivals").replaceChildren();
   const myNumber = loadNumber;
   clearInterval(timer);
 
@@ -103,6 +177,8 @@ async function loadRegion(regionId) {
   }
 
   routes = regionRoutes;
+  try { await loadTripStops(regionId, myNumber); }
+  catch (error) { document.getElementById("journey-status").textContent = "Stops unavailable: " + error.message; }
 
   const allBounds = L.latLngBounds([]);
   Object.keys(routeBounds).forEach(function (id) {
@@ -221,6 +297,7 @@ async function loadBuses(myNumber) {
   } else {
     statusText.textContent = shown + " buses on the map. Updated " + new Date().toLocaleTimeString();
   }
+  updateTrip();
 }
 
 regionSelect.addEventListener("change", function () {

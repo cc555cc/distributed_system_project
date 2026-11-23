@@ -96,10 +96,48 @@ async function loadHealth() {
       alertBox.appendChild(list);
     }
     healthUpdated.textContent = (source === "demo" ? "Demonstration" : "Live MQTT") + " · Updated " + new Date().toLocaleTimeString();
+    if (bus.pipeline) {
+      document.getElementById("health-pipeline").innerHTML = tableHtml(["Stage / scope", "Value"], Object.entries(bus.pipeline).map(function ([name, value]) {
+        return [escapeHtml(name.replaceAll("_", " ")), escapeHtml(typeof value === "object" ? JSON.stringify(value) : value)];
+      }));
+    } else document.getElementById("health-pipeline").textContent = "Live sensor and queue reports are shown above; simulation counters are not substituted for live metrics.";
+    try {
+      const demand = await getJson("/scheduling/status?source=" + source);
+      if (request !== healthRequest) return;
+      const routeDemand = demand.routes.find(function (item) { return item.route_id === bus.route_id; });
+      document.getElementById("health-demand").textContent = routeDemand ?
+        "Route " + routeDemand.route_id + " · " + (routeDemand.occupancy_percent === null ? "occupancy unavailable" : Math.round(routeDemand.occupancy_percent) + "% occupied") +
+        " · " + (routeDemand.waiting_passengers ?? "unknown") + " waiting · " + routeDemand.samples + " sustained samples · " +
+        (routeDemand.recommendation ? routeDemand.recommendation.status + ": " + routeDemand.recommendation.reason + " " + (routeDemand.recommendation.feedback || "") : "No sustained scheduling change") : "No route demand data.";
+      const history = demand.history.filter(function (decision) { return decision.route_id === bus.route_id; }).slice(-1)[0];
+      if (history) {
+        const execution = document.createElement("p");
+        execution.textContent = history.execution + "; bus " + (history.dispatched_bus || "interval change") +
+          "; sequence " + (history.confirmation_sequence || "not yet received") +
+          "; occupancy before/after " + Math.round(history.occupancy_before) + "% / " +
+          (history.occupancy_after === null ? "unavailable" : Math.round(history.occupancy_after) + "%") +
+          "; waiting before/after " + history.waiting_before + " / " + history.waiting_after;
+        document.getElementById("health-demand").appendChild(execution);
+      }
+      const evaluation = demand.eta_evaluation;
+      if (evaluation) {
+        const eta = document.createElement("p");
+        eta.textContent = "Fleet arrival checks: " + evaluation.sample_count + "; mean absolute ETA error: " +
+          (evaluation.mean_absolute_error_seconds === null ? "not measured yet" : evaluation.mean_absolute_error_seconds.toFixed(1) + " s") +
+          "; observation resolution " + evaluation.observation_resolution_seconds + " source seconds.";
+        document.getElementById("health-demand").appendChild(eta);
+      }
+      const comparisons = demand.comparisons[bus.route_id] || {};
+      const comparison = document.createElement("div");
+      comparison.innerHTML = tableHtml(["Recorded profile", "Samples", "Mean occupancy", "Mean speed", "Mean waiting"], Object.entries(comparisons).map(function ([profile, values]) {
+        return [escapeHtml(profile), values.samples, Math.round(values.occupancy_percent) + "%", values.average_speed_kmh.toFixed(1) + " km/h", values.waiting_passengers === null ? "Unavailable" : Math.round(values.waiting_passengers)];
+      }));
+      document.getElementById("health-demand").appendChild(comparison);
+    } catch (error) { document.getElementById("health-demand").textContent = "Demand data unavailable."; }
   } catch (error) {
     if (request !== healthRequest) return;
     healthUpdated.textContent = "Health reports unavailable: " + error.message;
-    ["bus-health", "sensor-health", "route-health", "edge-health", "health-alerts"].forEach(function (id) {
+    ["bus-health", "sensor-health", "route-health", "edge-health", "health-alerts", "health-demand", "health-pipeline"].forEach(function (id) {
       document.getElementById(id).textContent = "Unavailable. Previous readings are not presented as current health.";
     });
   }

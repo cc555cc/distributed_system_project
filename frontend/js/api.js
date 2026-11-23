@@ -1,5 +1,5 @@
 function demoView() {
-  return localStorage.getItem("transit-data-source") === "demo";
+  return localStorage.getItem("transit-data-source") !== "live";
 }
 
 function chooseDemo() {
@@ -9,6 +9,11 @@ function chooseDemo() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  const logout = document.getElementById("operator-logout");
+  if (logout) logout.addEventListener("click", async function () {
+    await fetch(API_URL + "/auth/logout", {method: "POST"});
+    location.assign("/user.html");
+  });
   const select = document.getElementById("data-source");
   if (!select) return;
   select.value = demoView() ? "demo" : "live";
@@ -26,61 +31,45 @@ let simulationReadAt = 0;
 
 async function getJson(path) {
   const response = await fetch(API_URL + path);
+  requireOperator(response);
   if (!response.ok) {
     throw new Error("Request failed: " + response.status);
   }
   return response.json();
 }
 
+let publicRead = null;
+let publicReadAt = 0;
+function passengerSource() { return demoView() ? "demo" : "live"; }
+function requireOperator(response) {
+  if (response.status === 401 && location.pathname !== "/user.html") {
+    location.assign("/login.html?next=" + encodeURIComponent(location.pathname));
+  }
+}
+async function getPublicSnapshot() {
+  if (!publicRead || Date.now() - publicReadAt > 200) {
+    publicReadAt = Date.now();
+    publicRead = getJson("/passenger/snapshot?source=" + passengerSource()).catch(function (error) { publicRead = null; throw error; });
+  }
+  return publicRead;
+}
 async function getRoutes() {
-  if (demoView()) return getJson("/health/simulation/routes");
-  if (USE_MOCK) {
-    return mockRoutes;
-  }
-  return getJson("/routes");
+  return USE_MOCK ? mockRoutes : getJson("/passenger/routes?source=" + passengerSource());
 }
-
 async function getRouteStops(routeId) {
-  if (demoView()) return getJson("/health/simulation/routes/" + encodeURIComponent(routeId) + "/stops");
-  if (USE_MOCK) {
-    return mockRouteStops(routeId);
-  }
-  return getJson("/routes/" + routeId + "/stops");
+  return USE_MOCK ? mockRouteStops(routeId) : getJson("/passenger/routes/" + encodeURIComponent(routeId) + "/stops?source=" + passengerSource());
 }
-
 async function getBus(busId) {
-  if (demoView()) {
-    const simulation = await getSimulation();
-    const data = simulation.central_states[busId];
-    if (!data) return null;
-    return { ...data, simulation_age_seconds: simulation.virtual_seconds - simulation.central_received_at[busId],
-      simulation_status: simulation.demo_running ? simulation.demo_buses[busId]?.status || "unknown" : "paused",
-      distance_m: simulation.demo_buses[busId]?.distance_m || 0,
-      last_updated: data.edge_metadata.source_timestamp };
-  }
-  if (USE_MOCK) {
-    return mockBus(busId);
-  }
-  const response = await fetch(API_URL + "/bus_states/" + busId);
-  if (response.status === 404) {
-    return null;
-  }
-  if (!response.ok) {
-    throw new Error("Request failed: " + response.status);
-  }
-  return response.json();
+  if (USE_MOCK) return mockBus(busId);
+  const bus = (await getPublicSnapshot()).buses.find(function (bus) { return bus.bus_id === busId; });
+  return bus ? bus.state : null;
 }
-
 async function getFleetIds(routes) {
   const ids = new Set(routes.map(function (route) { return route.route_id; }));
-  if (demoView()) return (await getSimulation()).registered_buses.filter(function (bus) {
-    return ids.has(bus.route_id);
-  }).map(function (bus) { return {id: bus.bus_id, route: bus.route_id}; });
-  return routes.flatMap(function (route) {
-    return Array.from({length: BUSES_PER_ROUTE}, function (_, i) {
-      return {id: "bus-" + route.route_id + "-" + (i + 1), route: route.route_id};
-    });
+  if (USE_MOCK) return routes.flatMap(function (route) {
+    return Array.from({length: BUSES_PER_ROUTE}, function (_, index) { return {id: "bus-" + route.route_id + "-" + (index+1), route: route.route_id}; });
   });
+  return (await getPublicSnapshot()).buses.filter(function (bus) { return ids.has(bus.route_id); }).map(function (bus) { return {id: bus.bus_id, route: bus.route_id}; });
 }
 
 async function sendPost(path, body, method = "POST") {
@@ -90,6 +79,7 @@ async function sendPost(path, body, method = "POST") {
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
+  requireOperator(response);
   if (!response.ok) {
     let text = "Request failed: " + response.status;
     try {
