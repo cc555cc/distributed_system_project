@@ -442,6 +442,14 @@ Build one web application containing three interfaces: Passenger Journey Planner
 The current map uses logical route boundaries: west owns routes 302/900 (four buses per instance), east owns 407/409/901 (six buses per instance). These are processing responsibilities, not physical server locations or GPS polygons. A moving bus keeps its explicit owner. Run `python -m services.edge.main --plan` to inspect assignments without opening connections. The simulation starts from these assignments, balances buses within their home region and permits controlled cross-region takeover when local workers fail. It keeps the original route region and coordinates when a remote instance hosts that work. The MQTT launcher starts from that plan and follows subsequent central ownership assignments.
 
 
+### Passenger, control and health pages
+
+- `frontend/user.html` is the passenger interface: route/stop selection, current bus locations and occupancy, with last-known positions labelled clearly. Server failure, fleet and dispatch controls are kept out of this page. Journey search and recommendations still require their unfinished backend features.
+- `frontend/control.html` is the operator control panel, containing the existing simulation, fleet, bus registration, dispatch, fault and recovery controls. It links to the detailed `operator.html` overview.
+- `frontend/health.html` is read-only: bus and sensor dropdowns, route availability/capacity, edge workload and alerts.
+
+The root `index.html` and old `controls.html` remain small compatibility redirects to the new pages. Existing JavaScript is reused. This layout change does not complete backend authentication/authorization or change ticket counts.
+
 ### Bus, sensor, route health and alerts
 
 Open `frontend/health.html` (**Bus Health** in navigation) for a dedicated read-only health page, separate from the passenger planner and operator controls. Select live MQTT or the controlled demonstration, then region, route, bus and an individual sensor or all four sensors. The backend supplies observed health, evidence, valid-reading age, demo central-delivery age/status, route service availability, verified passenger capacity and relevant edge queues/assignments. Alerts are filtered to the selected bus/region, while applicable central/edge alerts remain visible.

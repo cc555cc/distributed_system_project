@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passenger Transit</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>Transit System</h1>
+    <nav>
+      <a href="user.html" class="active">Passenger Map</a>
+    </nav>
+  </header>
+
+  <main class="passenger-layout">
+    <aside class="side-panel">
+      <h2>Your transit service</h2>
+      <p id="passenger-feed" class="note"></p>
+      <label for="region-select">City / Region</label>
+      <select id="region-select"></select>
+      <p id="status">Loading...</p>
+
+      <h2>Routes</h2>
+      <ul id="route-list"></ul>
+
+      <h2>Buses</h2>
+      <ul id="bus-list"></ul>
+    </aside>
+    <div id="map"></div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/mock.js"></script>
+  <script src="js/api.js?v=9"></script>
+  <script src="js/helpers.js?v=9"></script>
+  <script src="js/passenger.js?v=9"></script>
+</body>
+</html>

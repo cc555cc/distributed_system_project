@@ -10,10 +10,9 @@
   <header>
     <h1>Transit System</h1>
     <nav>
-      <a href="index.html">Passenger Planner</a>
-      <a href="operator.html">Operator Dashboard</a>
+      <a href="user.html">Passenger Map</a>
       <a href="health.html" class="active">Bus Health</a>
-      <a href="controls.html">Simulation Controls</a>
+      <a href="control.html">Control Panel</a>
     </nav>
   </header>
   <main class="page">
@@ -33,13 +32,13 @@
     <div class="card"><h2>Route health</h2><div id="route-health" class="table-wrap"></div></div>
     <div class="card"><h2>Edge workload</h2>
       <p class="note">Passenger seats and edge queue capacity are different limits. Demo balancing uses the existing coordinator; live reports show actual edge assignments.</p>
-      <div class="table-wrap" id="edge-health"></div><a href="controls.html">Open simulation and scheduling controls</a></div>
+      <div class="table-wrap" id="edge-health"></div><a href="control.html">Open simulation and scheduling controls</a></div>
     <div class="card"><h2>Recent alerts</h2><div id="health-alerts"></div></div>
   </main>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=8"></script>
-  <script src="js/helpers.js?v=8"></script>
-  <script src="js/health.js?v=8"></script>
+  <script src="js/api.js?v=9"></script>
+  <script src="js/helpers.js?v=9"></script>
+  <script src="js/health.js?v=9"></script>
 </body>
 </html>
