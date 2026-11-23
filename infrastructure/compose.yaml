@@ -106,12 +106,14 @@ services:
     <<: *app
     profiles: [buses]
     restart: "no"
-    command: ["python", "-m", "services.data_simulation.run_buses", "--mqtt", "--updates", "300"]
+    command: ["python", "-m", "services.data_simulation.run_buses", "--mqtt", "--updates", "3600"]
     depends_on:
+      central: { condition: service_healthy }
       mosquitto: { condition: service_started }
     environment:
       <<: *health-env
       MQTT_HOST: mosquitto
+      CENTRAL_URL: http://central:8000
 
 volumes:
   mosquitto-data:

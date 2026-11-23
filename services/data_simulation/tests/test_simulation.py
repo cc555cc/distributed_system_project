@@ -1,12 +1,14 @@
 """Check the shared BUS-01 format and BUS-02 network without a running broker."""
 
 import json
+import io
+import urllib.error
 from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
 
-from services.data_simulation import export_routes, generate_data
+from services.data_simulation import export_routes, generate_data, run_buses
 from services.edge.config import EdgeConfig, NetworkConfig
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.transformation.central_mapper import map_bus_update
@@ -241,3 +243,21 @@ def test_invalid_assignments_are_rejected(change):
 def test_unknown_bus_cannot_generate_telemetry():
     with pytest.raises(ValueError, match="not registered"):
         list(generate_data.generate_messages("302", 0, "unknown", update_seconds=0))
+
+def test_start_sequence_continues_numbering_and_limit_counts_readings():
+    messages = list(generate_data.generate_messages("302", 0, "bus-302-1", max_updates=3,
+                                      update_seconds=0, start_sequence=500))
+    assert [m["sequence_number"] for m in messages] == [501, 502, 503]
+
+
+def test_resume_sequence_starts_above_central(monkeypatch):
+    monkeypatch.setattr(run_buses.urllib.request, "urlopen",
+                        lambda url, timeout: io.BytesIO(b'{"sequence_number": 300}'))
+    assert run_buses.resume_sequence("bus-302-1", "http://central") == 300 + run_buses.SEQUENCE_MARGIN
+
+
+def test_resume_sequence_starts_at_zero_for_unknown_bus(monkeypatch):
+    def not_found(url, timeout):
+        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+    monkeypatch.setattr(run_buses.urllib.request, "urlopen", not_found)
+    assert run_buses.resume_sequence("bus-302-1", "http://central") == 0

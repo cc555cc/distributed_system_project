@@ -49,6 +49,7 @@ def generate_messages(
     clock=None,
     controls=None,
     start_stop_index=0,
+    start_sequence=0,
 ):
     """Yield standard messages so stdout, MQTT and tests use identical data.
 
@@ -97,7 +98,8 @@ def generate_messages(
     sensors = random.Random(43)
     speed = SPEED_KMH * traffic_factor
     occupancy = 0
-    sequence = 0
+    sequence = start_sequence
+    sent = 0
     # Pass a clock in when something else in this bus process also receives
     # messages (commands): its receive() calls then raise later send stamps.
     clock = clock if clock is not None else LamportClock()
@@ -113,7 +115,7 @@ def generate_messages(
         metres_per_update = speed / 3.6 * (update_seconds or UPDATE_SECONDS)
         steps = max(1, math.ceil(distance_metres(start, end) / metres_per_update))
         for step in range(steps + 1):
-            if sequence >= max_updates:
+            if sent >= max_updates:
                 return
             # A paused bus generates nothing; it resumes from the same point.
             if controls is not None and not controls.wait_while_paused():
@@ -121,6 +123,7 @@ def generate_messages(
             progress = step / steps
             at_stop = step == 0 or step == steps
             sequence += 1
+            sent += 1
             # Send rule: every reading is a new local event on this bus.
             logical_clock = clock.tick()
             current = end if step == steps else start
