@@ -425,8 +425,27 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
         self.central_ack_count = 0
         self.headways, self.departures, self.last_departure = {}, {}, {}
         self.dispatch_queues = {}
+        self.fleet_limit = 50
         for worker in self.workers.values():
             worker.on_telemetry = self._complete
+
+    def request_burst(self, count, region_id):
+        """Queue real demo readings at once; later readings keep their sequence order."""
+        with self.lock:
+            if not self.demo or not self.demo_running:
+                raise ValueError("Start the demonstration first")
+            buses = [bus for bus in self.demo.buses.values()
+                     if bus["definition"]["region_id"] == region_id and bus["condition"] in {"normal", "traffic", "peak", "stopped"}]
+            if not buses or not 1 <= count <= 1000:
+                raise ValueError("Choose an active region and 1 to 1000 requests")
+            accepted = 0
+            for index in range(count):
+                bus = buses[index % len(buses)]
+                reading = self.demo._reading(bus)
+                accepted += self.submit_telemetry(reading)["accepted"]
+            self.events.append(dict(time=self.time, action="request_burst", region_id=region_id,
+                                    requested=count, accepted=accepted, rejected=count-accepted))
+            return dict(requested=count, accepted=accepted, rejected=count-accepted)
 
     def _eligible(self, region):
         return [w for w in super()._eligible(region) if w.state == "healthy"]
@@ -588,8 +607,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 raise ValueError("Bus ID must be a valid topic segment")
             network = load_network(self.network_path)
             route = next((r for r in network["routes"] if r["route_id"] == route_id), None)
-            if route is None or bus_id in self.bus_regions or len(self.bus_regions) >= 50:
-                raise ValueError("Choose a known route, unique bus ID and fleet size below 50")
+            if route is None or bus_id in self.bus_regions or len(self.bus_regions) >= self.fleet_limit:
+                raise ValueError("Choose a known route, unique bus ID and space below the fleet limit")
             workers = self._eligible(route["region_id"])
             if not workers:
                 raise ValueError("No healthy regional edge can own the new bus")
@@ -1043,7 +1062,10 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                     self._balance(region)
                 for edge_id in list(self.auto_workers):
                     worker = self.workers[edge_id]
-                    if all(
+                    active_sources = sum(bus["definition"]["region_id"] == worker.region_id
+                        and bus["condition"] != "out_of_service" for bus in self.demo.buses.values()) if self.demo and self.demo_running else 0
+                    other_rate = sum(1000 / w.processing_ms for w in self._eligible(worker.region_id) if w is not worker)
+                    if active_sources <= other_rate and all(
                         len(w.queue) / w.capacity < 0.2
                         for w in self._eligible(worker.region_id)
                     ):
@@ -1065,6 +1087,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 return result
             result.update(
                 telemetry_mode=True,
+                fleet_limit=self.fleet_limit,
+                active_buses=sum(bus["condition"] != "out_of_service" for bus in self.demo.buses.values()) if self.demo else 0,
                 demo_running=self.demo_running,
                 session_id=self.session_id,
                 central_ack_count=self.central_ack_count,
@@ -1097,6 +1121,8 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
             )
             for worker in result["workers"]:
                 worker["assigned_buses"] = self._assigned(worker["edge_id"])
+                worker["active_assigned_buses"] = sum(self.demo.buses[bus_id]["condition"] != "out_of_service"
+                    for bus_id in worker["assigned_buses"]) if self.demo else 0
                 worker["replica_sequences"] = {
                     bus_id: state["floor"]
                     for bus_id, state in self.workers[

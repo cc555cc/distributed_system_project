@@ -291,3 +291,22 @@ button:disabled {
   font-size: 13px;
   color: #555;
 }
+
+/* Queues measure waiting requests; occupancy measures passenger seats. */
+.queue-meter { width: 120px; height: 8px; background: #e2e8f0; border-radius: 5px; overflow: hidden; margin-bottom: 4px; }
+.queue-meter span { display: block; height: 100%; background: #29875d; transition: width .3s; }
+.queue-meter.busy span { background: #d97706; }
+.summary-strip { display: flex; gap: 24px; flex-wrap: wrap; padding: 10px 0 18px; }
+.success { color: #237549; }
+.side-panel { width: 410px; flex-shrink: 0; }
+.side-panel table { font-size: 12px; width: 100%; }
+.side-panel th, .side-panel td { padding: 7px 4px; }
+.recommendation { border: 2px solid #27865e; background: #edf8f1; border-radius: 8px; padding: 12px; margin: 10px 0; }
+.recommendation strong { display: block; font-size: 19px; margin-top: 7px; }
+.recommendation small { display: block; margin-top: 8px; }
+.control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.control-row label { width: auto; }
+.control-row input { width: 90px; padding: 7px; }
+@media(max-width: 700px) { .passenger-layout { flex-direction: column; height: auto; } .side-panel { width: 100%; max-height: 55vh; } #map { min-height: 45vh; } }
+
+.recommendation .summary-strip { padding: 8px 0; gap: 16px; }

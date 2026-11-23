@@ -63,33 +63,6 @@ class ArrivalEvaluation:
 
 # get the location of a bus in a route, use its lat and lon to estimate the eta of the rest of the
 # stops in that direction
-def eta_bus(conn, bus_id) -> list[dict] | None:
-    stops_eta = []
-    bus = conn.execute(
-        "SELECT s.lat, s.lon, s.current_stop_id, b.route_id, s.direction_id, s.speed, s.edge_metadata, s.last_updated, s.bus_status FROM bus_states s JOIN buses b ON b.bus_id = s.bus_id WHERE s.bus_id = %s",
-        (bus_id,),
-    ).fetchone()
-
-    if bus is None:
-        return None
-
-    stops = conn.execute(
-        "SELECT rs.stop_id, st.lat, st.lon FROM route_stops rs JOIN stops st ON st.stop_id = rs.stop_id WHERE rs.route_id = %s AND rs.direction_id = %s ORDER BY rs.position",
-        (bus[3], bus[4]),
-    ).fetchall()
-
-    from datetime import UTC, datetime
-    stale = bus[7] is None or (datetime.now(UTC) - bus[7]).total_seconds() >= 30
-    state = dict(lat=bus[0], lon=bus[1], current_stop_id=bus[2], speed=bus[5], edge_metadata=bus[6] or {})
-    ordered = [dict(stop_id=stop[0], lat=stop[1], lon=stop[2]) for stop in stops]
-    for stop in stops:
-        estimate = None if stale or bus[8] in ("idle", "out_of_service") else route_arrival(ordered, state, stop[0])
-        stops_eta.append({"stop_id": stop[0], "eta_minutes": round(estimate, 2) if estimate is not None else None,
-                          "available": estimate is not None})
-
-    return stops_eta
-
-
 # haversine helper function to give real distance between two GPS points
 EARTH_RADIUS_KM = 6371
 

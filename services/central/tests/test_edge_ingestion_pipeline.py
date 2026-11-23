@@ -112,7 +112,7 @@ def pipeline(tmp_path, monkeypatch):
             INSERT INTO route_stops VALUES ('R1',0,0,'S1'),('R1',0,1,'S2');
         """)
     monkeypatch.setattr(
-        bus_states.psycopg,
+        bus_states.database.psycopg,
         "connect",
         lambda url, **kwargs: TestDatabase(path, **kwargs),
     )
@@ -354,7 +354,7 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
         """)
         connection.executescript(seed_sql(network))
     monkeypatch.setattr(
-        bus_states.psycopg,
+        bus_states.database.psycopg,
         "connect",
         lambda url, **kwargs: TestDatabase(database, **kwargs),
     )
@@ -452,7 +452,7 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(
         """)
         connection.executescript(seed_sql(load_network()))
     monkeypatch.setattr(
-        bus_states.psycopg,
+        bus_states.database.psycopg,
         "connect",
         lambda url, **kwargs: TestDatabase(path, **kwargs),
     )

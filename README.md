@@ -4,23 +4,23 @@ A public-transit simulation connecting bus telemetry, MQTT messaging, regional e
 
 ## Progress across branches
 
-**61/77 completed (79.2%), 9 partial (11.7%), 7 pending (9.1%).** The unfinished portion is **16/77 (20.8%)**. Percentages count tickets, not remaining effort; partial tickets are not counted as half-complete.
+**63/70 completed (90.0%), 6 partial (8.6%), 1 pending (1.4%).** The unfinished portion is **7/70 (10.0%)**. Percentages count tickets, not remaining effort; partial tickets are not counted as half-complete.
 
 | Section | Completed | Partial | Pending | Total |
 |---|---:|---:|---:|---:|
 | Ali — Edge | 12 | 0 | 0 | 12 |
 | Zachary — Simulator | 11 | 0 | 0 | 11 |
 | Julian — Messaging | 11 | 0 | 0 | 11 |
-| Carson — Central | 10 | 2 | 0 | 12 |
-| Danial — UI | 10 | 1 | 0 | 11 |
-| Shared integration | 7 | 6 | 7 | 20 |
-| **Total** | **61** | **9** | **7** | **77** |
+| Carson — Central | 11 | 1 | 0 | 12 |
+| Danial — UI | 11 | 0 | 0 | 11 |
+| Shared integration | 7 | 5 | 1 | 13 |
+| **Total** | **63** | **6** | **1** | **70** |
 
 These statuses cover the agreed controlled-demonstration scope. Current passenger, authentication and demand-scheduling work is on [ali](https://github.com/cc555cc/distributed_system_project/tree/ali). Native live MQTT dispatch and durable multi-process sessions are not included in this completion claim. BUS-02 uses the agreed west/east map; BUS-11 adds buses only.
 
-Verification on `ali`: **439 passed, 18 opt-in service tests skipped (457 collected)**. Browser checks verified login protection, stop arrivals, journey recommendations, peak demand, approved dispatch and central sequence confirmation. Earlier fleet, fault and recovery checks remain covered by the suite.
+Verification on `ali`: **443 passed, 18 opt-in service tests skipped (461 collected)**. Browser checks verified login protection, stop arrivals, journey recommendations, peak demand, approved dispatch and central sequence confirmation. Earlier fleet, fault and recovery checks remain covered by the suite. Separately, both opt-in live MQTT/PostgreSQL ingestion tests passed against isolated local test schemas.
 
-Remaining work includes independent backend module separation (CENTRAL-11), stronger controlled scheduling-effect evaluation (CENTRAL-10), operator arrival presentation (UI-04), and shared report/presentation/submission work. Earlier implementation notes below describe previous milestones; the ticket rows and this summary describe current status.
+Remaining tickets cover stronger scheduling-effect evaluation (CENTRAL-10), shared integration acceptance, system quality/security evaluation and TEAM-14 scheduling feedback testing. Report, presentation, contribution and screenshot tasks are excluded from this ticket list. Earlier implementation notes below describe previous milestones; the ticket rows and this summary describe current status.
 
 Passenger arrivals, routes, stops, snapshots and journeys use public `/passenger/` APIs. Operator-only `/scheduling/` routes handle demand, approval and automatic demo policy; health, alerts and management APIs also require a server session. `user.html` remains public; `control.html`, `health.html` and `operator.html` require login. Run and demonstration instructions, demo credentials and limitations are in [frontend/README.md](frontend/README.md).
 
@@ -67,10 +67,12 @@ project/
 |   `-- central/                # Carson: API, ingestion and scheduling
 |       |-- health.py           # central edge-heartbeat receiver and health API
 |       |-- main.py
+|       |-- database/           # transit.py: SQL reads and writes
+|       |-- eta.py, journeys.py, scheduling.py, suggestions.py
 |       |-- routers/
-|       |   |-- bus_states.py
-|       |   |-- routes.py
-|       |   `-- stops.py
+|       |   |-- bus_states.py, buses.py, routes.py, stops.py
+|       |   |-- auth.py, passenger.py, scheduling.py
+|       |   `-- control.py, sensors.py, messaging.py, eta.py
 |       `-- tests/
 |-- frontend/                   # Danial: passenger/operator UI
 |-- shared/
@@ -370,7 +372,7 @@ Receive processed regional data, calculate arrival times, plan A-to-B journeys, 
 | `CENTRAL-08` | **P1** | Connect scheduling decisions to Zachary's simulator. Allow an approved scheduling decision to request more buses or change departure frequency.<br><br>**Done when:** A scheduling command changes the simulated dispatch plan. The central server receives updated information confirming the change. | 🟩 Done (approved demo dispatch confirmed by later central telemetry; native live dispatch separate) |
 | `CENTRAL-09` | **P1** | Add role-based access and privacy safeguards. Passengers may view public transit information, while authorized operators can access management features and send simulation commands.<br><br>**Done when:** Unauthorized users cannot execute operator-only actions. Access checks occur in the backend, and unnecessary personal information is not stored. | 🟩 Done (public passenger / authenticated operator boundary enforced by backend) |
 | `CENTRAL-10` | **P2** | Compare predicted bus arrivals against simulated arrival times. Evaluate how scheduling recommendations affect passenger waiting times and route overcrowding.<br><br>**Done when:** Recorded results show ETA errors and demand-response outcomes under normal and delayed scenarios. | Partial (observed ETA errors and before/after demand recorded; controlled scheduling-effect evaluation remains) |
-| `CENTRAL-11` | **P2** | Separate backend functionality into clear modules for data ingestion, database operations, route management, scheduling, recommendations and APIs. Avoid tightly coupling unrelated functions.<br><br>**Done when:** Modules can be tested independently, existing APIs continue working, and responsibilities are clearly separated. | Partial (auth, journeys, scheduling, ETA and recommendations separated; database/API separation remains) |
+| `CENTRAL-11` | **P2** | Separate backend functionality into clear modules for data ingestion, database operations, route management, scheduling, recommendations and APIs. Avoid tightly coupling unrelated functions.<br><br>**Done when:** Modules can be tested independently, existing APIs continue working, and responsibilities are clearly separated. | 🟩 Done (database queries, API handling, health, simulation commands, ETA and scheduling separated; regression tested) |
 | `CENTRAL-12` | **P1** | Build suggestions.py to rank suitable A-to-B journeys. Compare waiting time, traffic-adjusted riding time, occupancy and transfers. Explain why one bus or route is recommended over alternatives.<br><br>**Done when:** A valid journey search returns a recommended option and alternatives. The result includes estimated journey time, crowding information and a clear reason for the recommendation. | 🟩 Done (ranked time/capacity/transfer options with explanations) |
 
 CENTRAL-01/02 retain their backend integration evidence. The current ali ETA and passenger services add ordered-distance, traffic and stop-wait calculations; see frontend/README.md for demo scope and limitations.
@@ -387,7 +389,7 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `UI-01` | **P0** | Build the main web application with navigation between Passenger Planner, Operator Dashboard and Simulation Controls. Use consistent layouts and make the pages usable on desktop and mobile.<br><br>**Done when:** All three pages open and navigation works. Passenger and operator views are clearly separated. | 🟩 Done (three-page layout/navigation implemented; integration tracked separately) |
 | `UI-02` | **P0** | Create a passenger map showing bus locations, routes, stops, bus IDs and occupancy. Allow passengers to select a bus or stop to view additional information. Allow passengers to select the agreed west/east city area and view its routes, stops and buses.<br><br>**Done when:** Valid buses display at the correct locations. Missing or invalid positions are not presented as live information. Changing area refreshes the map without retaining buses from the previous area. | 🟩 Done (agreed area selection, moving markers, last-known positions and occupancy verified in browser) |
 | `UI-03` | **P0** | Connect the frontend to Carson's APIs. Retrieve live bus locations, routes, occupancy and other available information. Refresh the display as the central server receives new updates.<br><br>**Done when:** Bus movements appear automatically. Loading, missing data and API errors are handled without crashing the application. | 🟩 Done (backend-fed map/dashboard updates; live and controlled-demo adapters, missing/error handling verified) |
-| `UI-04` | **P1** | Build the operator dashboard showing active buses, routes, regional occupancy, traffic delays, arrival estimates, server health and alerts.<br><br>**Done when:** Operators can identify crowded routes, delayed buses, inactive services and reported system problems. | Partial (health/demand/feedback shown; operator arrival presentation remains) |
+| `UI-04` | **P1** | Build the operator dashboard showing active buses, routes, regional occupancy, traffic delays, arrival estimates, server health and alerts.<br><br>**Done when:** Operators can identify crowded routes, delayed buses, inactive services and reported system problems. | 🟩 Done (selected-bus ETA/occupancy, all-edge queues, sensor faults and demand feedback visible) |
 | `UI-05` | **P1** | Build the Simulation Control Panel. Provide controls to start/pause simulations, change demand, introduce traffic delays, simulate sensor faults and trigger regional server failures.<br><br>**Done when:** Valid operator commands reach the backend and produce the intended changes. Invalid commands show understandable error messages. | 🟩 Done (controlled scenarios, clock speed, bus/edge/central recovery and invalid-control responses verified) |
 | `UI-06` | **P1** | Test passenger searches, bus displays, API updates, missing information, invalid inputs, simulation controls and user permissions.<br><br>**Done when:** Important user flows work, invalid actions are handled correctly and the UI remains functional during API failures. | 🟩 Done (passenger API and permission tests plus browser journeys and capacity checks) |
 | `UI-07` | **P1** | Allow passengers to choose a starting stop and destination. Display suitable A-to-B routes, available buses, stops and supported transfers. Use the passenger's selected city to filter origin/destination stops, routes and available buses.<br><br>**Done when:** Valid journeys are shown with estimated durations. Unknown stops, identical locations and unavailable journeys receive clear messages. Journey searches and results stay within the selected city. | 🟩 Done (stop/destination/area selectors with backend journey results) |
@@ -401,7 +403,7 @@ Build one web application containing three interfaces: Passenger Journey Planner
 ## Shared tickets
 
 <details>
-<summary><strong>Integration, documentation and submission</strong> — 20 tickets</summary>
+<summary><strong>Integration and system quality evaluation</strong> — 13 tickets</summary>
 
 | Ticket | Priority | Task | Status |
 | --- | --- | --- | --- |
@@ -413,18 +415,11 @@ Build one web application containing three interfaces: Passenger Journey Planner
 | `TEAM-06` | **P0** | Complete first end-to-end system integration test | Partial (backend verified; full user-facing system integration remains) |
 | `TEAM-07` | **P1** | Test delayed messages, duplicate events and regional edge failover | 🟩 Done (branch-wide integration evidence; simulation where applicable) |
 | `TEAM-08` | **P1** | Test dynamic demand scheduling and simulation controls | Partial (manual demand/scenario commands exist; scheduling/control integration remains) |
-| `TEAM-09` | **P1** | Capture integration screenshots, metrics and testing evidence | Partial (metrics recorded; complete screenshot evidence remains) |
-| `TEAM-10` | **P1** | Complete report sections, diagrams, findings, references and contribution matrix draft | Pending |
-| `TEAM-11` | **P0** | Finalize README, verify clean installation, submit code and final report | Pending |
-| `TEAM-12` | **P2** | Prepare demonstration script and individual speaking sections | Pending |
 | `TEAM-13` | **P0** | Verify independent multi-process deployment across two regions | 🟩 Done (branch-wide integration evidence; simulation where applicable) |
 | `TEAM-14` | **P1** | Test complete scheduling feedback loop, from demand detection to adjusted dispatch frequency | Pending |
 | `TEAM-15` | **P1** | Test failure recovery during delayed, duplicated and temporarily unavailable messages | 🟩 Done (branch-wide integration evidence; simulation where applicable) |
 | `TEAM-16` | **P2** | Run scalability benchmarks across different simulated fleet sizes | 🟩 Done (branch-wide integration evidence; simulation where applicable) |
-| `TEAM-17` | **P2** | Compare system architecture and capabilities with existing public transit solutions | Pending |
-| `TEAM-18` | **P1** | Evaluate security, privacy, fault tolerance, scalability and architectural limitations | Partial (component evidence exists; full system security/privacy evaluation remains) |
-| `TEAM-19` | **P1** | Finalize individual contribution percentages and supporting implementation evidence | Pending |
-| `TEAM-20` | **P2** | Create PowerPoint slides, rehearse the 10-minute presentation and prepare Q&A answers | Pending |
+| `TEAM-18` | **P1** | Evaluate system quality and security: access control, privacy, fault tolerance, scalability and architectural limitations | Partial (component evidence exists; full system security/privacy evaluation remains) |
 
 </details>
 
@@ -607,3 +602,12 @@ Broker enforcement is separate: `mosquitto_acl(load_network())` generates ACL te
 An earlier service-enabled snapshot passed **292 tests, no skips**, with isolated PostgreSQL, the existing demo broker and a separate password/ACL-enabled Mosquitto broker. The live security test rejects anonymous/wrong-password logins and cross-bus, forged-state and forged-edge-heartbeat publishes. It confirms unauthorized reads are not delivered (Mosquitto may acknowledge the subscription itself), while an authorized signed message reaches the edge queue. The authenticated broker test uses `EDGE_AUTH_LIVE_MQTT_HOST`, `EDGE_AUTH_LIVE_MQTT_PORT` and `EDGE_AUTH_LIVE_PASSWORD` against dedicated test accounts `edge-west-1` and `bus-302-1`; its local transport is intentionally plaintext. Certificate-verification configuration is covered separately; a live TLS handshake is not demonstrated here. For the integrated snapshot, the latest local verification is 417 passed and 18 service-dependent skips; those earlier 289/3 counts no longer describe the current suite. Temporary test credentials and containers are removed after verification.
 
 These additions demonstrate edge publisher authentication, authorization and input-format interoperability. Broker credentials and ACLs are now deployable through `compose.secure.yaml` (MQTT-07, [infrastructure/README.md](infrastructure/README.md#authentication-and-topic-authorization-mqtt-07)); central UI login/roles (CENTRAL-09) and TLS certificates remain separate work; the whole project's security should not be marked complete solely from these edge tests.
+
+## Current controls and module responsibilities
+
+- Passenger: a stop-based sidebar shows bus, route, occupancy, arrival time and a highlighted recommendation.
+- Control: choose a fleet limit and active bus count separately. A 50-bus limit with 20 active keeps 30 buses in reserve until dispatch. Set route occupancy using Normal, Peak, Free or a custom percentage.
+- Load: send 100 regional requests at once and adjust processing milliseconds. Queues hold at most 50 waiting requests per edge. Both regional queues at 80% for 6 simulation seconds activate the third edge, synchronize state and transfer bus ownership. Low pressure permits safe scale-down. A bus count alone is not queue utilization.
+- Health and Control share `/health/overview`: all six edge instances, queues, assignment counts, completions and sensor issues across every bus. Detailed bus filters remain available. Faults and restoration refresh automatically.
+- Central database operations are in `services/central/database/transit.py`; simulation commands are in `services/central/routers/control.py`; monitoring and health aggregation remain in `services/central/health.py`. Existing simulation URLs remain compatible.
+- TEAM-14 remains Pending: component tests and a dispatch confirmation do not replace acceptance of the complete scheduling feedback loop.

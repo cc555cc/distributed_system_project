@@ -25,6 +25,7 @@ async function loadHealth() {
   const source = demoView() ? "demo" : "live";
   const query = "?source=" + source;
   try {
+    const overview = await renderSystemOverview(source);
     const [fleet, catalogue] = await Promise.all([getJson("/buses/health" + query), getJson("/sensors")]);
     if (request !== healthRequest) return;
     healthOptions(regionFilter, [...new Set(fleet.map(function (bus) { return bus.region_id; }))].sort(), "All regions");
@@ -51,10 +52,12 @@ async function loadHealth() {
     ]);
     if (request !== healthRequest) return;
     const age = bus.valid_telemetry_age_seconds;
-    document.getElementById("bus-health").innerHTML = tableHtml(["Bus", "Region / route", "Edge", "Health", "Valid telemetry age", "Evidence"], [[
-      escapeHtml(bus.bus_id), escapeHtml(bus.region_id + " / " + bus.route_id), escapeHtml(bus.edge_id),
-      healthTag(bus.health.status), age === null ? "No valid reading" : age.toFixed(1) + " s",
-      escapeHtml(bus.health.reasons.join("; "))
+    const prediction = overview.arrivals.find(b => b.bus_id === bus.bus_id);
+    document.getElementById('bus-health').innerHTML = tableHtml(['Bus / route', 'Health', 'Occupancy', 'Next stop', 'Arrives'], [[
+      escapeHtml(bus.bus_id + ' / ' + bus.route_id), healthTag(bus.health.status),
+      prediction ? Math.round(prediction.occupancy_percent) + '% (' + prediction.passengers + '/' + prediction.capacity + ')' : 'Unavailable',
+      prediction ? escapeHtml(prediction.next_stop_id) : 'Unavailable',
+      prediction && prediction.eta_minutes !== null ? prediction.eta_minutes.toFixed(1) + ' min' : 'Unavailable'
     ]]);
     if (source === "demo") {
       const delivery = document.createElement("p");
@@ -147,4 +150,4 @@ async function loadHealth() {
   select.addEventListener("change", loadHealth);
 });
 loadHealth();
-setInterval(loadHealth, REFRESH_SECONDS * 1000);
+setInterval(loadHealth, 1000);

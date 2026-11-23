@@ -120,7 +120,7 @@ document.getElementById("demo-controls").addEventListener("click", async functio
   button.disabled = true;
   try {
     if (button.id === "fleet-apply") {
-      await resetSimulation(Number(document.getElementById("fleet-size").value));
+      await resetSimulation(Number(document.getElementById("fleet-size").value), Number(document.getElementById("active-buses").value), 100);
       await configureDemo({running: true});
     } else if (button.id === "bus-register") {
       await sendPost("/health/simulation/buses", {
@@ -155,6 +155,7 @@ function showMessage(text, isError) {
 
 async function loadWorkers() {
   try {
+    await renderSystemOverview(demoView() ? "demo" : "live");
     const simulation = await getSimulation();
     edgeTable.innerHTML = simulationTable(simulation, true);
     document.getElementById("simulation-clock").textContent = simulationClockText(simulation);
@@ -165,7 +166,7 @@ async function loadWorkers() {
         const decision = route.recommendation;
         return [escapeHtml(route.route_id), route.occupancy_percent === null ? "Unavailable" : Math.round(route.occupancy_percent) + "%",
           route.waiting_passengers ?? "Unavailable", route.samples + " / 3", route.headway_seconds + " s",
-          decision ? escapeHtml(decision.reason + " · " + decision.status + " · " + (decision.feedback || "")) : "No sustained signal",
+          decision ? escapeHtml(decision.action.replaceAll("_", " ") + " · " + decision.status) : "No sustained signal",
           decision?.status === "pending" ? '<button data-approve="' + escapeHtml(route.route_id) + '">Approve</button>' : "-"];
       }));
     document.getElementById("demand-execution").textContent = demand.history.slice(-3).map(function (decision) {
@@ -191,7 +192,7 @@ document.getElementById("demand-controls").addEventListener("click", async funct
   try {
     let result;
     if (button.dataset.approve) result = await sendPost("/scheduling/" + encodeURIComponent(button.dataset.approve) + "/approve");
-    else if (button.id === "demand-apply") result = await sendPost("/scheduling/demand", {route_id: document.getElementById("demand-route").value, profile: document.getElementById("demand-profile").value});
+    else if (button.id === "demand-apply") result = await sendPost("/scheduling/demand", {route_id: document.getElementById("demand-route").value, profile: document.getElementById("demand-profile").value, occupancy_percent: Number(document.getElementById("demand-occupancy").value)});
     else result = await sendPost("/scheduling/policy", {automatic: button.id === "automatic-on"});
     chooseDemo();
     feedback.textContent = result.feedback || (result.profile ? "Demand profile applied: " + result.profile + ". Waiting for sustained samples." : "Automatic scheduling: " + result.automatic);
@@ -263,3 +264,14 @@ resetButton.addEventListener("click", async function () {
 
 loadWorkers();
 setInterval(loadWorkers, 1000);
+
+// A burst follows the real telemetry path and does not create extra buses.
+document.getElementById('load-send').addEventListener('click', async function () {
+  const feedback = document.getElementById('load-feedback');
+  try {
+    const r = await sendPost('/health/simulation/workload', {region_id: document.getElementById('load-region').value,
+      count: Number(document.getElementById('load-count').value), processing_ms: Number(document.getElementById('load-processing').value)});
+    chooseDemo(); feedback.textContent = r.accepted + ' accepted | ' + r.rejected + ' backpressured | watch third edge';
+    await loadWorkers();
+  } catch (error) { feedback.textContent = error.message; }
+});

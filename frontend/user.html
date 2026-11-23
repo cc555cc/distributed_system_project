@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Passenger Transit</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
   <header>
@@ -17,11 +17,11 @@
 
   <main class="passenger-layout">
     <aside class="side-panel">
-      <h2>Your transit service</h2>
+      <h2>Passenger: find your bus</h2>
       <p id="passenger-feed" class="note"></p>
       <label for="region-select">City / Region</label>
       <select id="region-select"></select>
-      <h2>Find your bus</h2>
+
       <form id="journey-form">
         <label for="origin-stop">Your stop</label><select id="origin-stop"></select>
         <label for="destination-stop">Destination (optional)</label><select id="destination-stop"><option value="">Show approaching buses</option></select>
@@ -29,15 +29,15 @@
         <button>Find buses</button>
       </form>
       <p id="journey-status" role="status"></p>
-      <h2>Recommended option</h2><div id="journey-results"></div>
-      <h2>Arriving at your stop</h2><ul id="stop-arrivals" class="plain"></ul>
+      <h2>Best option</h2><div id="journey-results"></div>
+      <h2>Arriving at your stop</h2><div id="stop-arrivals" class="table-wrap"></div>
       <p id="status">Loading...</p>
 
-      <h2>Routes</h2>
+      <details><summary>Map routes & buses</summary><h2>Routes</h2>
       <ul id="route-list"></ul>
 
       <h2>Buses</h2>
-      <ul id="bus-list"></ul>
+      <ul id="bus-list"></ul></details>
     </aside>
     <div id="map"></div>
   </main>
@@ -45,8 +45,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=10"></script>
-  <script src="js/helpers.js?v=10"></script>
-  <script src="js/passenger.js?v=10"></script>
+  <script src="js/api.js?v=11"></script>
+  <script src="js/helpers.js?v=11"></script>
+  <script src="js/passenger.js?v=11"></script>
 </body>
 </html>

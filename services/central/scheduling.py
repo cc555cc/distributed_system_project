@@ -114,7 +114,7 @@ class DemandScheduler:
                                   if bus["definition"]["route_id"] == route_id and bus["condition"] == "out_of_service"
                                   and not any(bus_id in queue for queue in cluster.dispatch_queues.values())), None)
                     home_region = next(route["region_id"] for route in context["network"]["routes"] if route["route_id"] == route_id)
-                    if spare is None and len(cluster.bus_definitions) < 50 and cluster._eligible(home_region):
+                    if spare is None and len(cluster.bus_definitions) < cluster.fleet_limit and cluster._eligible(home_region):
                         serial = len(cluster.bus_definitions) + 1
                         spare = f"reserve-{route_id}-{serial}"
                         while spare in cluster.bus_regions:

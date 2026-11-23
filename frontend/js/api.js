@@ -3,7 +3,7 @@ function demoView() {
 }
 
 function chooseDemo() {
-  localStorage.setItem("transit-data-source", "demo");
+  if (!demoView()) localStorage.setItem("transit-data-source", "demo");
   const select = document.getElementById("data-source");
   if (select) select.value = "demo";
 }
@@ -173,9 +173,9 @@ async function recoverEdge(edgeId) {
   return sendPost("/health/simulation/instances/" + encodeURIComponent(edgeId) + "/recover");
 }
 
-async function resetSimulation(fleetSize) {
+async function resetSimulation(fleetSize, activeBuses, processingMs) {
   if (USE_MOCK) {
     return mockReset();
   }
-  return sendPost("/health/simulation/reset", fleetSize === undefined ? undefined : {fleet_size: fleetSize});
+  return sendPost("/health/simulation/reset", fleetSize === undefined ? undefined : {fleet_size: fleetSize, active_buses: activeBuses ?? fleetSize, processing_ms: processingMs ?? 100});
 }

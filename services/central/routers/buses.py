@@ -1,9 +1,8 @@
+from services.central.database import transit as database
 import os
 from typing import Literal
 
-import psycopg
-from fastapi import APIRouter
-from psycopg.rows import dict_row
+from fastapi import APIRouter, HTTPException
 
 from services.central.health import bus_health_snapshot, find_bus_health
 
@@ -32,19 +31,7 @@ def get_bus_health(bus_id: str, source: Literal["live", "demo"] = "live"):
 # optional filters: /buses?region_id=west, /buses?route_id=302
 @router.get("/buses")
 def get_all_buses(region_id: str | None = None, route_id: str | None = None):
-    with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        rows = connection.execute(
-            """
-            SELECT b.bus_id, b.route_id, r.region_id,
-                   s.lat, s.lon, s.speed, s.direction_id, s.next_stop_id, s.bus_status,
-                   s.occupancy, s.sequence_number, s.edge_metadata, s.last_updated
-            FROM buses b
-            JOIN routes r ON r.route_id = b.route_id
-            LEFT JOIN bus_states s ON s.bus_id = b.bus_id
-            WHERE (CAST(%s AS TEXT) IS NULL OR r.region_id = %s)
-              AND (CAST(%s AS TEXT) IS NULL OR b.route_id = %s)
-            ORDER BY b.bus_id
-            """,
-            (region_id, region_id, route_id, route_id),
-        ).fetchall()
-    return rows
+    try:
+        return database.get_all_buses(db_url, region_id=region_id, route_id=route_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error

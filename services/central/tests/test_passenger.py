@@ -206,3 +206,75 @@ def test_automatic_demo_policy_requires_sustained_samples_and_obeys_cooldown(sys
     changes = [entry for entry in result["history"] if entry["route_id"] == "302"]
     assert result["automatic"] and len(changes) == 1
     assert changes[0]["execution"] == "confirmed by central telemetry"
+
+
+def test_fleet_limit_and_active_count_are_distinct_and_visible_everywhere(system):
+    public, operator, health, _ = system
+    result = operator.post("/health/simulation/reset", json={"fleet_size": 50, "active_buses": 20})
+    assert result.status_code == 200
+    operator.patch("/health/simulation/demo", json={"running": True})
+    operator.post("/health/simulation/advance", json={"seconds": 2.0})
+    state = operator.get("/health/simulation").json()
+    assert state["fleet_limit"] == 50 and state["active_buses"] == 20
+    assert len(state["central_states"]) == 20
+    overview = operator.get("/health/overview?source=demo").json()
+    assert overview["healthy_buses"] == 20 and overview["sensor_issues"] == []
+    assert len(overview["arrivals"]) == 20 and all(a["eta_minutes"] is not None for a in overview["arrivals"])
+    assert len(public.get("/passenger/snapshot").json()["buses"]) == 50
+    assert operator.post("/health/simulation/reset", json={"fleet_size": 20, "active_buses": 50}).status_code == 422
+
+
+def test_real_request_burst_scales_third_worker_and_central_state_keeps_advancing(system):
+    _, operator, health, _ = system
+    initial = operator.get("/health/simulation").json()
+    route_bus = next(bus["bus_id"] for bus in initial["registered_buses"] if bus["region_id"] == "west")
+    old = initial["central_states"][route_bus]["sequence_number"]
+    burst = operator.post("/health/simulation/workload", json={"region_id": "west", "count": 100, "processing_ms": 1000.0})
+    assert burst.status_code == 200 and burst.json()["accepted"] == 100
+    for _ in range(9): operator.post("/health/simulation/advance", json={"seconds": 1.0})
+    overview = operator.get("/health/overview?source=demo").json()
+    third = next(w for w in overview["workers"] if w["edge_id"] == "edge-west-3")
+    assert third["state"] == "healthy" and len(third["assigned_buses"]) > 0
+    assert all(w["queue_size"] <= w["queue_capacity"] for w in overview["workers"])
+    assert operator.get("/health/simulation").json()["central_states"][route_bus]["sequence_number"] > old
+    # Removing pressure lets processing drain; scale-down safely returns ownership.
+    health.simulation.demo_running = False
+    for w in health.simulation.workers.values(): w.processing_ms = 5.0
+    health.simulation.advance(15)
+    assert health.simulation.workers["edge-west-3"].state == "standby"
+    assert health.simulation.journal == {}
+    # Fifty active streams build real regional backlog at the demo service rate.
+    from services.edge.main import EdgeClusterSimulation
+    fleet = EdgeClusterSimulation(fleet_size=50)
+    fleet.configure_demo(running=True)
+    for w in fleet.workers.values(): w.processing_ms = 100.0
+    fleet.advance(18)
+    assert fleet.workers["edge-east-3"].state == "healthy"
+    assert fleet._assigned("edge-east-3")
+
+
+def test_custom_demand_and_sensor_fault_propagate_to_passenger_and_health(system):
+    public, operator, _, _ = system
+    assert operator.post("/scheduling/demand", json={"route_id": "302", "profile": "custom", "occupancy_percent": 80}).status_code == 200
+    operator.post("/health/simulation/advance", json={"seconds": 2.0})
+    buses = public.get("/passenger/snapshot").json()["buses"]
+    bus = next(b for b in buses if b["bus_id"] == "bus-302-1")
+    assert bus["state"]["edge_metadata"]["passengers"] == 40
+    operator.patch("/health/simulation/demo", json={"bus_id": "bus-302-1", "condition": "sensor_fault"})
+    operator.post("/health/simulation/advance", json={"seconds": 2.0})
+    issues = operator.get("/health/overview?source=demo").json()["sensor_issues"]
+    assert any(i["bus_id"] == "bus-302-1" and i["sensor"] == "occupancy" and i["status"] == "faulty" for i in issues)
+    arrivals = public.get("/passenger/arrivals", params={"stop_id": bus["state"]["next_stop_id"], "region_id": "west"}).json()
+    assert all(b["bus_id"] != "bus-302-1" for b in arrivals["arrivals"])
+    operator.patch("/health/simulation/demo", json={"bus_id": "bus-302-1", "condition": "normal"})
+    operator.post("/health/simulation/advance", json={"seconds": 3.0})
+    assert not any(i["bus_id"] == "bus-302-1" for i in operator.get("/health/overview?source=demo").json()["sensor_issues"])
+
+
+def test_workload_and_custom_settings_require_operator_and_reject_bad_input(system):
+    public, operator, _, _ = system
+    assert public.post("/health/simulation/workload", json={"region_id": "west", "count": 100}).status_code == 401
+    for payload in ({"region_id": "nowhere", "count": 100}, {"region_id": "west", "count": 1001}):
+        assert operator.post("/health/simulation/workload", json=payload).status_code == 422
+    assert operator.post("/scheduling/demand", json={"route_id": "302", "profile": "custom"}).status_code == 422
+    assert operator.post("/scheduling/demand", json={"route_id": "302", "profile": "custom", "occupancy_percent": 101}).status_code == 422

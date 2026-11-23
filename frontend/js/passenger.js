@@ -8,6 +8,8 @@ const busList = document.getElementById("bus-list");
 const originSelect = document.getElementById("origin-stop");
 const destinationSelect = document.getElementById("destination-stop");
 let tripRequest = 0;
+// Keep the passenger's selection when another tab changes the feed.
+const savedTrip = JSON.parse(sessionStorage.getItem('transit-trip') || '{}');
 
 async function loadTripStops(regionId, request) {
   const stops = await getJson("/passenger/stops?region_id=" + regionId + "&source=" + passengerSource());
@@ -19,6 +21,11 @@ async function loadTripStops(regionId, request) {
     originSelect.add(new Option(name, stop.stop_id));
     destinationSelect.add(new Option(name, stop.stop_id));
   });
+  if (savedTrip.region === regionId && stops.some(s => s.stop_id === savedTrip.origin)) {
+    originSelect.value = savedTrip.origin;
+    if (stops.some(s => s.stop_id === savedTrip.destination)) destinationSelect.value = savedTrip.destination;
+    return;
+  }
   const snapshot = await getPublicSnapshot();
   if (request !== loadNumber) return;
   const approaching = snapshot.buses.find(function (bus) { return bus.region_id === regionId && bus.state && bus.state.next_stop_id; });
@@ -37,6 +44,8 @@ async function updateTrip() {
     status.textContent = "Choose a destination different from your starting stop.";
     results.replaceChildren(); arrivalsList.replaceChildren(); return;
   }
+  Object.assign(savedTrip, {region: regionSelect.value, origin: originSelect.value, destination: destinationSelect.value});
+  sessionStorage.setItem('transit-trip', JSON.stringify(savedTrip));
   const params = new URLSearchParams({source: passengerSource(), region_id: regionSelect.value,
     party_size: document.getElementById("party-size").value, stop_id: originSelect.value});
   try {
@@ -47,25 +56,39 @@ async function updateTrip() {
       choices = await getJson("/passenger/journeys?" + params);
     }
     if (request !== tripRequest) return;
-    arrivalsList.replaceChildren();
-    arriving.arrivals.slice(0, 10).forEach(function (bus) {
-      const item = document.createElement("li");
-      item.textContent = bus.bus_id + " · Route " + bus.route_id + " · " + bus.eta_minutes.toFixed(1) + " min · " +
-        bus.free_seats + " seats free (" + Math.round(bus.occupancy_percent) + "%)" +
-        (bus.free_seats < Number(document.getElementById("party-size").value) ? " · Not enough seats for your group" : "");
-      arrivalsList.appendChild(item);
-    });
+    arrivalsList.innerHTML = tableHtml(['Bus / route', 'Occupancy', 'Arrives'], arriving.arrivals.slice(0,10).map(function (bus) {
+      const full = bus.free_seats < Number(document.getElementById('party-size').value);
+      return [escapeHtml(bus.bus_id) + '<br><small>Route ' + escapeHtml(bus.route_id) + '</small>',
+        tag(Math.round(bus.occupancy_percent) + '%', full ? 'bad' : bus.occupancy_percent >= 80 ? 'warn' : 'good') +
+        '<br><small>' + bus.free_seats + ' seats free</small>', bus.eta_minutes.toFixed(1) + ' min'];
+    }));
     if (!arriving.arrivals.length) arrivalsList.textContent = arriving.message;
     results.replaceChildren();
-    const all = choices.recommended ? [choices.recommended, ...choices.alternatives.slice(0, 2)] : [];
+    const all = choices.recommended ? [choices.recommended] : [];
     all.forEach(function (choice, index) {
-      const item = document.createElement("p");
-      const buses = choice.legs ? choice.legs.map(function (leg) { return leg.bus_id; }).join(" → ") : choice.bus_id;
-      item.textContent = (index === 0 ? "Recommended: " : "Alternative: ") + buses + ". " + choice.explanation;
+      const item = document.createElement('div');
+      item.className = index === 0 ? 'recommendation' : 'card';
+      const legs = choice.legs || [choice];
+      const wait = choice.waiting_minutes ?? choice.eta_minutes;
+      const total = choice.total_minutes ?? choice.eta_minutes;
+      item.innerHTML = '<small>' + (index === 0 ? 'RECOMMENDED' : 'ALTERNATIVE') + '</small><strong>' +
+        legs.map(l => escapeHtml(l.bus_id) + ' · ' + escapeHtml(l.route_id)).join(' → ') + '</strong>' +
+        '<div class="summary-strip"><span>Arrives <b>' + wait.toFixed(1) + ' min</b></span><span>' +
+        (choice.legs ? 'Trip <b>' + total.toFixed(1) + ' min</b>' : 'Direct arrival') + '</span></div>' +
+        '<small>' + Math.round(Math.max(...legs.map(l => l.occupancy_percent))) + '% occupied · ' + Math.min(...legs.map(l => l.free_seats)) + ' seats free · ' + (choice.transfers || 0) + ' transfers</small>' +
+        '<small>Ranked by time, seats and transfers. Current estimate.</small>';
       results.appendChild(item);
     });
+    if (destinationSelect.value && choices.alternatives.length) {
+      const alternatives = document.createElement('div');
+      alternatives.innerHTML = '<h3>Alternatives</h3>' + tableHtml(['Bus / route', 'Occupancy', 'Trip'], choices.alternatives.slice(0,2).map(function (c) {
+        return [c.legs.map(l => escapeHtml(l.bus_id + ' / ' + l.route_id)).join('<br>'),
+          Math.round(Math.max(...c.legs.map(l => l.occupancy_percent))) + '%', c.total_minutes.toFixed(1) + ' min'];
+      }));
+      results.appendChild(alternatives);
+    }
     if (!all.length) results.textContent = choices.unavailable.length ? "Suitable buses currently lack confirmed seats. Please compare later arrivals." : choices.message;
-    status.textContent = choices.notice;
+    status.textContent = "Live estimates · seats may change";
   } catch (error) {
     if (request !== tripRequest) return;
     status.textContent = "Predictions unavailable: " + error.message;
@@ -100,6 +123,7 @@ function fillRegions() {
     option.textContent = region.name;
     regionSelect.appendChild(option);
   });
+  if (REGIONS.some(r => r.id === savedTrip.region)) regionSelect.value = savedTrip.region;
 }
 
 function drawRoute(route, stops, color) {

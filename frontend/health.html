@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bus and Sensor Health</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
   <header>
@@ -17,8 +17,9 @@
     </nav>
   </header>
   <main class="page">
-    <h2>Bus and sensor health</h2>
-    <p class="note">Health reports are separate from passenger tracking. Missing heartbeats mean unavailable or unknown; they do not prove a crash or broken sensor.</p>
+    <h2>Health: observe the system</h2>
+    <div class="card" id="system-overview" aria-live="polite">Loading system...</div>
+    <p class="note">Read-only status. Make changes in Control.</p>
     <div class="card">
       <div class="control-row"><label for="data-source">Data source</label>
         <select id="data-source"><option value="live">Live MQTT</option><option value="demo">Controlled demonstration</option></select></div>
@@ -30,18 +31,19 @@
     </div>
     <div class="card"><h2>Selected bus</h2><div class="table-wrap" id="bus-health"></div></div>
     <div class="card"><h2>Sensors</h2><p class="note">Ages use the selected source's clock: real seconds for live reports, simulation seconds for the demonstration.</p><div class="table-wrap" id="sensor-health"></div></div>
-    <div class="card"><h2>Route health</h2><div id="route-health" class="table-wrap"></div></div>
+    <details><summary>Route capacity & processing details</summary><div class="card"><h2>Route health</h2><div id="route-health" class="table-wrap"></div></div>
     <div class="card"><h2>Edge workload</h2>
       <p class="note">Passenger seats and edge queue capacity are different limits. Demo balancing uses the existing coordinator; live reports show actual edge assignments.</p>
       <div class="table-wrap" id="edge-health"></div><a href="control.html">Open simulation and scheduling controls</a></div>
     <div class="card"><h2>Recent alerts</h2><div id="health-alerts"></div></div>
+    </details>
     <div class="card"><h2>Demand and scheduling feedback</h2><div id="health-demand" class="table-wrap"></div></div>
     <div class="card"><h2>Sensor → edge → central</h2><div id="health-pipeline" class="table-wrap"></div></div>
   </main>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=10"></script>
-  <script src="js/helpers.js?v=10"></script>
-  <script src="js/health.js?v=10"></script>
+  <script src="js/api.js?v=11"></script>
+  <script src="js/helpers.js?v=11"></script>
+  <script src="js/health.js?v=11"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ from typing import Literal
 import psycopg
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from services.central import health
 from services.central.journeys import transit_context
@@ -21,7 +21,8 @@ class Policy(BaseModel):
 class Demand(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     route_id: str
-    profile: Literal["normal", "peak", "off_peak"]
+    profile: Literal["normal", "peak", "off_peak", "custom"]
+    occupancy_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 @router.get("/status")
@@ -38,7 +39,7 @@ def change_demand(body: Demand):
         health.simulation.configure_demo()
         scheduler_service.demo_scheduler.observe(transit_context("demo"))
         try:
-            health.simulation.demo.set_demand(body.route_id, body.profile)
+            health.simulation.demo.set_demand(body.route_id, body.profile, body.occupancy_percent)
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
         scheduler_service.demo_scheduler.invalidate(body.route_id, health.simulation.time)

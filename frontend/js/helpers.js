@@ -12,7 +12,7 @@ function simulationTable(simulation, actions = false) {
     const kind = failed ? "bad" : worker.state === "recovering" ? "warn" :
       worker.state === "healthy" ? "good" : "grey";
     const row = [edgeId, escapeHtml(worker.region_id), tag(worker.state, kind),
-      Math.round(worker.queue_utilization_percent) + "%", escapeHtml(worker.assigned_buses.join(", ")) || "-"];
+      queueMeter(worker), String(worker.active_assigned_buses ?? worker.assigned_buses.length) + " active / " + worker.assigned_buses.length];
     if (actions) {
       row.push('<button data-id="' + edgeId + '" data-action="fail"' +
         (failed ? " disabled" : "") + '>Fail</button> <button data-id="' + edgeId +
@@ -93,4 +93,30 @@ function tableHtml(headers, rows) {
     html += "<tr><td>" + row.join("</td><td>") + "</td></tr>";
   });
   return html + "</table>";
+}
+
+// Both operator pages use one snapshot, including issues on unselected buses.
+function queueMeter(w) {
+  const p = Math.round(w.queue_utilization_percent || 0);
+  return '<div class="queue-meter ' + (p >= 80 ? 'busy' : '') + '"><span style="width:' + p + '%"></span></div>' +
+    (w.queue_size ?? '?') + ' / ' + (w.queue_capacity ?? '?') + ' (' + p + '%)';
+}
+async function renderSystemOverview(source) {
+  const box = document.getElementById('system-overview');
+  if (!box) return;
+  const d = await getJson('/health/overview?source=' + source);
+  box.innerHTML = '<div class="summary-strip"><strong>' + escapeHtml(source) + '</strong><span>' + d.healthy_buses + ' / ' + d.bus_count +
+    ' buses healthy</span><span>' + d.sensor_issues.length + ' sensor issues</span></div>' +
+    tableHtml(['Edge', 'State', 'Queue', 'Buses', 'Completed'], d.workers.map(function (w) {
+      return [escapeHtml(w.edge_id), tag(w.state === 'healthy' && w.queue_utilization_percent >= 80 ? 'overloaded' : w.state, w.state === 'healthy' && w.queue_utilization_percent < 80 ? 'good' : 'warn'), queueMeter(w),
+        Array.isArray(w.assigned_buses) ? (w.active_assigned_buses ?? w.assigned_buses.length) + ' active / ' + w.assigned_buses.length : (w.assigned_buses ?? '-'), w.completed ?? '-'];
+    })) + '<h3>Sensor issues - all buses</h3>' + (d.sensor_issues.length ?
+      tableHtml(['Bus', 'Route', 'Sensor', 'Status'], d.sensor_issues.slice(0,60).map(function (i) {
+        return [escapeHtml(i.bus_id), escapeHtml(i.route_id), escapeHtml(i.sensor), tag(escapeHtml(i.status), 'bad')];
+      })) : '<p class="success">All reporting sensors healthy</p>') +
+    '<details><summary>Recent balancing & health events</summary><ul>' + d.events.map(function (e) {
+      return '<li>' + escapeHtml((e.time ?? e.timestamp ?? '') + ' - ' + (e.action || e.type || '') + ' ' + (e.bus_id || e.edge_id || '') +
+        (e.source ? ' ' + e.source + ' to ' + e.target : '')) + '</li>';
+    }).join('') + '</ul></details>';
+  return d;
 }

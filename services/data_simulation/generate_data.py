@@ -195,6 +195,7 @@ class DemoFleet:
         self.buses = {}
         self.network_path = network_path
         self.route_demand = {}
+        self.route_occupancy = {}
         self.waiting = {}
         for bus in definitions:
             self.add_bus(bus, now)
@@ -216,11 +217,16 @@ class DemoFleet:
         if bus["route_id"] not in self.waiting:
             self.set_demand(bus["route_id"], "normal")
 
-    def set_demand(self, route_id, profile):
-        if profile not in {"normal", "peak", "off_peak"}:
+    def set_demand(self, route_id, profile, occupancy_percent=None):
+        if profile not in {"normal", "peak", "off_peak", "custom"}:
             raise ValueError("Choose normal, peak or off_peak demand")
+        if profile == "custom" and (occupancy_percent is None or not 0 <= occupancy_percent <= 100):
+            raise ValueError("Custom occupancy must be between 0 and 100")
         import zlib
         network = load_network(self.network_path)
+        if route_id not in {route["route_id"] for route in network["routes"]}:
+            raise ValueError("Unknown route")
+        self.route_occupancy[route_id] = occupancy_percent
         from shared.schema.network import route_stops
         stops = route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
         rng = random.Random(zlib.crc32((route_id + profile).encode()))
@@ -234,11 +240,14 @@ class DemoFleet:
         route = bus["definition"]["route_id"]
         profile = "peak" if bus["condition"] == "peak" else self.route_demand.get(route, "normal")
         capacity = bus["definition"]["capacity"]
-        if at_stop or profile != bus["passenger_profile"]:
+        profile_key = (profile, self.route_occupancy.get(route))
+        if at_stop or profile_key != bus["passenger_profile"]:
             lower, upper = (math.ceil(capacity * 0.85), capacity) if profile == "peak" else (0, max(1, int(capacity * 0.3)))
             bus["passengers"] = bus["random"].randint(lower, upper)
-            bus["passenger_profile"] = profile
-            if at_stop:
+            if profile == "custom":
+                bus["passengers"] = round(capacity * self.route_occupancy[route] / 100)
+            bus["passenger_profile"] = profile_key
+            if at_stop and profile != "custom":
                 stop_id = bus["stops"][bus["segment"]]["stop_id"]
                 queue = self.waiting[route].get(stop_id, 0)
                 boarded = min(queue, capacity - bus["passengers"])
@@ -252,6 +261,7 @@ class DemoFleet:
         bus = self.buses[bus_id]
         previous = bus["condition"]
         bus["condition"] = condition
+        bus["reserved"] = False  # an explicit command puts the bus back into the active simulation
         if condition == "normal" and previous != "normal":
             bus["recovery_until"] = now + 2
         self.event(dict(time=now, action="condition", bus_id=bus_id,
@@ -319,6 +329,8 @@ class DemoFleet:
 
     def step(self, seconds, now, submit):
         for bus_id, bus in self.buses.items():
+            if bus.get("reserved"):
+                continue  # registered reserve: no movement or sensor requests until dispatch
             self._move(bus, seconds)
             if now + 1e-9 < bus["report_at"]:
                 continue
@@ -380,7 +392,7 @@ class DemoFleet:
                 "sensors_stopped": "all sensor channels silent; no crash inferred",
                 "silence": "cause unknown; no received heartbeat",
             }.get(condition, "valid readings and heartbeat" if bus["heartbeat"] is not None else "awaiting first heartbeat")
-            result[bus_id] = dict(condition=condition, phase=self.phase(bus), status=status, evidence=evidence,
+            result[bus_id] = dict(reserved=bus.get("reserved", False), condition=condition, phase=self.phase(bus), status=status, evidence=evidence,
                 sensors=sensors, heartbeat_age_seconds=age, distance_m=bus["distance_m"],
                 valid_telemetry_age_seconds=now - bus["valid"] if bus["valid"] is not None else None,
                 local=bus["local"], attempts=bus["attempts"], rejected_readings=bus["rejected"],

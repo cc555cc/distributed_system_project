@@ -39,3 +39,11 @@ Journeys support direct routes and one transfer between shared stop IDs in the s
 ## Bus Health
 
 Open `health.html` or use **Bus Health** in the navigation. Select the live or controlled-demo data source, region, route, bus and sensor. This page requires the central API, including when legacy mock mode is enabled. It displays backend health evidence, current route capacity samples, edge workload and alerts; it does not issue management commands. Use `control.html` to inject faults or run the existing scheduling/balancing demonstration. Missing reports are shown as unknown or unavailable, not as confirmed hardware failures.
+
+## Fleet limits, pressure and visible feedback
+
+Set **Fleet limit = 50** and **Active buses = 20** to retain 30 reserve buses. Reserves do not move or publish sensor requests until dispatched. The fleet limit caps registration; it is not queue occupancy. Setting both values to 50 starts 50 streams. With the demonstration's 100 ms processing setting, east receives more traffic and activates its third edge after sustained backlog.
+
+For a short balancing demonstration, start 20 buses, select West, processing **250 ms**, and send **100 requests**. Watch the queue bars reach the 80% threshold, the third edge activate after 6 simulation seconds, assignments transfer, queues drain and safe scale-down follow. Slower processing can exceed even three workers' capacity; overload remains visible instead of being reported as fixed.
+
+Health and Control refresh their shared overview every second. Sensor faults appear in **Sensor issues - all buses**, even if a different bus is selected. The passenger page removes unreliable predictions. Restore the bus to watch healthy readings return. Use **Custom %** to set route occupancy, such as 50%, 80% or 100%; these values enter normal telemetry before reaching passenger recommendations.

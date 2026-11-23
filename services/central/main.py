@@ -19,7 +19,7 @@ from services.central.health import monitor
 from services.central.health import simulation_clock
 from services.central.health import router as health_router
 from services.central.ownership import bus_ownership
-from services.central.routers import bus_states, buses, eta, messaging, passenger, routes, scheduling, sensors, stops
+from services.central.routers import bus_states, buses, control, eta, messaging, passenger, routes, scheduling, sensors, stops
 from services.central.routers.auth import install_security
 from services.messaging import mqtt_client
 
@@ -84,6 +84,7 @@ app.include_router(bus_states.router)
 app.include_router(stops.router)
 app.include_router(routes.router)
 app.include_router(health_router)
+app.include_router(control.router)
 app.include_router(eta.router)
 app.include_router(buses.router)
 app.include_router(sensors.router)

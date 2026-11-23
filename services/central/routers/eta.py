@@ -4,7 +4,7 @@ import os
 import psycopg
 from fastapi import APIRouter, HTTPException
 
-from services.central.eta import eta_bus
+from services.central.database.transit import eta_bus
 
 router = APIRouter()
 db_url = os.environ["DATABASE_URL"]

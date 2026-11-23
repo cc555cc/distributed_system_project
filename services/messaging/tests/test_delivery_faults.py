@@ -86,7 +86,7 @@ def system(tmp_path, monkeypatch):
             INSERT INTO route_stops VALUES ('R1',0,0,'S1'),('R1',0,1,'S2');
         """)
     monkeypatch.setattr(
-        bus_states.psycopg, "connect", lambda url, **kwargs: SqliteCentral(path)
+        bus_states.database.psycopg, "connect", lambda url, **kwargs: SqliteCentral(path)
     )
     registry = BusRegistry(
         {bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in BUSES}
