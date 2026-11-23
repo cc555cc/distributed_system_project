@@ -228,6 +228,13 @@ def test_stale_duplicate_conflict_and_invalid_data_do_not_publish(pipeline):
     assert len(pipeline.transport.sent) == 1
     assert pipeline.api.get("/bus_states/A1").json() == before
 
+def test_terminal_endpoint_parks_bus_at_last_stop(pipeline):
+    deliver(pipeline, telemetry())
+    assert pipeline.api.put("/bus_states/A1/terminal").status_code == 200
+    stored = pipeline.api.get("/bus_states/A1").json()
+    assert stored["bus_status"] == "idle"
+    assert stored["current_stop_id"] == stored["next_stop_id"] == "S2"
+    assert pipeline.api.put("/bus_states/A2/terminal").status_code == 404
 
 def test_retry_keeps_only_newest_and_drops_expired_updates(pipeline):
     pipeline.transport.fail = True

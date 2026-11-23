@@ -106,9 +106,21 @@ def get_bus_state(bus_id: str):
 @router.put("/bus_states/{bus_id}/terminal")
 def remove_bus_from_network(bus_id: str):
     with psycopg.connect(db_url) as connection:
-        cursor = connection.execute(
+    # Find the last stop first: an UPDATE's FROM cannot refer back to the
+    # table being updated, which is what broke the old LATERAL version.
+        row = connection.execute(
             """
-            UPDATE bus_states s SET
+            WITH last AS (
+                SELECT rs.stop_id
+                FROM bus_states s
+                JOIN buses b ON b.bus_id = s.bus_id
+                JOIN route_stops rs
+                  ON rs.route_id = b.route_id AND rs.direction_id = s.direction_id
+                WHERE s.bus_id = %s
+                ORDER BY rs.position DESC
+                LIMIT 1
+            )
+            UPDATE bus_states SET
                 current_stop_id = last.stop_id,
                 next_stop_id    = last.stop_id,
                 bus_status      = 'idle',
@@ -116,20 +128,15 @@ def remove_bus_from_network(bus_id: str):
                 speed           = 0,
                 edge_metadata   = NULL,
                 last_updated    = now()
-            FROM buses b,
-                 LATERAL (
-                     SELECT rs.stop_id FROM route_stops rs
-                     WHERE rs.route_id = b.route_id AND rs.direction_id = s.direction_id
-                     ORDER BY rs.position DESC LIMIT 1
-                 ) AS last
-            WHERE s.bus_id = %s AND b.bus_id = s.bus_id
+            FROM last
+            WHERE bus_states.bus_id = %s
+            RETURNING bus_states.bus_id
             """,
-            (bus_id,),
-        )
-    if cursor.rowcount == 0:
+            (bus_id, bus_id),
+        ).fetchone()
+    if row is None:
         raise HTTPException(404, f"Bus: {bus_id} not found")
     return {"bus_id": bus_id, "bus_status": "idle"}
-
 
 def connect_db():
     return psycopg.connect(db_url)
