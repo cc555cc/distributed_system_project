@@ -8,7 +8,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+from services.central.tests.client import OperatorClient as TestClient
 
 from services.data_simulation.generate_data import generate_messages
 from services.data_simulation.run_buses import SensorAlerts

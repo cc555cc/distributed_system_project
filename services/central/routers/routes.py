@@ -1,21 +1,27 @@
+from services.central.database import transit as database
 import os
+from typing import Literal
 
-import psycopg
 from fastapi import APIRouter, HTTPException, Query
-from psycopg.rows import dict_row
 
-router = APIRouter()
+from services.central import health
+
+router = APIRouter(tags=["routes"])
 db_url = os.environ["DATABASE_URL"]
+
+
+@router.get("/routes/{route_id}/health")
+def get_route_health(route_id: str, source: Literal["live", "demo"] = "live"):
+    return health.route_health(route_id, source)
 
 
 # list all
 @router.get("/routes")
 def get_all_route():
-    with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        rows = connection.execute(
-            "SELECT route_id, name, region_id FROM routes ORDER BY route_id"
-        ).fetchall()
-    return rows
+    try:
+        return database.get_all_route(db_url)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
 
 
 # get all stops on a route in order, optionally filtered by direction
@@ -23,33 +29,16 @@ def get_all_route():
 def get_route_stops(
     route_id: str, direction: int | None = Query(default=None, ge=0, le=1)
 ):
-    with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        rows = connection.execute(
-            """
-            SELECT rs.direction_id, rs.position, s.stop_id, s.name, s.lat, s.lon
-            FROM route_stops rs
-            JOIN stops s ON s.stop_id = rs.stop_id
-            WHERE rs.route_id = %s
-              AND (%s::integer IS NULL OR rs.direction_id = %s)
-            ORDER BY rs.direction_id, rs.position
-            """,
-            (route_id, direction, direction),
-        ).fetchall()
-    if not rows:
-        raise HTTPException(
-            status_code=404, detail="No stops found for this route and direction"
-        )
-    return rows
+    try:
+        return database.get_route_stops(db_url, route_id, direction)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
 
 
 # get a route's name and region by id
 @router.get("/routes/{route_id}")
 def get_route_info(route_id: str):
-    with psycopg.connect(db_url, row_factory=dict_row) as connection:
-        row = connection.execute(
-            "SELECT route_id, name, region_id FROM routes WHERE route_id = %s",
-            (route_id,),
-        ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Route not found")
-    return row
+    try:
+        return database.get_route_info(db_url, route_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error

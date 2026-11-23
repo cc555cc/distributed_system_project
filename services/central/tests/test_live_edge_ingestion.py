@@ -24,7 +24,7 @@ import pytest
 def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
     import paho.mqtt.client as mqtt
     import psycopg
-    from fastapi.testclient import TestClient
+    from services.central.tests.client import OperatorClient as TestClient
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
 
@@ -180,7 +180,7 @@ def test_live_telemetry_reaches_central_database_and_api(monkeypatch):
     not os.getenv("EDGE_LIVE_DATABASE_URL"),
     reason="Set EDGE_LIVE_DATABASE_URL for live multi-instance test",
 )
-def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
+def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch, public_probe=None):
     """Real launcher children, MQTT, PostgreSQL and central API; isolated SQL schema.
 
     Test the fixed MQTT topology. Stateful handoff has separate simulation
@@ -190,7 +190,7 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
 
     import paho.mqtt.client as mqtt
     import psycopg
-    from fastapi.testclient import TestClient
+    from services.central.tests.client import OperatorClient as TestClient
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
 
@@ -371,6 +371,9 @@ def test_live_four_instances_forward_and_report_failure_recovery(monkeypatch):
             ):
                 assert state["edge_metadata"][field] == source[field]
             assert state["edge_metadata"]["source_timestamp"] == source["timestamp"]
+
+        if public_probe is not None:
+            public_probe(app, scoped_url, sources)
 
         def metrics_verified():
             for edge in store.snapshot()["edges"]:

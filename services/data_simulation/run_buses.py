@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from multiprocessing import Process
@@ -81,17 +80,27 @@ class SimulatorHeartbeats:
 
 
 def resume_state(bus_id, central_url, margin=SEQUENCE_MARGIN):
-    """continue above central's last stored state so a revived bus process is not stale"""
-    try:
-        with urllib.request.urlopen(
-            f"{central_url}/bus_states/{bus_id}", timeout=3
-        ) as response:
-            state = json.load(response)
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return 0, None, None  # central has never seen this bus
-        raise
-    return state["sequence_number"] + margin, state["next_stop_id"], state["direction_id"]
+    """Continue above central's last stored state so a revived bus process is not stale.
+
+    Reads the public passenger snapshot, because /bus_states needs an operator
+    login. Returns (start_sequence, next_stop_id, direction_id), or
+    (0, None, None) when central has never seen this bus.
+    """
+    with urllib.request.urlopen(
+        f"{central_url}/passenger/snapshot?source=live", timeout=3
+    ) as response:
+        snapshot = json.load(response)
+    state = next(
+        (bus.get("state") for bus in snapshot["buses"] if bus["bus_id"] == bus_id), None
+    )
+    if not state or state.get("sequence_number") is None:
+        return 0, None, None  # central has never seen this bus
+    return (
+        state["sequence_number"] + margin,
+        state["next_stop_id"],
+        state["direction_id"],
+    )
+
 
 def bus_credentials(bus_id):
     """Per-bus broker account from MQTT_BUS_PASSWORDS_JSON (MQTT-07), if configured.

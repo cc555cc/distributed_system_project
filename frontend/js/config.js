@@ -1,6 +1,6 @@
-const API_URL = "http://localhost:8000";
+const API_URL = window.location.origin;
 const USE_MOCK = false;
-const REFRESH_SECONDS = 3;
+const REFRESH_SECONDS = 1;
 const STALE_SECONDS = 30;
 const BUSES_PER_ROUTE = 4;
 

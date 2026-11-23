@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Operator Login</title><link rel="stylesheet" href="/css/style.css"></head>
+<body><header><h1>Transit System</h1><nav><a href="/user.html">Passenger Map</a></nav></header>
+<main class="page"><div class="card"><h2>Operator login</h2>
+<p>Sign in to access controls, health reports and scheduling.</p>
+<form id="operator-login"><div class="control-row"><label for="username">Username</label><input id="username" autocomplete="username" required></div>
+<div class="control-row"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+<button>Sign in</button></form><p id="login-result" role="status"></p></div></main>
+<script>
+document.getElementById("operator-login").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  const result = document.getElementById("login-result");
+  try {
+    const response = await fetch("/auth/login", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: document.getElementById("username").value, password: document.getElementById("password").value})});
+    if (!response.ok) throw new Error("Invalid username or password.");
+    localStorage.setItem('transit-auth-revision',String(Date.now()));
+    const next = new URLSearchParams(location.search).get("next");
+    location.assign(["/control.html", "/health.html", "/operator.html", "/controls.html"].includes(next) ? next : "/control.html");
+  } catch (error) { result.textContent = error.message; }
+});
+</script></body></html>

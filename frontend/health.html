@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bus and Sensor Health</title>
+  <link rel="stylesheet" href="css/style.css?v=16">
+</head>
+<body>
+  <header>
+    <h1>Transit System</h1>
+    <nav>
+      <a href="user.html">Passenger Map</a>
+      <a href="health.html" class="active">Bus Health</a>
+      <a href="control.html">Control Panel</a>
+      <button id="operator-logout">Sign out</button>
+    </nav>
+  </header>
+  <main class="page">
+    <h2>Health: observe the system</h2>
+    <div class="card" id="system-overview" aria-live="polite">Loading system...</div>
+    <p class="note">Read-only status. Make changes in Control.</p>
+    <div class="card">
+      <div class="control-row"><label for="data-source">Data source</label>
+        <select id="data-source"><option value="live">Live MQTT</option><option value="demo">Controlled demonstration</option></select></div>
+      <div class="control-row"><label for="health-region">Region</label><select id="health-region"><option value="">All regions</option></select></div>
+      <div class="control-row"><label for="health-route">Route</label><select id="health-route"><option value="">All routes</option></select></div>
+      <div class="control-row"><label for="health-bus">Bus</label><select id="health-bus"></select></div>
+      <div class="control-row"><label for="health-sensor">Sensor</label><select id="health-sensor"><option value="">All sensors</option></select></div>
+      <p id="health-updated" role="status">Loading health reports...</p>
+    </div>
+    <div class="card"><h2>Selected bus</h2><div class="table-wrap" id="bus-health"></div></div>
+    <div class="card"><h2>Sensors</h2><p class="note">Ages use the selected source's clock: real seconds for live reports, simulation seconds for the demonstration.</p><div class="table-wrap" id="sensor-health"></div></div>
+    <details><summary>Route capacity & processing details</summary><div class="card"><h2>Route health</h2><div id="route-health" class="table-wrap"></div></div>
+    <div class="card"><h2>Edge workload</h2>
+      <p class="note">Passenger seats and edge queue capacity are different limits. Demo balancing uses the existing coordinator; live reports show actual edge assignments.</p>
+      <div class="table-wrap" id="edge-health"></div><a href="control.html">Open simulation and scheduling controls</a></div>
+    <div class="card"><h2>Recent alerts</h2><div id="health-alerts"></div></div>
+    </details>
+    <div class="card"><h2>Demand and scheduling feedback</h2><div id="health-demand" class="table-wrap"></div></div>
+    <div class="card"><h2>Sensor → edge → central</h2><div id="health-pipeline" class="table-wrap"></div></div>
+  </main>
+  <script src="js/config.js"></script>
+  <script src="js/mock.js"></script>
+  <script src="js/api.js?v=16"></script>
+  <script src="js/helpers.js?v=16"></script>
+  <script src="js/health.js?v=16"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ import sqlite3
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+from services.central.tests.client import OperatorClient as TestClient
 from psycopg.types.json import Jsonb
 
 from services.edge.communication.data_to_edge import TelemetrySubscriber
@@ -112,7 +112,7 @@ def pipeline(tmp_path, monkeypatch):
             INSERT INTO route_stops VALUES ('R1',0,0,'S1'),('R1',0,1,'S2');
         """)
     monkeypatch.setattr(
-        bus_states.psycopg,
+        bus_states.database.psycopg,
         "connect",
         lambda url, **kwargs: TestDatabase(path, **kwargs),
     )
@@ -361,7 +361,7 @@ def test_shared_simulator_network_reaches_central_storage(tmp_path, monkeypatch)
         """)
         connection.executescript(seed_sql(network))
     monkeypatch.setattr(
-        bus_states.psycopg,
+        bus_states.database.psycopg,
         "connect",
         lambda url, **kwargs: TestDatabase(database, **kwargs),
     )
@@ -459,7 +459,7 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(
         """)
         connection.executescript(seed_sql(load_network()))
     monkeypatch.setattr(
-        bus_states.psycopg,
+        bus_states.database.psycopg,
         "connect",
         lambda url, **kwargs: TestDatabase(path, **kwargs),
     )
@@ -497,6 +497,8 @@ def test_cluster_takeover_cross_region_and_scale_down_reach_central_api(
     assert state["sequence_number"] == 2
     assert state["edge_metadata"]["edge_id"] == "edge-west-2"
     cluster.fail("edge-west-2")
+    assert cluster.registry.get(bus_id).edge_id == "edge-west-3"
+    cluster.fail("edge-west-3")  # cross-region fallback requires loss of local standby too
     cluster.generate(bus_id, 1)
     state = flush_and_read()
     assert state["sequence_number"] == 3

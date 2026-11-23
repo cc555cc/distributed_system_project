@@ -71,7 +71,7 @@ def test_apply_update_returns_consistent_result(bus_states, rowcount, expected):
     connection.execute.return_value.rowcount = rowcount
     connection.execute.return_value.fetchone.return_value = None  # no stored row yet
     with (
-        patch.object(bus_states.psycopg, "connect") as connect,
+        patch.object(bus_states.database.psycopg, "connect") as connect,
         patch.object(bus_states, "check_update", return_value=None),
     ):
         connect.return_value.__enter__.return_value = connection
@@ -84,7 +84,7 @@ def test_rejected_ingestion_does_not_write(bus_states):
         None  # also no stored row yet
     )
     with (
-        patch.object(bus_states.psycopg, "connect") as connect,
+        patch.object(bus_states.database.psycopg, "connect") as connect,
         patch.object(bus_states, "check_update", return_value="wrong region"),
     ):
         connect.return_value.__enter__.return_value = connection
@@ -129,7 +129,7 @@ def test_list_endpoints_use_expected_route_fields(bus_states):
     ]:
         connection = Mock()
         connection.execute.return_value.fetchall.return_value = [{"id": "example"}]
-        with patch.object(module.psycopg, "connect") as connect:
+        with patch.object(module.database.psycopg, "connect") as connect:
             connect.return_value.__enter__.return_value = connection
             assert function() == [{"id": "example"}]
         assert "row_factory" in connect.call_args.kwargs

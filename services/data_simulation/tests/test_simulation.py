@@ -2,7 +2,6 @@
 
 import json
 import io
-import urllib.error
 from copy import deepcopy
 from datetime import UTC, datetime
 
@@ -250,17 +249,31 @@ def test_start_sequence_continues_numbering_and_limit_counts_readings():
     assert [m["sequence_number"] for m in messages] == [501, 502, 503]
 
 
+def fake_snapshot(monkeypatch, buses):
+    """Answer resume_state's request with a passenger snapshot holding `buses`."""
+    seen = []
+
+    def urlopen(url, timeout):
+        seen.append(url)
+        return io.BytesIO(json.dumps({"buses": buses}).encode())
+
+    monkeypatch.setattr(run_buses.urllib.request, "urlopen", urlopen)
+    return seen
+
+
 def test_resume_sequence_starts_above_central(monkeypatch):
-    monkeypatch.setattr(run_buses.urllib.request, "urlopen",
-                        lambda url, timeout: io.BytesIO(b'{"sequence_number": 300, "next_stop_id": "173", "direction_id": 0}'))
+    seen = fake_snapshot(monkeypatch, [
+        {"bus_id": "bus-302-2", "state": {"sequence_number": 9, "next_stop_id": "1", "direction_id": 1}},
+        {"bus_id": "bus-302-1", "state": {"sequence_number": 300, "next_stop_id": "173", "direction_id": 0}},
+    ])
     assert run_buses.resume_state("bus-302-1", "http://central") == (300 + run_buses.SEQUENCE_MARGIN, "173", 0)
+    assert seen == ["http://central/passenger/snapshot?source=live"]  # public; no operator login
 
 
 def test_resume_sequence_starts_at_zero_for_unknown_bus(monkeypatch):
-    def not_found(url, timeout):
-        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
-    monkeypatch.setattr(run_buses.urllib.request, "urlopen", not_found)
+    fake_snapshot(monkeypatch, [{"bus_id": "bus-302-1", "state": None}])
     assert run_buses.resume_state("bus-302-1", "http://central") == (0, None, None)
+    assert run_buses.resume_state("bus-999-1", "http://central") == (0, None, None)
 
 
 def test_resume_next_stop_starts_on_the_segment_toward_it():

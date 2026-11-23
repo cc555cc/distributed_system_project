@@ -82,8 +82,9 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      # Healthy once the API answers and can read the seeded database.
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/routes', timeout=2)"]
+      # Healthy once the API answers and can read the database. /routes needs an
+      # operator login now, so use the public passenger snapshot (it reads live state).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/passenger/snapshot?source=live', timeout=2)"]
       interval: 2s
       timeout: 3s
       retries: 30

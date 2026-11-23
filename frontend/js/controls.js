@@ -22,7 +22,7 @@ if (typeof L !== "undefined") {
 async function drawDemo(simulation) {
   if (!fleetRoutesLoaded) {
     const routes = await getJson("/health/simulation/routes");
-    ["new-bus-route", "schedule-route"].forEach(function (name) {
+    ["new-bus-route", "schedule-route", "demand-route"].forEach(function (name) {
       const select = document.getElementById(name);
       select.replaceChildren(...routes.map(function (route) {
         const option = document.createElement("option");
@@ -120,7 +120,7 @@ document.getElementById("demo-controls").addEventListener("click", async functio
   button.disabled = true;
   try {
     if (button.id === "fleet-apply") {
-      await resetSimulation(Number(document.getElementById("fleet-size").value));
+      await resetSimulation(Number(document.getElementById("fleet-size").value), Number(document.getElementById("active-buses").value), 100);
       await configureDemo({running: true});
     } else if (button.id === "bus-register") {
       await sendPost("/health/simulation/buses", {
@@ -155,10 +155,36 @@ function showMessage(text, isError) {
 
 async function loadWorkers() {
   try {
+    await renderSystemOverview(demoView() ? "demo" : "live");
     const simulation = await getSimulation();
     edgeTable.innerHTML = simulationTable(simulation, true);
     document.getElementById("simulation-clock").textContent = simulationClockText(simulation);
+    if (document.activeElement !== document.getElementById('clock-speed')) document.getElementById('clock-speed').value = String(simulation.clock.speed);
+    await loadCombinedCases();
     await drawDemo(simulation);
+    const demand = await getJson("/scheduling/status?source=demo");
+    const selectedDemand = demand.routes.find(r => r.route_id === document.getElementById('demand-route').value);
+    const latest = demand.history.filter(h => h.route_id === selectedDemand?.route_id).slice(-1)[0];
+    document.getElementById('scenario-status').innerHTML = selectedDemand ? tableHtml(['Route', 'Occupancy', 'Interval', 'Decision', 'Result'], [[
+      escapeHtml(selectedDemand.route_id), selectedDemand.occupancy_percent === null ? 'Waiting for readings' : Math.round(selectedDemand.occupancy_percent) + '%',
+      selectedDemand.headway_seconds + ' s', selectedDemand.recommendation ? escapeHtml(selectedDemand.recommendation.action.replaceAll('_',' ') + ' / ' + selectedDemand.recommendation.status) : selectedDemand.samples + '/3 samples',
+      latest ? escapeHtml(latest.execution) : 'No dispatch yet'
+    ]]) : '';
+    document.getElementById("demand-status").innerHTML = tableHtml(["Route", "Occupancy", "Waiting", "Samples", "Interval", "Recommendation", "Action"],
+      demand.routes.map(function (route) {
+        const decision = route.recommendation;
+        return [escapeHtml(route.route_id), route.occupancy_percent === null ? "Unavailable" : Math.round(route.occupancy_percent) + "%",
+          route.waiting_passengers ?? "Unavailable", route.samples + " / 3", route.headway_seconds + " s",
+          decision ? escapeHtml(decision.action.replaceAll("_", " ") + " · " + decision.status) : "No sustained signal",
+          decision?.status === "pending" ? '<button data-approve="' + escapeHtml(route.route_id) + '">Approve</button>' : "-"];
+      }));
+    document.getElementById("demand-execution").textContent = demand.history.slice(-3).map(function (decision) {
+      return "Route " + decision.route_id + ": " + decision.execution +
+        (decision.confirmation_sequence ? " (sequence " + decision.confirmation_sequence + ")" : "") +
+        "; occupancy " + Math.round(decision.occupancy_before) + "% → " +
+        (decision.occupancy_after === null ? "unavailable" : Math.round(decision.occupancy_after) + "%") +
+        "; waiting " + decision.waiting_before + " → " + decision.waiting_after;
+    }).join(" · ");
   } catch (error) {
     console.error("Could not load simulation", error);
     document.getElementById("demo-summary").textContent = "Backend unavailable. Positions below are the last received readings.";
@@ -166,6 +192,23 @@ async function loadWorkers() {
     edgeTable.textContent = "Could not load the edge servers: " + error.message;
   }
 }
+
+document.getElementById("demand-controls").addEventListener("click", async function (event) {
+  const button = event.target.closest("button");
+  if (!button) return;
+  button.disabled = true;
+  const feedback = document.getElementById("demand-feedback");
+  try {
+    let result;
+    if (button.dataset.approve) result = await sendPost("/scheduling/" + encodeURIComponent(button.dataset.approve) + "/approve");
+    else if (button.id === "demand-apply") result = await sendPost("/scheduling/demand", {route_id: document.getElementById("demand-route").value, profile: document.getElementById("demand-profile").value, occupancy_percent: Number(document.getElementById("demand-occupancy").value)});
+    else result = await sendPost("/scheduling/policy", {automatic: button.id === "automatic-on"});
+    chooseDemo();
+    feedback.textContent = result.feedback || (result.profile ? "Demand profile applied: " + result.profile + ". Waiting for sustained samples." : "Automatic scheduling: " + result.automatic);
+    await loadWorkers();
+  } catch (error) { feedback.textContent = error.message; }
+  finally { button.disabled = false; }
+});
 
 edgeTable.addEventListener("click", async function (event) {
   const button = event.target.closest("button");
@@ -230,3 +273,109 @@ resetButton.addEventListener("click", async function () {
 
 loadWorkers();
 setInterval(loadWorkers, 1000);
+
+// A burst follows the real telemetry path and does not create extra buses.
+document.getElementById('load-send').addEventListener('click', async function () {
+  const feedback = document.getElementById('load-feedback');
+  try {
+    const r = await sendPost('/health/simulation/workload', {region_id: document.getElementById('load-region').value,
+      count: Number(document.getElementById('load-count').value), processing_ms: Number(document.getElementById('load-processing').value)});
+    chooseDemo(); feedback.textContent = r.accepted + ' accepted | ' + r.rejected + ' backpressured | watch third edge';
+    await loadWorkers();
+  } catch (error) { feedback.textContent = error.message; }
+});
+
+// Named use cases call existing backend controls, so every page sees the same experiment.
+document.getElementById('scenario-controls').addEventListener('click', async function (event) {
+  const button = event.target.closest('button[data-scenario]');
+  if (!button) return;
+  const output = document.getElementById('scenario-feedback');
+  const actions = document.querySelectorAll('#scenario-controls button');
+  actions.forEach(b => b.disabled = true);
+  output.textContent = 'Applying ' + button.textContent.toLowerCase() + '...';
+  try {
+    if (button.dataset.scenario === 'security') {
+      // Deliberately omit the session; this proves access is enforced on the backend.
+      const responses = await Promise.all([
+        fetch('/user.html', {credentials:'omit'}), fetch('/health/overview', {credentials:'omit'}),
+        fetch('/health/simulation/workload', {method:'POST', credentials:'omit', headers:{'Content-Type':'application/json'}, body:JSON.stringify({region_id:'west',count:1})})
+      ]);
+      output.textContent = responses[0].status === 200 && responses[1].status === 401 && responses[2].status === 401 ?
+        'PASS: passenger public; health and commands reject unauthenticated access.' : 'Access check failed: ' + responses.map(r => r.status).join('/');
+    } else {
+      const payload = ['normal','capacity','balancing','scheduling'].includes(button.dataset.scenario) ? {} : {bus_id:demoBus.value || undefined};
+      const result = await sendPost('/health/simulation/scenarios/' + button.dataset.scenario, payload);
+      chooseDemo(); output.textContent = result.message;
+      await loadWorkers();
+    }
+  } catch (error) { output.textContent = error.message; }
+  finally { actions.forEach(b => b.disabled = false); }
+});
+
+
+// The case table reads backend checks and per-second evidence; it never assumes a click passed.
+async function loadCombinedCases() {
+  const [cases, live] = await Promise.all([getJson('/health/simulation/cases'),getJson('/health/simulation/live-cases')]);
+  document.getElementById('live-case-status').textContent = live.running ?
+    (live.paused ? 'Paused · ' : '') + live.title + ' · ' + live.phase + ' · ' + live.elapsed_seconds + '/' + live.duration_seconds + ' simulated s' :
+    live.message || 'Live demo · no scripted situation running';
+  if (live.running) document.getElementById('case-feedback').textContent = (live.paused ? 'Paused. Resume the clock to continue. ' : 'Running live. ') + ' Watch Health, queues and passenger suggestions; evidence is recorded as it happens.';
+  else if (live.status === 'completed' || live.status === 'failed') document.getElementById('case-feedback').textContent =
+    cases.filter(c => c.result?.passed).length + '/' + cases.length + ' situations verified. Simulation continues; open Evidence for recorded checks.';
+  else if (live.status === 'interrupted') document.getElementById('case-feedback').textContent = live.message;
+  else document.getElementById('case-feedback').textContent = 'Choose a situation to watch live.';
+  const html = tableHtml(['Situation', 'Expected response', 'Result', 'Test'], cases.map(function (c) {
+    const state = c.running ? tag(live.paused ? 'PAUSED' : 'RUNNING','warn') : c.queued ? 'Queued' : c.result ? tag(c.result.status === 'interrupted' ? 'STOPPED' : c.result.passed ? 'PASS' : 'FAIL', c.result.status === 'interrupted' ? 'grey' : c.result.passed ? 'good' : 'bad') : 'Not run';
+    return [escapeHtml(c.title), escapeHtml(c.expected), state,
+      '<button data-case="' + escapeHtml(c.id) + '" aria-label="Run ' + escapeHtml(c.title) + '">Run live</button> ' +
+      '<button data-evidence="' + escapeHtml(c.id) + '" aria-label="Evidence for ' + escapeHtml(c.title) + '"' + (c.result || c.running ? '' : ' disabled') + '>Evidence</button>'];
+  }));
+  const box = document.getElementById('case-table');
+  if (box.dataset.rendered !== html) { box.innerHTML = html; box.dataset.rendered = html; }
+  return cases;
+}
+function showCaseEvidence(result) {
+  const edge = function (frame, id) {
+    const w = frame.edges.find(e => e.edge_id === id);
+    return escapeHtml(w.state) + (w.emergency ? ' · takeover' : '') + '<br>' + w.queue + '/' + w.capacity + ' queued · ' + w.assigned.length + ' buses';
+  };
+  document.getElementById('case-details').innerHTML = '<h3>' + escapeHtml(result.case_id.replaceAll('_',' ')) + ' ' +
+    tag(result.status === 'interrupted' ? 'STOPPED' : result.passed === null ? 'RUNNING' : result.passed ? 'PASS' : 'FAIL', result.status === 'interrupted' ? 'grey' : result.passed === null ? 'warn' : result.passed ? 'good' : 'bad') + '</h3><ul>' + result.checks.map(function (c) {
+      return '<li>' + tag(c.passed ? 'PASS' : 'FAIL', c.passed ? 'good' : 'bad') + ' ' + escapeHtml(c.label) + '</li>';
+    }).join('') + '</ul>' + tableHtml(['Time', 'Edge A', 'Edge B', 'Standby', 'Selected bus', 'Central ACKs', 'Central pending', 'Accepted journal'], result.timeline.map(function (f) {
+      return [f.second + ' s', edge(f,'edge-west-1'), edge(f,'edge-west-2'), edge(f,'edge-west-3'), escapeHtml(f.bus_health) +
+        '<br>' + Object.entries(f.sensor_status).filter(([name,state]) => state !== 'healthy').map(([name,state]) => escapeHtml(name + ': ' + state)).join('<br>'),
+        f.acknowledged, f.central_pending, f.journal_pending];
+    }));
+  document.getElementById('case-evidence').open = true;
+}
+document.getElementById('combined-cases').addEventListener('click', async function (event) {
+  const button = event.target.closest('button');
+  if (!button) return;
+  const status = document.getElementById('case-feedback');
+  const controls = document.querySelectorAll('#combined-cases button, #scenario-controls button');
+  controls.forEach(b => b.disabled = true);
+  try {
+    if (button.dataset.evidence) {
+      showCaseEvidence(await getJson('/health/simulation/cases/' + button.dataset.evidence));
+    } else {
+      status.textContent = 'Starting live situation...';
+      const result = await sendPost('/health/simulation/live-cases/' + (button.dataset.case ? button.dataset.case + '/start' : 'start'));
+      chooseDemo();
+      status.textContent = result.title + ' started. Watch it unfold in Health and Passenger.';
+      await loadWorkers();
+    }
+  } catch (error) { status.textContent = error.message; }
+  finally { controls.forEach(b => b.disabled = false); await loadCombinedCases(); }
+});
+loadCombinedCases().then(function () { if (!document.getElementById('case-feedback').textContent) document.getElementById('case-feedback').textContent = 'Choose a situation to watch live.'; })
+  .catch(function (error) { document.getElementById('case-feedback').textContent = error.message; });
+
+// Changing speed applies immediately; polling never advances simulation time.
+document.getElementById('clock-speed').addEventListener('change',async function () {
+  try {
+    const current = await getSimulation();
+    await setSimulationClock(current.clock.running,Number(this.value));
+    await loadWorkers();
+  } catch (error) { showMessage(error.message,true); }
+});

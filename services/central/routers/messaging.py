@@ -10,16 +10,69 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from services.central.alert_folding import fold_repeats
 from services.messaging import mqtt_client, topics
 from services.messaging.commands import Action
 from shared.schema.network import load_network
-from services.central.alert_folding import fold_repeats
 
 router = APIRouter(tags=["messaging"])
 
 _network = load_network()
 REGIONS = {region["region_id"] for region in _network["regions"]}
 BUS_REGIONS = {bus["bus_id"]: bus["region_id"] for bus in _network["buses"]}
+
+
+@router.get("/alerts")
+def list_alerts(
+    region_id: str | None = None,
+    severity: Literal["info", "warning", "critical"] | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    source: Literal["live", "demo"] = "live",
+    bus_id: str | None = None,
+    fold: bool = True,
+):
+    if source == "live":
+        store = mqtt_client.alert_store
+        records = store.list(region_id=region_id, severity=severity, limit=store.limit)
+        if fold:
+            # One flapping source shows as one entry with a count, not dozens of rows.
+            records = fold_repeats(records)
+    else:
+        from services.central import health
+
+        with health.simulation_clock.lock:
+            state = health.simulation.snapshot()
+        records = []
+        if not state["central_available"]:
+            records.append(dict(alert_id="demo-central-down", source_id="central", severity="critical",
+                                message="Injected central outage; delivery acknowledgements pending"))
+        for bus in health.bus_health_snapshot("demo"):
+            status = bus["health"]["status"]
+            if status not in ("healthy", "stationary", "paused"):
+                records.append(dict(alert_id="current-" + bus["bus_id"], bus_id=bus["bus_id"],
+                    region_id=bus["region_id"], source_id=bus["edge_id"],
+                    severity="info" if status == "unknown" else "warning",
+                    message=status + ": " + "; ".join(bus["health"]["reasons"])))
+        seen_events = set()
+        for index, event in enumerate(reversed(state["events"])):
+            action = event["action"]
+            if action not in {"condition", "delivery_attempt", "central_retry", "central_expired", "central_fenced", "fail_instance", "recovery_complete", "central_available", "bus_dispatched"}:
+                continue
+            identity = event.get("bus_id")
+            signature = (identity, event.get("edge_id"), action, event.get("reason"), event.get("condition"))
+            if signature in seen_events:
+                continue  # show the latest repeated warning, not one row per retry
+            seen_events.add(signature)
+            definition = next((bus for bus in state["registered_buses"] if bus["bus_id"] == identity), {})
+            records.append(dict(alert_id="demo-event-" + str(index), bus_id=identity,
+                region_id=definition.get("region_id"), source_id=event.get("edge_id", identity or "central"),
+                severity="warning" if action in {"delivery_attempt", "central_retry", "central_expired", "central_fenced", "fail_instance"} else "info",
+                simulation_seconds=event["time"], message=action + ": " + event.get("reason", event.get("condition", ""))))
+    return [record for record in records
+            if (bus_id is None or record.get("bus_id") in (None, bus_id))
+            and (region_id is None or record.get("region_id") in (None, region_id))
+            and (severity is None or record["severity"] == severity)][:limit]
+
 
 class CommandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -57,16 +110,3 @@ def send_command(body: CommandRequest):
         "lamport_clock": command.lamport_clock,
         "status": "published",
     }
-
-@router.get("/alerts")
-def list_alerts(
-    region_id: str | None = None,
-    severity: Literal["info", "warning", "critical"] | None = None,
-    limit: int = Query(default=100, ge=1, le=500),
-    fold: bool = True,
-):
-    store = mqtt_client.alert_store
-    alerts = store.list(region_id=region_id, severity=severity, limit=store.limit)
-    if fold:
-        alerts = fold_repeats(alerts)
-    return alerts[:limit]

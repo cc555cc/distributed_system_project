@@ -19,7 +19,8 @@ from services.central.health import monitor
 from services.central.health import simulation_clock
 from services.central.health import router as health_router
 from services.central.ownership import bus_ownership
-from services.central.routers import bus_states, buses, eta, messaging, routes, stops
+from services.central.routers import bus_states, buses, control, eta, messaging, passenger, routes, scheduling, sensors, stops
+from services.central.routers.auth import install_security
 from services.messaging import mqtt_client
 
 POLL_SECONDS = 1
@@ -50,6 +51,9 @@ async def simulation_loop():
 @asynccontextmanager
 async def lifespan(app):
     mqtt_client.start()
+    if os.getenv("DEMO_AUTOSTART", "true").lower() == "true":
+        from services.central import health
+        health.simulation.configure_demo(running=True)
     poll_task = asyncio.create_task(poll_loop())
     simulation_clock.last = simulation_clock.clock()
     clock_task = asyncio.create_task(simulation_loop())
@@ -63,6 +67,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+install_security(app)
 
 # allow the frontend dashboard to call this API from the browser
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500")
@@ -79,6 +84,10 @@ app.include_router(bus_states.router)
 app.include_router(stops.router)
 app.include_router(routes.router)
 app.include_router(health_router)
+app.include_router(control.router)
 app.include_router(eta.router)
 app.include_router(buses.router)
+app.include_router(sensors.router)
 app.include_router(messaging.router)
+app.include_router(passenger.router)
+app.include_router(scheduling.router)

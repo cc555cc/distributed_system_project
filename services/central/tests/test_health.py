@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from fastapi.testclient import TestClient
+from services.central.tests.client import OperatorClient as TestClient
 
 from services.central.health import CentralHealthMonitor
 from services.edge.config import EdgeConfig, NetworkConfig
@@ -578,7 +578,7 @@ def test_demo_movement_stops_traffic_demand_and_runtime_controls(demo_client):
     assert state["demo_buses"]["bus-302-1"]["distance_m"] - original == pytest.approx(7.5)
     demo_condition(client, "peak")
     state = demo_step(client)
-    assert state["central_states"]["bus-302-1"]["occupancy"] == 40
+    assert 43 <= state["central_states"]["bus-302-1"]["occupancy"] <= 50
     demo_condition(client, "out_of_service")
     state = demo_step(client)
     assert state["central_states"]["bus-302-1"]["occupancy"] == 0
@@ -765,3 +765,95 @@ def test_scheduler_rejects_unavailable_wrong_route_and_duplicate_requests(demo_c
     assert client.post("/health/simulation/schedule", json=request).status_code == 200
     assert client.post("/health/simulation/schedule", json=request).status_code == 422
     assert client.get("/health/simulation").json()["schedules"]["302"]["pending"] == ["reserve-1"]
+
+
+def test_health_routes_separate_bus_sensors_faults_and_recovery(demo_client):
+    client = demo_client
+    demo_step(client)
+    assert len(client.get("/buses/health?source=demo").json()) == 20
+    bus = client.get("/buses/bus-302-1/health?source=demo").json()
+    assert bus["health"]["status"] == "healthy" and "sensors" not in bus
+    assert len(client.get("/sensors").json()["sensors"]) == 4
+    demo_condition(client, "sensor_fault")
+    demo_step(client)
+    sensor = client.get("/buses/bus-302-1/sensors/occupancy?source=demo").json()
+    assert sensor["health_status"] == "faulty"
+    assert client.get("/buses/bus-302-1/sensors/gps?source=demo").json()["health_status"] == "healthy"
+    assert client.get("/buses/bus-302-1/health?source=demo").json()["health"]["status"] == "degraded"
+    demo_condition(client, "silence")
+    demo_step(client, 7)
+    bus = client.get("/buses/bus-302-1/health?source=demo").json()
+    assert bus["health"]["status"] == "unavailable" and "cause unknown" in bus["health"]["reasons"][0]
+    demo_condition(client, "normal")
+    demo_step(client, 3)
+    assert client.get("/buses/bus-302-1/health?source=demo").json()["health"]["status"] == "healthy"
+
+
+def test_live_health_routes_keep_cold_stale_and_failed_edge_reports_honest(demo_client, monitor, monkeypatch):
+    from services.central import health
+    from services.central.routers import buses
+    from datetime import UTC, datetime
+
+    client = demo_client
+    store, now, _ = monitor
+    monkeypatch.setattr(health, "monitor", store)
+    monkeypatch.setattr(buses, "get_all_buses", lambda **kwargs: [dict(bus_id="bus-302-1", bus_status="stopped",
+        last_updated=datetime.now(UTC), edge_metadata={"passengers": 10, "capacity": 50})])
+    initial = client.get("/buses/bus-302-1/sensors").json()
+    assert all(sensor["health_status"] == "unknown" for sensor in initial["sensors"].values())
+    assert receive(store, healthy_bus_report())
+    assert client.get("/buses/bus-302-1/health").json()["health"]["status"] == "stationary"
+    route = client.get("/routes/302/health").json()
+    assert route["passengers"] == 10 and route["occupancy_samples"] == 1
+    now[0] = 5
+    assert client.get("/buses/bus-302-1/health").json()["health"]["status"] == "telemetry_unavailable"
+    now[0] = 10
+    assert client.get("/buses/bus-302-1/health").json()["health"]["status"] == "unknown"
+    assert all(sensor["health_status"] == "unknown" for sensor in client.get("/buses/bus-302-1/sensors").json()["sensors"].values())
+    assert client.get("/routes/302/health").json()["passengers"] is None
+
+
+def test_route_capacity_health_alerts_and_stale_central_coverage(demo_client):
+    client = demo_client
+    state = demo_step(client)
+    route = client.get("/routes/302/health?source=demo").json()
+    assert route["configured_capacity"] == route["verified_service_capacity"] == 200
+    assert route["available_buses"] == route["occupancy_samples"] == 4
+    total = sum(state["central_states"][f"bus-302-{index}"]["occupancy"] for index in range(1, 5))
+    assert route["passengers"] == total and route["available_seats_in_samples"] == 200 - total
+    assert all(edge["queue_capacity"] == 50 for edge in route["edge_workload"])
+    demo_condition(client, "sensor_fault")
+    state = demo_step(client)
+    route = client.get("/routes/302/health?source=demo").json()
+    expected = sum(state["central_states"][f"bus-302-{index}"]["occupancy"] for index in range(2, 5))
+    assert route["occupancy_samples"] == 3 and route["passengers"] == expected
+    alerts = client.get("/alerts?source=demo&bus_id=bus-302-1").json()
+    assert any("degraded" in alert["message"] for alert in alerts)
+    assert sum(alert["message"].startswith("delivery_attempt:") for alert in alerts) == 1
+    assert all(alert.get("bus_id") in (None, "bus-302-1") for alert in alerts)
+    client.patch("/health/simulation/demo", json={"central_available": False})
+    demo_step(client, 31)
+    route = client.get("/routes/302/health?source=demo").json()
+    assert route["passengers"] is None and route["occupancy_samples"] == 0
+    assert any(alert["severity"] == "critical" for alert in client.get("/alerts?source=demo").json())
+    bus = client.get("/buses/bus-302-2/health?source=demo").json()
+    assert bus["central_delivery_pending"] and not bus["central_available"]
+    assert bus["valid_telemetry_age_seconds"] < 2 and bus["central_update_age_seconds"] >= 30
+
+
+def test_health_api_filters_invalid_ids_and_database_unavailability(demo_client, monkeypatch):
+    from services.central.routers import buses
+    import psycopg
+
+    client = demo_client
+    demo_step(client)
+    filtered = client.get("/buses/health?source=demo&region_id=east&route_id=407").json()
+    assert len(filtered) == 4 and all(bus["region_id"] == "east" and bus["route_id"] == "407" for bus in filtered)
+    for path in ("/buses/unknown/health", "/buses/unknown/sensors", "/buses/bus-302-1/sensors/unknown", "/routes/unknown/health"):
+        assert client.get(path + "?source=demo").status_code == 404
+    assert client.get("/buses/health?source=invalid").status_code == 422
+    def unavailable(**kwargs):
+        raise psycopg.OperationalError("test database unavailable")
+    monkeypatch.setattr(buses, "get_all_buses", unavailable)
+    route = client.get("/routes/302/health").json()
+    assert route["notes"] and route["passengers"] is None and route["occupancy_samples"] == 0

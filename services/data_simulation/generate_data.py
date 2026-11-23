@@ -211,6 +211,10 @@ class DemoFleet:
         self.event = event
         self.buses = {}
         self.network_path = network_path
+        self.route_demand = {}
+        self.route_occupancy = {}
+        self.waiting = {}
+        self.waiting_passenger_seconds, self.boarded_passengers = {}, {}
         for bus in definitions:
             self.add_bus(bus, now)
 
@@ -221,11 +225,56 @@ class DemoFleet:
         template = next(generate_messages(bus["route_id"], bus.get("direction_id", 0),
             network_path=self.network_path, max_updates=1, update_seconds=0))
         template.update(bus_id=bus["bus_id"], capacity=bus["capacity"])
+        import zlib
+        rng = random.Random(zlib.crc32(bus["bus_id"].encode()))
         self.buses[bus["bus_id"]] = dict(definition=bus, stops=stops, segment=start,
             metres=0.0, distance_m=0.0, condition=condition, speed=0.0, dwell=0.0,
             sequence=0, template=template, local=None, heartbeat=None, valid=None,
             report_at=now, pending=None, retry_at=now, attempts=0, rejected=0,
-            recovery_until=now, started=now)
+            recovery_until=now, started=now, random=rng, passengers=0, passenger_profile=None)
+        if bus["route_id"] not in self.waiting:
+            self.set_demand(bus["route_id"], "normal")
+
+    def set_demand(self, route_id, profile, occupancy_percent=None):
+        if profile not in {"normal", "peak", "off_peak", "custom"}:
+            raise ValueError("Choose normal, peak or off_peak demand")
+        if profile == "custom" and (occupancy_percent is None or not 0 <= occupancy_percent <= 100):
+            raise ValueError("Custom occupancy must be between 0 and 100")
+        import zlib
+        network = load_network(self.network_path)
+        if route_id not in {route["route_id"] for route in network["routes"]}:
+            raise ValueError("Unknown route")
+        self.route_occupancy[route_id] = occupancy_percent
+        from shared.schema.network import route_stops
+        stops = route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
+        rng = random.Random(zlib.crc32((route_id + profile).encode()))
+        self.waiting_passenger_seconds[route_id] = 0.0
+        self.boarded_passengers[route_id] = 0
+        self.route_demand[route_id] = profile
+        self.waiting[route_id] = {stop["stop_id"]: rng.randint(20, 50) if profile == "peak" else rng.randint(0, 5) for stop in stops}
+
+    def passenger_count(self, bus, *, at_stop=False):
+        if bus["condition"] == "out_of_service":
+            bus["passengers"], bus["passenger_profile"] = 0, None
+            return 0
+        route = bus["definition"]["route_id"]
+        profile = "peak" if bus["condition"] == "peak" else self.route_demand.get(route, "normal")
+        capacity = bus["definition"]["capacity"]
+        profile_key = (profile, self.route_occupancy.get(route))
+        if at_stop or profile_key != bus["passenger_profile"]:
+            lower, upper = (math.ceil(capacity * 0.85), capacity) if profile == "peak" else (0, max(1, int(capacity * 0.3)))
+            bus["passengers"] = bus["random"].randint(lower, upper)
+            if profile == "custom":
+                bus["passengers"] = round(capacity * self.route_occupancy[route] / 100)
+            bus["passenger_profile"] = profile_key
+            if at_stop and profile != "custom":
+                stop_id = bus["stops"][bus["segment"]]["stop_id"]
+                queue = self.waiting[route].get(stop_id, 0)
+                boarded = min(queue, capacity - bus["passengers"])
+                bus["passengers"] += boarded
+                self.waiting[route][stop_id] = max(0, queue - boarded)
+                self.boarded_passengers[route] += boarded
+        return bus["passengers"]
 
     def configure(self, bus_id, condition, now):
         if bus_id not in self.buses or condition not in self.CONDITIONS:
@@ -233,6 +282,7 @@ class DemoFleet:
         bus = self.buses[bus_id]
         previous = bus["condition"]
         bus["condition"] = condition
+        bus["reserved"] = False  # an explicit command puts the bus back into the active simulation
         if condition == "normal" and previous != "normal":
             bus["recovery_until"] = now + 2
         self.event(dict(time=now, action="condition", bus_id=bus_id,
@@ -257,6 +307,7 @@ class DemoFleet:
                 break
             bus["segment"] += 1
             bus["metres"] = 0.0
+            self.passenger_count(bus, at_stop=True)
             # Three modeled seconds at each stop, even at accelerated clock speeds.
             wait = min(3.0, remaining)
             remaining -= wait
@@ -290,7 +341,7 @@ class DemoFleet:
             longitude=round(current["lon"] + (following["lon"] - current["lon"]) * progress, 6),
             speed_kmh=bus["speed"], bus_status=self.phase(bus),
             current_stop_id=current["stop_id"], current_stop_city_id=current["city_id"],
-            passengers=min(bus["definition"]["capacity"], 0 if bus["condition"] == "out_of_service" else 40 if bus["condition"] == "peak" else 10))
+            passengers=self.passenger_count(bus))
         source.pop("next_stop_id", None)
         source.pop("next_stop_city_id", None)
         if index + 1 < len(stops):
@@ -298,7 +349,12 @@ class DemoFleet:
         return source
 
     def step(self, seconds, now, submit):
+        # Queue area is measured in passenger-seconds, not a guessed per-person wait.
+        for route, stops in self.waiting.items():
+            self.waiting_passenger_seconds[route] += sum(stops.values()) * seconds
         for bus_id, bus in self.buses.items():
+            if bus.get("reserved"):
+                continue  # registered reserve: no movement or sensor requests until dispatch
             self._move(bus, seconds)
             if now + 1e-9 < bus["report_at"]:
                 continue
@@ -360,8 +416,9 @@ class DemoFleet:
                 "sensors_stopped": "all sensor channels silent; no crash inferred",
                 "silence": "cause unknown; no received heartbeat",
             }.get(condition, "valid readings and heartbeat" if bus["heartbeat"] is not None else "awaiting first heartbeat")
-            result[bus_id] = dict(condition=condition, phase=self.phase(bus), status=status, evidence=evidence,
+            result[bus_id] = dict(reserved=bus.get("reserved", False), condition=condition, phase=self.phase(bus), status=status, evidence=evidence,
                 sensors=sensors, heartbeat_age_seconds=age, distance_m=bus["distance_m"],
+                valid_telemetry_age_seconds=now - bus["valid"] if bus["valid"] is not None else None,
                 local=bus["local"], attempts=bus["attempts"], rejected_readings=bus["rejected"],
                 delivery_pending=bus["pending"] is not None, retry_at=bus["retry_at"],
                 region_id=bus["definition"]["region_id"], route_id=bus["definition"]["route_id"])

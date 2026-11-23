@@ -123,8 +123,9 @@ def test_takeover_ordering_replay_and_replica_safety():
     assert not cluster.submit_telemetry(source)["accepted"]
     assert cluster.central_states[bus]["sequence_number"] == 2
 
-    # Failed full target keeps pending updates until capacity returns.
+    # With standby also failed, a full peer must retain pending work until capacity returns.
     cluster = make_cluster()
+    cluster.fail("edge-west-3")
     cluster.configure("edge-west-2", processing_ms=60000)
     cluster.generate("bus-302-2", 50)
     cluster.generate("bus-302-1", 5)
@@ -142,7 +143,7 @@ def test_takeover_ordering_replay_and_replica_safety():
     cluster = make_cluster()
     cluster.generate("bus-302-1", 1)
     cluster.advance(1)
-    for edge_id in ("edge-west-1", "edge-west-2", "edge-east-1", "edge-east-2"):
+    for edge_id in list(cluster.workers):
         cluster.fail(edge_id)
     assert not cluster.submit_telemetry(cluster.message_templates["bus-302-1"])[
         "accepted"
@@ -216,6 +217,8 @@ def test_bus_balancing_cross_region_handoff_and_recovery():
     cluster.advance(1)
     cluster.fail("edge-west-1")
     cluster.fail("edge-west-2")
+    assert cluster.registry.get(bus).edge_id == "edge-west-3"  # local standby comes first
+    cluster.fail("edge-west-3")
     remote = cluster.registry.get(bus).edge_id
     assert remote.startswith("edge-east-")
     cluster.generate(bus, 1)
@@ -246,11 +249,10 @@ def test_bus_balancing_cross_region_handoff_and_recovery():
     cluster.advance(1)
     workers = cluster._eligible("west")
     assert sorted(len(worker.queue) for worker in workers) == [20, 25]
-    assert (
-        max(len(cluster._assigned(w.edge_id)) for w in workers)
-        - min(len(cluster._assigned(w.edge_id)) for w in workers)
-        <= 1
-    )
+    # Work is balanced by queued cost, not by shuffling idle bus assignments.
+    owners = {bus: cluster.registry.get(bus).edge_id for bus in cluster.bus_regions}
+    cluster.advance(1)
+    assert {bus: cluster.registry.get(bus).edge_id for bus in cluster.bus_regions} == owners
     assert len(cluster.journal) == 45
     assert not cluster.workers["edge-west-3"].active
 

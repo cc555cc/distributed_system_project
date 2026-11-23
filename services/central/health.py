@@ -1,7 +1,8 @@
 """Central watches edge heartbeats independently; failed edges cannot report themselves."""
 
 import time
-from collections import deque
+import psycopg
+from collections import Counter, deque
 from copy import deepcopy
 from datetime import UTC, datetime
 from threading import RLock
@@ -327,7 +328,6 @@ def get_events(limit: int = Query(default=50, ge=1, le=200)):
 # UI experiments have their own queues and virtual clock. They do not publish
 # telemetry, start OS processes or alter the live ownership registry.
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 from services.edge.main import EdgeClusterSimulation
@@ -353,7 +353,12 @@ class SimulationClock:
             remaining = elapsed * self.speed if self.running else 0.0
             while remaining > 1e-9:
                 step = min(60.0, remaining)
-                simulation.advance(step)
+                from services.central.simulation_scenarios import advance_live
+                if not advance_live(step):
+                    simulation.advance(step)
+                    if getattr(simulation, "demo_running", False):
+                        from services.central.scheduling import observe_demo
+                        observe_demo()
                 remaining -= step
 
     def snapshot(self):
@@ -363,205 +368,181 @@ class SimulationClock:
 simulation_clock = SimulationClock()
 
 
-class SimulationInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-
-
-class SimulationRequests(SimulationInput):
-    bus_id: str = Field(min_length=1)
-    count: int = Field(ge=1, le=10000)
-
-
-class SimulationStep(SimulationInput):
-    seconds: float = Field(gt=0, le=60)
-
-
-class SimulationTiming(SimulationInput):
-    running: bool
-    speed: float = Field(gt=0, le=10)
-
-
-class SimulationDemo(SimulationInput):
-    running: bool | None = None
-    bus_id: str | None = None
-    condition: str | None = None
-    central_available: bool | None = None
-
-
-class BusConfiguration(SimulationInput):
-    schema_version: Literal["bus-config-v1"]
-    bus_id: str = Field(pattern=r"^[A-Za-z0-9_.:-]+$", min_length=1, max_length=64)
-    route_id: str = Field(min_length=1, max_length=64)
-    capacity: int = Field(default=50, ge=1, le=200)
-    direction_id: int = Field(default=0, ge=0, le=1)
-
-
-class DispatchRequest(SimulationInput):
-    action: Literal["dispatch", "set_headway"]
-    route_id: str = Field(min_length=1, max_length=64)
-    bus_id: str | None = None
-    headway_seconds: float | None = Field(default=None, ge=1, le=3600)
-
-
-class SimulationCharacteristics(SimulationInput):
-    capacity: int | None = Field(default=None, ge=1, le=50)
-    processing_ms: float | None = Field(default=None, ge=1, le=60000)
-    active: bool | None = None
-
-
-class SimulationPolicy(SimulationInput):
-    auto_scale: bool
-
-
-@router.get("/simulation")
-def get_simulation():
+def bus_health_snapshot(source="live"):
+    """One backend view for bus, sensor and route health; missing data stays unknown."""
+    if source == "live":
+        definitions = load_network()["buses"]
+        reports = {bus["bus_id"]: bus for bus in monitor.snapshot()["buses"]}
+        result = []
+        for definition in definitions:
+            report = reports.get(definition["bus_id"], {})
+            result.append(dict(
+                bus_id=definition["bus_id"], route_id=definition["route_id"],
+                city_id=definition["city_id"], region_id=definition["region_id"],
+                edge_id=report.get("edge_id", definition["edge_id"]), source=source,
+                health=report.get("health", {"status": "unknown", "reasons": ["no_health_report"]}),
+                source_edge_status=report.get("source_edge_status", "unknown"),
+                valid_telemetry_age_seconds=report.get("valid_telemetry_age_seconds"),
+                sensors={name: deepcopy(report.get("sensors", {}).get(name,
+                    {"health_status": "unknown", "age_seconds": None})) for name in SENSORS},
+            ))
+        return result
+    if source != "demo":
+        raise ValueError("Choose live or demo")
     with simulation_clock.lock:
-        return {**simulation.snapshot(), "clock": simulation_clock.snapshot()}
+        state = simulation.snapshot()
+        pending_ids = set(simulation.central_pending)
+    workers = {worker["edge_id"]: worker for worker in state["workers"]}
+    result = []
+    for definition in state["registered_buses"]:
+        bus_id = definition["bus_id"]
+        bus = state["demo_buses"].get(bus_id)
+        owner = state["ownership"][bus_id]["edge_id"]
+        edge_status = workers[owner]["state"]
+        status = bus["status"] if bus else "unknown"
+        reasons = [bus["evidence"]] if bus else ["no_demo_reading"]
+        if bus and not state["demo_running"]:
+            status, reasons = "paused", ["demonstration_stopped_intentionally"]
+        elif edge_status not in ("healthy", "recovering"):
+            status, reasons = "unknown", ["source_edge_unavailable; sensor_failure_unconfirmed"]
+        if bus and bus.get("reserved"):
+            status, reasons = "standby", ["registered_reserve; awaiting_dispatch"]
+        age = bus["heartbeat_age_seconds"] if bus else None
+        sensors = {}
+        for name in SENSORS:
+            sensor_status = bus["sensors"][name] if bus else "unknown"
+            if status in ("unknown", "paused", "standby"):
+                sensor_status = "standby" if status == "standby" else "unknown"
+            elif status == "unavailable":
+                sensor_status = "unavailable"
+            elif status == "recovering" and sensor_status == "healthy":
+                sensor_status = "recovering"
+            sensors[name] = dict(health_status=sensor_status, age_seconds=age)
+        received = state["central_received_at"].get(bus_id)
+        result.append(dict(bus_id=bus_id, route_id=definition["route_id"],
+            city_id=definition["city_id"], region_id=definition["region_id"], edge_id=owner,
+            source=source, health={"status": status, "reasons": reasons},
+            source_edge_status=edge_status,
+            valid_telemetry_age_seconds=bus["valid_telemetry_age_seconds"] if bus else None,
+            central_update_age_seconds=(state["virtual_seconds"] - received if received is not None else None),
+            central_available=state["central_available"], central_delivery_pending=bus_id in pending_ids,
+            pipeline={"bus_delivery_attempts": bus["attempts"] if bus else 0,
+                "bus_rejected_readings": bus["rejected_readings"] if bus else 0,
+                "global_edge_accepted": state["accepted"], "global_edge_rejected": state["rejected"],
+                "global_processing_outcomes": state["outcomes"], "global_central_acknowledged": state["central_ack_count"],
+                "global_central_pending_buses": state["central_pending"], "mapping_contract": "edge-central-v1"},
+            sensors=sensors))
+    return result
 
 
-@router.get("/simulation/routes")
-def simulation_routes():
-    return load_network(simulation.network_path)["routes"]
+def find_bus_health(bus_id, source="live"):
+    bus = next((bus for bus in bus_health_snapshot(source) if bus["bus_id"] == bus_id), None)
+    if bus is None:
+        raise HTTPException(404, "Bus is not registered in this data source")
+    return bus
 
 
-@router.get("/simulation/routes/{route_id}/stops")
-def simulation_route_stops(route_id: str):
-    from shared.schema.network import route_stops
-
-    network = load_network(simulation.network_path)
-    try:
-        return route_stops(network, route_id, 0) + route_stops(network, route_id, 1)
-    except ValueError as error:
-        raise HTTPException(404, str(error)) from error
 
 
-@router.patch("/simulation/clock")
-def configure_simulation_clock(body: SimulationTiming):
+@router.get("/overview")
+def system_overview(source: Literal["demo", "live"] = "demo"):
+    """One health response for both operator pages, including unselected faulty buses."""
     with simulation_clock.lock:
-        simulation_clock.tick()
-        simulation_clock.running, simulation_clock.speed = body.running, body.speed
-        return get_simulation()
+        buses = bus_health_snapshot(source)
+        if source == "demo":
+            state = simulation.snapshot()
+            workers = state["workers"]
+            events = list(reversed(state["events"]))[:12]
+            clock = dict(seconds=state["virtual_seconds"], **simulation_clock.snapshot())
+        else:
+            workers = []
+            for edge in monitor.snapshot()["edges"]:
+                report = edge.get("last_report") or {}
+                workers.append(dict(edge_id=edge["edge_id"], region_id=edge["region_id"], state=edge["status"],
+                                    **report.get("workload", {})))
+            events, clock = monitor.events.recent(12), None
+        issues = []
+        for bus in buses:
+            for name, sensor in bus["sensors"].items():
+                status = sensor.get("health_status", "unknown")
+                if status not in {"healthy", "standby"}:
+                    issues.append(dict(bus_id=bus["bus_id"], route_id=bus["route_id"], sensor=name, status=status))
+        # Operator ETA uses the same calculation as passenger recommendations.
+        from services.central.journeys import transit_context, vehicles, arrival
+        arrivals = []
+        try:
+            for bus in vehicles(transit_context(source), None):
+                target = bus["state"].get("next_stop_id")
+                estimate = arrival(bus, target) if target else None
+                arrivals.append(dict(bus_id=bus["bus_id"], route_id=bus["route_id"],
+                    passengers=bus["passengers"], capacity=bus["capacity"], occupancy_percent=bus["occupancy_percent"],
+                    next_stop_id=target, eta_minutes=round(estimate, 2) if estimate is not None else None))
+        except psycopg.Error:
+            pass  # health remains available; no database means no arrival predictions
+        from services.central.simulation_scenarios import live_status
+        return dict(source=source, clock=clock, workers=workers, sensor_issues=issues, arrivals=arrivals,
+                    live_scenario=live_status() if source == "demo" else None,
+                    assistance=state.get("assistance", {}) if source == "demo" else {},
+                    bus_count=len(buses), healthy_buses=sum(b["health"]["status"] in {"healthy", "stationary"} for b in buses),
+                    events=events)
 
 
-@router.patch("/simulation/demo")
-def configure_demo(body: SimulationDemo):
-    if (body.bus_id is None) != (body.condition is None):
-        raise HTTPException(422, "Provide both bus_id and condition")
-    if not body.model_dump(exclude_none=True):
-        raise HTTPException(422, "Provide a demo setting")
-    with simulation_clock.lock:
-        simulation_clock.tick()
-        simulation_action(simulation.configure_demo, **body.model_dump(exclude_none=True))
-        return get_simulation()
+def route_health(route_id: str, source: Literal["live", "demo"] = "live"):
+    network = load_network()
+    if route_id not in {route["route_id"] for route in network["routes"]}:
+        raise HTTPException(404, "Unknown route")
+    buses = [bus for bus in bus_health_snapshot(source) if bus["route_id"] == route_id]
+    notes = []
+    if source == "demo":
+        with simulation_clock.lock:
+            state = simulation.snapshot()
+        definitions = state["registered_buses"]
+        states = state["central_states"]
+        ages = {bus: state["virtual_seconds"] - received for bus, received in state["central_received_at"].items()}
+        edges = [dict(edge_id=w["edge_id"], status=w["state"], queue_size=w["queue_size"],
+                      queue_capacity=w["queue_capacity"], queue_utilization_percent=w["queue_utilization_percent"],
+                      assigned_buses=len(w["assigned_buses"])) for w in state["workers"]]
+    else:
+        from services.central.routers.buses import get_all_buses
 
-
-@router.post("/simulation/buses", status_code=201)
-def register_simulated_bus(body: BusConfiguration):
-    with simulation_clock.lock:
-        simulation_clock.tick()
-        simulation_action(simulation.register_bus, **body.model_dump(exclude={"schema_version"}))
-        return get_simulation()
-
-
-@router.post("/simulation/schedule")
-def schedule_simulated_service(body: DispatchRequest):
-    with simulation_clock.lock:
-        simulation_clock.tick()
-        simulation_action(simulation.schedule, **body.model_dump())
-        return get_simulation()
-
-
-@router.post("/simulation/requests")
-def submit_simulation_requests(body: SimulationRequests):
-    try:
-        return simulation.submit(body.bus_id, body.count)
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-
-
-@router.post("/simulation/advance")
-def advance_simulation(body: SimulationStep):
-    return simulation.advance(body.seconds)
-
-
-@router.patch("/simulation/instances/{edge_id}")
-def configure_simulation_instance(edge_id: str, body: SimulationCharacteristics):
-    try:
-        return simulation.configure(edge_id, **body.model_dump(exclude_none=True))
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-
-
-@router.patch("/simulation/policy")
-def configure_simulation_policy(body: SimulationPolicy):
-    with simulation.lock:
-        simulation.auto_scale = body.auto_scale
-        return simulation.snapshot()
-
-
-class SimulationReset(SimulationInput):
-    fleet_size: int | None = Field(default=None, ge=1, le=50)
-
-
-class SimulationInstance(SimulationInput):
-    edge_id: str = Field(min_length=1, max_length=80)
-    region_id: str = Field(min_length=1)
-    capacity: int = Field(default=50, ge=1, le=50)
-    processing_ms: float = Field(default=5.0, ge=1, le=60000)
-
-
-class SimulationTransfer(SimulationInput):
-    bus_id: str
-    target_id: str
-
-
-@router.post("/simulation/reset")
-def reset_simulation(body: SimulationReset | None = None):
-    global simulation
-    with simulation_clock.lock:
-        simulation = EdgeClusterSimulation(fleet_size=body.fleet_size if body else None)
-        simulation_clock.last = simulation_clock.clock()
-        return get_simulation()
-
-
-def simulation_action(operation, *args, **kwargs):
-    try:
-        return operation(*args, **kwargs)
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-
-
-@router.post("/simulation/telemetry")
-def submit_telemetry(body: dict):
-    return simulation_action(simulation.submit_telemetry, body)
-
-
-@router.post("/simulation/telemetry/generate")
-def generate_telemetry(body: SimulationRequests):
-    return simulation_action(simulation.generate, body.bus_id, body.count)
-
-
-@router.post("/simulation/instances")
-def register_instance(body: SimulationInstance):
-    return simulation_action(simulation.register, **body.model_dump())
-
-
-@router.post("/simulation/instances/{edge_id}/fail")
-def fail_instance(edge_id: str):
-    return simulation_action(simulation.fail, edge_id)
-
-
-@router.post("/simulation/instances/{edge_id}/recover")
-def recover_instance(edge_id: str):
-    return simulation_action(simulation.recover, edge_id)
-
-
-@router.post("/simulation/instances/{edge_id}/scale-down")
-def scale_down_instance(edge_id: str):
-    return simulation_action(simulation.scale_down, edge_id)
-
-
-@router.post("/simulation/transfer")
-def transfer_bus(body: SimulationTransfer):
-    simulation_action(simulation.transfer, body.bus_id, body.target_id)
-    return simulation.snapshot()
+        definitions = network["buses"]
+        try:
+            rows = get_all_buses(route_id=route_id)
+        except psycopg.Error:
+            rows = []
+            notes.append("Database unavailable; occupancy is not known")
+        states = {row["bus_id"]: row for row in rows}
+        ages = {row["bus_id"]: (datetime.now(UTC) - row["last_updated"]).total_seconds()
+                for row in rows if row.get("last_updated") is not None}
+        edges = []
+        for edge in monitor.snapshot()["edges"]:
+            workload = edge["last_report"]["workload"] if edge["last_report"] else {}
+            edges.append(dict(edge_id=edge["edge_id"], status=edge["status"],
+                              **{key: workload.get(key) for key in ("queue_size", "queue_capacity", "queue_utilization_percent", "assigned_buses")}))
+    configured = {bus["bus_id"]: bus for bus in definitions if bus["route_id"] == route_id}
+    samples, available = [], []
+    for bus in buses:
+        current = states.get(bus["bus_id"], {})
+        if (bus["health"]["status"] not in ("healthy", "stationary")
+                or ages.get(bus["bus_id"], 30) >= 30
+                or current.get("bus_status") in (None, "out_of_service", "idle")):
+            continue
+        available.append(bus["bus_id"])
+        metadata = current.get("edge_metadata") or {}
+        passengers, capacity = metadata.get("passengers"), metadata.get("capacity")
+        if isinstance(passengers, int) and isinstance(capacity, int) and 0 <= passengers <= capacity and capacity > 0:
+            samples.append((passengers, capacity))
+    passengers = sum(count for count, _ in samples)
+    sample_capacity = sum(capacity for _, capacity in samples)
+    owners = {bus["edge_id"] for bus in buses}
+    return {"route_id": route_id, "source": source, "bus_count": len(buses),
+            "status_counts": dict(Counter(bus["health"]["status"] for bus in buses)),
+            "availability": "available" if available else "unknown" if any(bus["health"]["status"] == "unknown" for bus in buses) else "unavailable",
+            "available_buses": len(available), "configured_capacity": sum(bus["capacity"] for bus in configured.values()),
+            "verified_service_capacity": sum(configured[bus]["capacity"] for bus in available),
+            "occupancy_samples": len(samples), "passengers": passengers if samples else None,
+            "available_seats_in_samples": sample_capacity - passengers if samples else None,
+            "occupancy_percent": passengers / sample_capacity * 100 if sample_capacity else None,
+            "edge_workload": [edge for edge in edges if edge["edge_id"] in owners],
+            "notes": notes,
+            "buses": [{"bus_id": bus["bus_id"], "health": bus["health"]} for bus in buses]}
