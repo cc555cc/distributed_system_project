@@ -76,6 +76,12 @@ async function getBus(busId) {
   return response.json();
 }
 
+async function getBusEta(busId) {
+  // Central computes ETAs for live buses only; demo and mock buses have none.
+  if (demoView() || USE_MOCK) return null;
+  return getJson("/bus/" + encodeURIComponent(busId) + "/eta");
+}
+
 let fleetRows = {};
 
 async function getFleetIds(routes) {
