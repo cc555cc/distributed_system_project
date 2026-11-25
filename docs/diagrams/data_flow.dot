@@ -1,0 +1,20 @@
+digraph "data_flow" {
+  rankdir=TB; fontname="Helvetica"; nodesep=0.5; ranksep=0.55;
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  buses [label="Simulated buses\n(one MQTT client each)"];
+  broker [label="Mosquitto MQTT broker\n(QoS 1, ACL per account)", shape=ellipse, fillcolor="#FFF4D6", color="#B08A1E"];
+  edges [label="Regional edge servers\n(2 active + 1 standby per region)"];
+  central [label="Central server (FastAPI)"];
+  db [label="PostgreSQL", shape=cylinder, fillcolor="#EEF7EE", color="#3A7D44"];
+  web [label="Web pages\n(passenger, operator, health, control)"];
+  buses -> broker [label="telemetry, sensor heartbeats, alerts"];
+  broker -> edges [label="telemetry and heartbeats\nof the edge's region"];
+  edges -> broker [label="validated bus states,\nedge heartbeats, alerts"];
+  broker -> central [label="bus states, edge heartbeats, alerts"];
+  central -> broker [label="commands; ownership\nassignments (retained)", style=dashed];
+  broker -> buses [label="commands", style=dashed];
+  broker -> edges [label="ownership assignments", style=dashed];
+  central -> db [label="accepted states", dir=both];
+  web -> central [label="REST polling every 1 s"];
+}
