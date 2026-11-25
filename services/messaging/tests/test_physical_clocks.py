@@ -25,6 +25,7 @@ from services.messaging.clock_sync import (
     timestamp_skew,
 )
 from services.messaging.lamport import LamportClock
+from services.messaging.tests import support
 
 
 def readings(
@@ -148,25 +149,16 @@ def processor():
 
 
 def telemetry(sequence, timestamp):
-    return {
-        "bus_id": "S1",
-        "city_id": "CITY-S",
-        "region_id": "west",
-        "route_id": "R1",
-        "latitude": 43.9,
-        "longitude": -78.9,
-        "speed_kmh": 30.0,
-        "passengers": 10,
-        "capacity": 50,
-        "sequence_number": sequence,
-        "timestamp": timestamp,
-        "bus_status": "moving",
-        "lamport_clock": sequence,
-        "direction_id": 0,
-        "current_stop_id": "A",
-        "next_stop_id": "B",
-        "sensor_status": "healthy",
-    }
+    return support.reading(
+        sequence,
+        bus_id="S1",
+        city_id="CITY-S",
+        region_id="west",
+        timestamp=timestamp,
+        bus_status="moving",
+        current_stop_id="A",
+        next_stop_id="B",
+    )
 
 
 def test_edge_orders_by_sequence_whatever_the_timestamps_say(processor):

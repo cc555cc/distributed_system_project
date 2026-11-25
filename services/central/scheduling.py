@@ -79,7 +79,7 @@ class DemandScheduler:
                 if now - self.applied_at.get(route, -100) < 30:
                     continue
                 old = self.decisions.get(route)
-                if old and old["action"] == signal and old["status"] == "pending":
+                if old and old["action"] == signal and old["status"] == "pending" and now - old["observed_at"] <= 30:
                     continue
                 self.decisions[route] = dict(route_id=route, action=signal, status="pending", observed_at=now,
                     reason=f"Three distinct current samples {'at least 80%' if signal == 'increase_service' else 'at most 20%'} occupied; current {metric['occupancy_percent']:.1f}%.")

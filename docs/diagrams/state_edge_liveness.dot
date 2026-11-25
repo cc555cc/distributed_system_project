@@ -1,0 +1,20 @@
+digraph "state_edge_liveness" {
+  rankdir=LR; fontname="Helvetica"; labelloc=t; fontsize=16; label="Edge / sensor liveness  (shared/schema/health.py HeartbeatTracker, implicit)";
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  start [shape=circle, width=0.18, label="", style=filled, fillcolor=black];
+  "start" -> "unknown" [label=""];
+  "unknown" -> "unavailable" [label="no heartbeat 10 s
+after start"];
+  "unknown" -> "healthy" [label="first accepted
+heartbeat"];
+  "unavailable" -> "healthy" [label="first heartbeat
+of a never-seen source"];
+  "healthy" -> "unavailable" [label="no heartbeat for 10 s"];
+  "unavailable" -> "recovering" [label="heartbeat after 10 s gap"];
+  "healthy" -> "recovering" [label="new session id
+(process restarted)"];
+  "recovering" -> "healthy" [label=">= 2 heartbeats and
+4 s since recovery began"];
+  "recovering" -> "unavailable" [label="no heartbeat for 10 s"];
+}

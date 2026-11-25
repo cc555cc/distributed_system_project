@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 async def poll_loop():
     while True:
         try:
-            run_round(monitor, bus_ownership, mqtt_client.publish_assignment)
+            await asyncio.to_thread(
+                run_round, monitor, bus_ownership, mqtt_client.publish_assignment
+            )
         except Exception:
             logger.exception(
                 "Failover round failed"
@@ -42,7 +44,7 @@ async def poll_loop():
 async def simulation_loop():
     while True:
         try:
-            simulation_clock.tick()
+            await asyncio.to_thread(simulation_clock.tick)  # may wait on its lock
         except Exception:
             logger.exception("Simulation clock step failed")
         await asyncio.sleep(0.1)

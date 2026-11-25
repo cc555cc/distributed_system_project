@@ -1,0 +1,24 @@
+digraph "state_publisher" {
+  rankdir=LR; fontname="Helvetica"; labelloc=t; fontsize=16; label="ReliablePublisher.LinkState  (services/messaging/publisher.py, explicit)";
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  start [shape=circle, width=0.18, label="", style=filled, fillcolor=black];
+  "CLOSED" [shape=doublecircle, style=filled, fillcolor="#F3E3E3", color="#A33"];
+  "start" -> "CONNECTING" [label=""];
+  "CONNECTING" -> "ONLINE" [label="on_connect OK"];
+  "ONLINE" -> "RESENDING" [label="publish returns NO_CONN
+(Paho keeps it for resend)"];
+  "ONLINE" -> "OFFLINE" [label="on_disconnect
+(disconnects += 1)"];
+  "RESENDING" -> "ONLINE" [label="last outstanding ack
+(backlog drains in order)"];
+  "RESENDING" -> "OFFLINE" [label="on_disconnect"];
+  "OFFLINE" -> "RESENDING" [label="on_connect, unacked msgs
+(reconnects += 1)"];
+  "OFFLINE" -> "ONLINE" [label="on_connect, nothing unacked
+(reconnects += 1)"];
+  "CONNECTING" -> "CLOSED" [label="close()"];
+  "ONLINE" -> "CLOSED" [label="close()"];
+  "RESENDING" -> "CLOSED" [label="close()"];
+  "OFFLINE" -> "CLOSED" [label="close()"];
+}

@@ -20,6 +20,7 @@ from services.edge.edge_server import EdgeIngress
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 from services.messaging.lamport import LamportClock
+from services.messaging.tests import support
 from shared.schema.bus_state import BusStateUpdate
 
 
@@ -159,25 +160,7 @@ def chain(monkeypatch):
 
 
 def reading(bus="A1", sequence=1, lamport=1):
-    return {
-        "bus_id": bus,
-        "city_id": "CITY-A",
-        "region_id": "north",
-        "route_id": "R1",
-        "latitude": 43.9,
-        "longitude": -78.9,
-        "speed_kmh": 30.0,
-        "passengers": 40,
-        "capacity": 50,
-        "sequence_number": sequence,
-        "timestamp": "2026-11-11T12:00:00Z",
-        "bus_status": "travelling",
-        "lamport_clock": lamport,
-        "direction_id": 0,
-        "current_stop_id": "S1",
-        "next_stop_id": "S2",
-        "sensor_status": "healthy",
-    }
+    return support.reading(sequence, bus_id=bus, passengers=40, lamport_clock=lamport)
 
 
 def forward(chain, source):

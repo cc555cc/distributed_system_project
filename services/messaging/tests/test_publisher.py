@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import paho.mqtt.client as mqtt
 import pytest
 
-from services.messaging.publisher import ReliablePublisher
+from services.messaging.publisher import LinkState, ReliablePublisher
 
 OK = SimpleNamespace(is_failure=False)
 
@@ -235,3 +235,23 @@ def test_ack_arriving_before_publish_returns_is_not_lost():
     client.on_connect(client, None, None, OK, None)
     assert publisher.publish("t", "x") == "sent"
     assert publisher.unacknowledged == 0 and publisher.stats["acknowledged"] == 1
+
+
+def test_link_state_machine(publisher):
+    client, states = publisher.client, []
+    client.online = False
+    publisher.publish("t", "x")  # handed to Paho while the link is down
+    states.append(publisher.state)
+    client.on_disconnect(client, None, None, "lost", None)
+    states.append(publisher.state)
+    client.online = True
+    client.on_connect(client, None, None, OK, None)  # Paho still owes the resend
+    states.append(publisher.state)
+    client.acknowledge_all()
+    states.append(publisher.state)
+    publisher.close(flush_timeout=0)
+    client.on_connect(client, None, None, OK, None)  # late callback: CLOSED is final
+    states.append(publisher.state)
+    S = LinkState
+    assert states == [S.RESENDING, S.OFFLINE, S.RESENDING, S.ONLINE, S.CLOSED]
+    assert publisher.stats["reconnects"] == 1

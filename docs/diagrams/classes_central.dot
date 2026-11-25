@@ -1,0 +1,39 @@
+digraph "classes_central" {
+rankdir=BT
+charset="utf-8"
+"auth.Login" [color="#99DDFF", fontcolor="black", label=<{auth.Login|model_config : ConfigDict<br ALIGN="LEFT"/>password : str<br ALIGN="LEFT"/>username : str<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.BusConfiguration" [color="#AAAA00", fontcolor="black", label=<{control.BusConfiguration|bus_id : str<br ALIGN="LEFT"/>capacity : int<br ALIGN="LEFT"/>direction_id : int<br ALIGN="LEFT"/>route_id : str<br ALIGN="LEFT"/>schema_version : Literal['bus-config-v1']<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.DispatchRequest" [color="#AAAA00", fontcolor="black", label=<{control.DispatchRequest|action : Literal['dispatch', 'set_headway']<br ALIGN="LEFT"/>bus_id : str \| None<br ALIGN="LEFT"/>headway_seconds : float \| None<br ALIGN="LEFT"/>route_id : str<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.Scenario" [color="#AAAA00", fontcolor="black", label=<{control.Scenario|bus_id : str \| None<br ALIGN="LEFT"/>route_id : str \| None<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationCharacteristics" [color="#AAAA00", fontcolor="black", label=<{control.SimulationCharacteristics|active : bool \| None<br ALIGN="LEFT"/>capacity : int \| None<br ALIGN="LEFT"/>processing_ms : float \| None<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationDemo" [color="#AAAA00", fontcolor="black", label=<{control.SimulationDemo|bus_id : str \| None<br ALIGN="LEFT"/>central_available : bool \| None<br ALIGN="LEFT"/>condition : str \| None<br ALIGN="LEFT"/>running : bool \| None<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationInput" [color="#AAAA00", fontcolor="black", label=<{control.SimulationInput|model_config : ConfigDict<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationInstance" [color="#AAAA00", fontcolor="black", label=<{control.SimulationInstance|capacity : int<br ALIGN="LEFT"/>edge_id : str<br ALIGN="LEFT"/>processing_ms : float<br ALIGN="LEFT"/>region_id : str<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationPolicy" [color="#AAAA00", fontcolor="black", label=<{control.SimulationPolicy|auto_scale : bool<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationRequests" [color="#AAAA00", fontcolor="black", label=<{control.SimulationRequests|bus_id : str<br ALIGN="LEFT"/>count : int<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationReset" [color="#AAAA00", fontcolor="black", label=<{control.SimulationReset|active_buses : int \| None<br ALIGN="LEFT"/>fleet_size : int \| None<br ALIGN="LEFT"/>processing_ms : float<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationStep" [color="#AAAA00", fontcolor="black", label=<{control.SimulationStep|seconds : float<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationTiming" [color="#AAAA00", fontcolor="black", label=<{control.SimulationTiming|running : bool<br ALIGN="LEFT"/>speed : float<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.SimulationTransfer" [color="#AAAA00", fontcolor="black", label=<{control.SimulationTransfer|bus_id : str<br ALIGN="LEFT"/>target_id : str<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"control.Workload" [color="#AAAA00", fontcolor="black", label=<{control.Workload|count : int<br ALIGN="LEFT"/>processing_ms : float \| None<br ALIGN="LEFT"/>region_id : str<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"health.CentralHealthMonitor" [color="#DDDDDD", fontcolor="black", label=<{health.CentralHealthMonitor|clock<br ALIGN="LEFT"/>events<br ALIGN="LEFT"/>expected : dict<br ALIGN="LEFT"/>last_status : dict<br ALIGN="LEFT"/>lock : _RLock<br ALIGN="LEFT"/>overloaded_since : dict<br ALIGN="LEFT"/>owners<br ALIGN="LEFT"/>ownership : NoneType<br ALIGN="LEFT"/>policy<br ALIGN="LEFT"/>received_at : dict<br ALIGN="LEFT"/>reports : dict<br ALIGN="LEFT"/>tracker<br ALIGN="LEFT"/>|poll(): None<br ALIGN="LEFT"/>receive(topic, payload): bool<br ALIGN="LEFT"/>recommendations(edges, now)<br ALIGN="LEFT"/>snapshot(): dict<br ALIGN="LEFT"/>statuses(): dict[str, str]<br ALIGN="LEFT"/>}>, shape="record", style="filled"];
+"health.EventLog" [color="#DDDDDD", fontcolor="black", label=<{health.EventLog|events : deque<br ALIGN="LEFT"/>lock : _RLock<br ALIGN="LEFT"/>|append(event_type: str): None<br ALIGN="LEFT"/>recent(limit: int): list[dict]<br ALIGN="LEFT"/>}>, shape="record", style="filled"];
+"health.SimulationClock" [color="#DDDDDD", fontcolor="black", label=<{health.SimulationClock|clock<br ALIGN="LEFT"/>last<br ALIGN="LEFT"/>lock : _RLock<br ALIGN="LEFT"/>running : bool<br ALIGN="LEFT"/>speed : float<br ALIGN="LEFT"/>|snapshot()<br ALIGN="LEFT"/>tick()<br ALIGN="LEFT"/>}>, shape="record", style="filled"];
+"messaging.CommandRequest" [color="#BBCC33", fontcolor="black", label=<{messaging.CommandRequest|action<br ALIGN="LEFT"/>bus_id : str \| None<br ALIGN="LEFT"/>model_config : ConfigDict<br ALIGN="LEFT"/>params : dict[str, Any]<br ALIGN="LEFT"/>region_id : str<br ALIGN="LEFT"/>|}>, shape="record", style="filled"];
+"ownership.BusOwnership" [color="#AAAA00", fontcolor="black", label=<{ownership.BusOwnership|current : dict<br ALIGN="LEFT"/>epoch<br ALIGN="LEFT"/>home<br ALIGN="LEFT"/>lock : _RLock<br ALIGN="LEFT"/>region_edges<br ALIGN="LEFT"/>region_of<br ALIGN="LEFT"/>|assignment(region_id): dict<br ALIGN="LEFT"/>buses_of(edge_id): set[str]<br ALIGN="LEFT"/>owner(bus_id): str \| None<br ALIGN="LEFT"/>owners(): dict[str, str]<br ALIGN="LEFT"/>reconcile(edge_status: dict[str, str]): set[str]<br ALIGN="LEFT"/>regions(): list[str]<br ALIGN="LEFT"/>}>, shape="record", style="filled"];
+"scheduling.DemandScheduler" [color="#FFAABB", fontcolor="black", label=<{scheduling.DemandScheduler|applied_at : dict<br ALIGN="LEFT"/>automatic : bool<br ALIGN="LEFT"/>changed_at : dict<br ALIGN="LEFT"/>decisions : dict<br ALIGN="LEFT"/>evaluation<br ALIGN="LEFT"/>generation : NoneType<br ALIGN="LEFT"/>history : deque<br ALIGN="LEFT"/>last_scan : int<br ALIGN="LEFT"/>lock : _RLock<br ALIGN="LEFT"/>observed_at : dict<br ALIGN="LEFT"/>profile_samples : dict<br ALIGN="LEFT"/>samples : dict<br ALIGN="LEFT"/>signatures : dict<br ALIGN="LEFT"/>|approve(route_id, context)<br ALIGN="LEFT"/>invalidate(route, now)<br ALIGN="LEFT"/>metrics(context)<br ALIGN="LEFT"/>observe(context)<br ALIGN="LEFT"/>view(context)<br ALIGN="LEFT"/>}>, shape="record", style="filled"];
+"control.BusConfiguration" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.DispatchRequest" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.Scenario" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationCharacteristics" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationDemo" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationInstance" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationPolicy" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationRequests" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationReset" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationStep" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationTiming" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.SimulationTransfer" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"control.Workload" -> "control.SimulationInput" [arrowhead="empty", arrowtail="none"];
+"health.CentralHealthMonitor" -> "health.EventLog" [arrowhead="vee", arrowtail="none", fontcolor="green", label="events", style="solid"];
+}

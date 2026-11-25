@@ -27,6 +27,7 @@ from services.edge.validation.bus_registry import BusAssignment, BusRegistry
 from services.messaging import topics
 from services.messaging.publisher import ReliablePublisher
 from services.messaging.relay import Link, wait_for
+from services.messaging.tests import support
 
 HOST = os.getenv("EDGE_LIVE_MQTT_HOST")
 PORT = int(os.getenv("EDGE_LIVE_MQTT_PORT", "1883"))
@@ -57,25 +58,7 @@ def direct():
 
 
 def reading(region, sequence):
-    return {
-        "bus_id": "L1",
-        "city_id": "CITY-L",
-        "region_id": region,
-        "route_id": "R1",
-        "latitude": 43.9,
-        "longitude": -78.9,
-        "speed_kmh": 30.0,
-        "passengers": 10,
-        "capacity": 50,
-        "sequence_number": sequence,
-        "timestamp": "2026-11-11T12:00:00Z",
-        "bus_status": "travelling",
-        "lamport_clock": sequence,
-        "direction_id": 0,
-        "current_stop_id": "S1",
-        "next_stop_id": "S2",
-        "sensor_status": "healthy",
-    }
+    return support.reading(sequence, bus_id="L1", city_id="CITY-L", region_id=region)
 
 
 # ==================== PUBLISHER LOSES ITS CONNECTION ====================

@@ -1,0 +1,13 @@
+digraph "state_bus_controls" {
+  rankdir=LR; fontname="Helvetica"; labelloc=t; fontsize=16; label="BusControls.Mode  (services/messaging/commands.py, explicit)";
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  start [shape=circle, width=0.18, label="", style=filled, fillcolor=black];
+  "STOPPED" [shape=doublecircle, style=filled, fillcolor="#F3E3E3", color="#A33"];
+  "start" -> "RUNNING" [label=""];
+  "RUNNING" -> "PAUSED" [label="command: pause"];
+  "PAUSED" -> "RUNNING" [label="command: resume"];
+  "RUNNING" -> "STOPPED" [label="stop()"];
+  "PAUSED" -> "STOPPED" [label="stop()
+(releases wait_while_paused)"];
+}

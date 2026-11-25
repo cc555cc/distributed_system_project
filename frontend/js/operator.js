@@ -159,7 +159,7 @@ function showBuses(buses, health) {
     return [
       bus.id,
       bus.route,
-      stale ? tag("not live", "grey") : bus.data.bus_status,
+      stale ? tag("not live", "grey") : escapeHtml(bus.data.bus_status),
       Math.round(bus.data.speed) + " km/h",
       occupancyText(bus.data),
       tag(crowdingOf(bus.data), crowdKind(crowdingOf(bus.data))),
