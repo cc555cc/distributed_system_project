@@ -39,7 +39,7 @@ This project designs, implements and evaluates such a system, simulated for Durh
 
 The project applies six course concepts: publish-subscribe messaging, Lamport clocks and sequence numbers, explicit assumptions about physical clock synchronization, heartbeat-based failure detection, replication with ownership transfer, and load balancing. It also confronts the classic problems of message passing: messages that arrive late, arrive twice or never arrive, and servers that stop responding.
 
-Section 2 compares this architecture with existing transit tools, and Section 3 details the design and implementation of each component. Section 4 presents the results and analysis, Section 5 summarizes the contributions, and Section 6 outlines future work. The class diagrams and state machines appear in Appendices A and B.
+Section 2 compares this architecture with existing transit tools, and Section 3 details the design and implementation of each component. Section 4 presents the results and analysis, Section 5 summarizes the contributions, and Section 6 outlines future work. The state machine diagrams appear in Appendix A.
 
 # 2. Related Work
 
@@ -90,7 +90,7 @@ The system runs in one of two modes. In live mode, separate bus programs publish
 
 ## 3.2 Bus Simulation
 
-A deterministic simulator models vehicle movement, stop dwell times and passenger demand. Each bus follows the stops of its route at about 30 km/h in normal traffic or 9 km/h in heavy traffic, waits three seconds at each stop, and has 50 seats that fill according to the peak or off-peak demand setting. Around each stop, buses move through five phases: travelling, arriving, stopped, boarding and departing (Appendix B, Figure B6).
+A deterministic simulator models vehicle movement, stop dwell times and passenger demand. Each bus follows the stops of its route at about 30 km/h in normal traffic or 9 km/h in heavy traffic, waits three seconds at each stop, and has 50 seats that fill according to the peak or off-peak demand setting. Around each stop, buses move through five phases: travelling, arriving, stopped, boarding and departing (Appendix A, Figure A6).
 
 Every second, each bus sends a JSON reading with its identity, route, GPS position, speed, direction, passenger count, current and next stop, generation time, sequence number, Lamport clock value, and bus and sensor status. Separately, buses send heartbeats every two seconds for four sensors: GPS, speed, stop status and passenger count. When a sensor fails, the bus reports the failure rather than inventing a value; a broken passenger counter, for example, leaves location tracking intact but marks occupancy as faulty.
 
@@ -106,11 +106,11 @@ Every message is sent with QoS 1 (at-least-once delivery), so messages are not s
 2. **Lamport clock.** Each process increments its clock when sending, and on receiving sets it to the larger of its own and the received value, plus one, ordering events without trusting wall clocks.
 3. **Timestamp.** The real generation time is used only for display, never to accept or reject a message.
 
-**Reconnection.** A disconnected bus holds up to 1,000 readings in memory and resends them in order once it reconnects. The caveat to this approach surfaced during testing: the MQTT library reported the bus as reconnected before its backlog was resent, so a new reading could overtake older ones and cause them to be rejected as stale. The fix models the publisher's connection as an explicit state machine with five states: connecting, online, resending, offline and closed (Appendix B, Figure B3). A reading goes straight to the broker only when online; otherwise it waits in the backlog until every older reading has been acknowledged. The allowed transitions live in one table, and a unit test drives the publisher through every state.
+**Reconnection.** A disconnected bus holds up to 1,000 readings in memory and resends them in order once it reconnects. The caveat to this approach surfaced during testing: the MQTT library reported the bus as reconnected before its backlog was resent, so a new reading could overtake older ones and cause them to be rejected as stale. The fix models the publisher's connection as an explicit state machine with five states: connecting, online, resending, offline and closed (Appendix A, Figure A3). A reading goes straight to the broker only when online; otherwise it waits in the backlog until every older reading has been acknowledged. The allowed transitions live in one table, and a unit test drives the publisher through every state.
 
 **Physical clocks.** The design assumes every machine stays within two seconds of real time, for example through NTP. Because ordering never depends on the timestamp, a wrong clock only makes the displayed time misleading. This held in tests with clocks several seconds off, drifting, or years wrong. Cristian's algorithm was implemented to estimate offsets between machines, and vector clocks were used in the analysis to separate causal from concurrent events.
 
-**Commands and security.** Buses and edge servers also publish alerts, and operators send commands to one bus or a whole region. Each command carries a unique ID, so a redelivered command is applied only once. A bus is always running, paused or stopped (Appendix B, Figure B4), and stopped is final, so a late resume command cannot restart a retired bus. On the secured broker, every service has its own account and access control list, so a bus cannot impersonate another bus or issue commands.
+**Commands and security.** Buses and edge servers also publish alerts, and operators send commands to one bus or a whole region. Each command carries a unique ID, so a redelivered command is applied only once. A bus is always running, paused or stopped (Appendix A, Figure A4), and stopped is final, so a late resume command cannot restart a retired bus. On the secured broker, every service has its own account and access control list, so a bus cannot impersonate another bus or issue commands.
 
 ## 3.4 Regional Edge Servers
 
@@ -123,9 +123,9 @@ Each region has two active edge servers that share its buses, plus a standby thi
 
 Accepted readings enter a queue capped at 50 messages, so a flood of data cannot exhaust memory. For each reading, the server assigns a crowding level (low below 50%, medium from 50% up to 80%, high at 80% or above), tracks route progress, and caches the bus's latest state. Old, duplicate or conflicting readings are rejected here, so only new states reach the central server.
 
-Edge servers send their own heartbeat, including queue load, to the central server every two seconds (Appendix B, Figure B1). If both active servers' queues stay at least 70% full for six seconds, the standby server synchronizes and takes part of the load, handing it back once load subsides.
+Edge servers send their own heartbeat, including queue load, to the central server every two seconds (Appendix A, Figure A1). If both active servers' queues stay at least 70% full for six seconds, the standby server synchronizes and takes part of the load, handing it back once load subsides.
 
-Four safeguards preserve continuity when an edge server fails. In the controlled demonstration, accepted states are replicated to the other edge servers, so a healthy server already holds the latest data when it takes over. Each bus carries an ownership version number, so a returning old owner cannot overwrite newer data. A recovering server catches up before receiving buses back, and if both servers in a region fail, a server in the other region takes over. Figure 3 shows this as a message sequence, and Appendix B (Figure B2) shows the edge server lifecycle.
+Four safeguards preserve continuity when an edge server fails. In the controlled demonstration, accepted states are replicated to the other edge servers, so a healthy server already holds the latest data when it takes over. Each bus carries an ownership version number, so a returning old owner cannot overwrite newer data. A recovering server catches up before receiving buses back, and if both servers in a region fail, a server in the other region takes over. Figure 3 shows this as a message sequence, and Appendix A (Figure A2) shows the edge server lifecycle.
 
 ![Failover sequence](report/failover_sequence.png)
 
@@ -168,7 +168,7 @@ Each of the failed server's buses then moves to the least-loaded healthy edge se
 
 For a trip between two stops, the central server considers direct buses and one-transfer trips, and ranks them by total time, occupancy and number of transfers, counting each transfer as five extra minutes. Buses without enough free seats for the group are listed but never recommended, and each recommendation explains its trip time and free seats.
 
-The server also checks each route's occupancy every two seconds (Appendix B, Figure B5). Three consecutive fresh samples at or above 80% trigger a recommendation to add service, and three at or below 20% a recommendation to reduce frequency. A 30-second cooldown after each change prevents one unusual reading from causing repeated changes, and a recommendation left unapproved for over 30 seconds is replaced with a fresh one. Operators approve each decision or enable automatic mode; once approved, a reserve bus is dispatched, and the change is confirmed when its readings arrive.
+The server also checks each route's occupancy every two seconds (Appendix A, Figure A5). Three consecutive fresh samples at or above 80% trigger a recommendation to add service, and three at or below 20% a recommendation to reduce frequency. A 30-second cooldown after each change prevents one unusual reading from causing repeated changes, and a recommendation left unapproved for over 30 seconds is replaced with a fresh one. Operators approve each decision or enable automatic mode; once approved, a reserve bus is dispatched, and the change is confirmed when its readings arrive.
 
 Passenger pages and data are public, while every management action requires an operator login enforced on the server. Requests from other websites are rejected, public responses hide internal details such as edge ownership, and no personal passenger information is stored.
 
@@ -275,7 +275,7 @@ The passenger page returns one recommended bus with a plain explanation, and lab
 
 ## 4.6 Limitations
 
-Takeover and replication in the controlled demonstration are run by a single in-memory coordinator rather than a distributed agreement protocol, so that state is lost if the central process restarts. The scope is one simulated city with straight-line walking distances. The edge server lifecycle (Appendix B, Figure B2) is still implicit and allows a failed server to move straight to standby, skipping the recovery checks. Together with the gaps in Table 4, the system is not ready for public use.
+Takeover and replication in the controlled demonstration are run by a single in-memory coordinator rather than a distributed agreement protocol, so that state is lost if the central process restarts. The scope is one simulated city with straight-line walking distances. The edge server lifecycle (Appendix A, Figure A2) is still implicit and allows a failed server to move straight to standby, skipping the recovery checks. Together with the gaps in Table 4, the system is not ready for public use.
 
 # 5. Conclusion
 
@@ -294,7 +294,7 @@ Work was divided equally across all five team members (20% each), organized by c
 | Team member | Main responsibility | Share of work |
 | :---- | :---- | :---- |
 | Zachary Matasic | Bus simulation: routes, movement, passenger demand, sensor faults and repeatable scenarios | 20% |
-| Julian Olano Medina | MQTT messaging: broker setup, topics, Lamport clocks, reconnection handling, alerts, commands, broker security, and the design diagrams in Appendices A and B | 20% |
+| Julian Olano Medina | MQTT messaging: broker setup, topics, Lamport clocks, reconnection handling, alerts, commands, broker security, and the state machine diagrams in Appendix A | 20% |
 | Ali Hakkani | Regional edge servers: validation, processing, heartbeats, failover, load balancing and scaling | 20% |
 | Lok Yung (Carson) Chan | Central server: database, APIs, ingestion checks, edge monitoring, arrival times, trip planning and scheduling | 20% |
 | Danial Shaikh | User interfaces: passenger map, operator dashboard, bus health page, control panel and report diagrams | 20% |
@@ -305,7 +305,7 @@ Work was divided equally across all five team members (20% each), organized by c
 
 The highest-priority extensions concern real data and central fault tolerance. Connecting to DRT's real-time feed would run the system on real bus positions, and replacing the in-memory coordinator with a replicated agreement protocol such as Raft would let ownership and bus state survive the loss of any server, including the central one.
 
-Next, the remaining implicit lifecycles should be made explicit, starting with the edge server (Appendix B, Figure B2), where a transition table would reject the unsafe failed-to-standby path. A production system would also need HTTPS, TLS for the broker, and role-based operator accounts.
+Next, the remaining implicit lifecycles should be made explicit, starting with the edge server (Appendix A, Figure A2), where a transition table would reject the unsafe failed-to-standby path. A production system would also need HTTPS, TLS for the broker, and role-based operator accounts.
 
 Finally, using past demand to predict busy periods would let reserve buses depart before routes become crowded, addressing the heavy-traffic limit in Section 4.4. A mobile passenger page, street-based walking directions and support for more cities would then test whether the regional design scales as intended.
 
@@ -335,50 +335,30 @@ Finally, using past demand to predict busy periods would let reserve buses depar
 
 [12] OpenStreetMap contributors, "OpenStreetMap." [Online]. Available: https://www.openstreetmap.org/
 
-# Appendix A: Class Diagrams
+# Appendix A: State Machines
 
-Figures A1 to A4 show the classes of each tier, generated directly from the code. Because the components communicate mainly through MQTT topics and JSON schemas rather than object references, few associations appear between classes, which reflects the loose coupling described in Section 3.1.
-
-![Messaging classes](diagrams/classes_messaging.png)
-
-*Figure A1: Classes of the messaging layer (`services/messaging`)*
-
-![Edge classes](diagrams/classes_edge.png)
-
-*Figure A2: Classes of the regional edge server (`services/edge`)*
-
-![Central classes](diagrams/classes_central.png)
-
-*Figure A3: Classes of the central server (`services/central`)*
-
-![Schema classes](diagrams/classes_schema.png)
-
-*Figure A4: Shared schemas and the bus simulator (`shared/schema`, `services/data_simulation`)*
-
-# Appendix B: State Machines
-
-Figures B1 to B6 show the main component lifecycles. Figures B3 and B4 are explicit in the code, as enumerations with transition tables; the others are implicit and are drawn from how the code behaves.
+Figures A1 to A6 show the main component lifecycles. Figures A3 and A4 are explicit in the code, as enumerations with transition tables; the others are implicit and are drawn from how the code behaves.
 
 ![Liveness](diagrams/state_edge_liveness.png)
 
-*Figure B1: Liveness of an edge server or bus sensor, derived from heartbeats (10 s timeout, 4 s recovery window)*
+*Figure A1: Liveness of an edge server or bus sensor, derived from heartbeats (10 s timeout, 4 s recovery window)*
 
 ![Edge worker](diagrams/state_edge_worker.png)
 
-*Figure B2: Lifecycle of an edge server in the controlled demonstration, including standby, takeover and recovery*
+*Figure A2: Lifecycle of an edge server in the controlled demonstration, including standby, takeover and recovery*
 
 ![Publisher](diagrams/state_publisher.png)
 
-*Figure B3: Connection states of the bus publisher, which keep readings in order across a reconnect*
+*Figure A3: Connection states of the bus publisher, which keep readings in order across a reconnect*
 
 ![Bus controls](diagrams/state_bus_controls.png)
 
-*Figure B4: Simulation mode of a bus, changed by MQTT commands*
+*Figure A4: Simulation mode of a bus, changed by MQTT commands*
 
 ![Scheduling](diagrams/state_scheduling.png)
 
-*Figure B5: Demand scheduling decision for one route*
+*Figure A5: Demand scheduling decision for one route*
 
 ![Bus phase](diagrams/state_bus_phase.png)
 
-*Figure B6: Movement phase of a simulated bus around a stop*
+*Figure A6: Movement phase of a simulated bus around a stop*
