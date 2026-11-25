@@ -20,6 +20,7 @@ from services.edge.config import EdgeConfig, NetworkConfig, RouteDefinition
 from services.edge.edge_server import EdgeIngress
 from services.edge.processing.processor import EdgeProcessor, ProcessingStatus
 from services.edge.validation.bus_registry import BusAssignment, BusRegistry
+from services.messaging.tests import support
 from shared.schema.bus_state import BusStateUpdate
 
 BUSES = ("A1", "A2")
@@ -86,7 +87,9 @@ def system(tmp_path, monkeypatch):
             INSERT INTO route_stops VALUES ('R1',0,0,'S1'),('R1',0,1,'S2');
         """)
     monkeypatch.setattr(
-        bus_states.database.psycopg, "connect", lambda url, **kwargs: SqliteCentral(path)
+        bus_states.database.psycopg,
+        "connect",
+        lambda url, **kwargs: SqliteCentral(path),
     )
     registry = BusRegistry(
         {bus: BusAssignment("north", "R1", "CITY-A", "edge-a") for bus in BUSES}
@@ -148,25 +151,13 @@ def system(tmp_path, monkeypatch):
 
 def reading(bus, sequence):
     # Lamport stamps differ from sequences so a mix-up between them would show.
-    return {
-        "bus_id": bus,
-        "city_id": "CITY-A",
-        "region_id": "north",
-        "route_id": "R1",
-        "latitude": 43.9 + sequence / 10000,
-        "longitude": -78.9,
-        "speed_kmh": 30.0,
-        "passengers": sequence % 40,
-        "capacity": 50,
-        "sequence_number": sequence,
-        "timestamp": "2026-11-11T12:00:00Z",
-        "bus_status": "travelling",
-        "lamport_clock": sequence * 3 + 100,
-        "direction_id": 0,
-        "current_stop_id": "S1",
-        "next_stop_id": "S2",
-        "sensor_status": "healthy",
-    }
+    return support.reading(
+        sequence,
+        bus_id=bus,
+        latitude=43.9 + sequence / 10000,
+        passengers=sequence % 40,
+        lamport_clock=sequence * 3 + 100,
+    )
 
 
 def faulty(messages, rng, delay):

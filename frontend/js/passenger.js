@@ -309,7 +309,7 @@ function busPopup(busId, bus, stale) {
   if (stale) {
     text += "<i>Not live, last known position</i><br>";
   }
-  text += "Status: " + bus.bus_status + "<br>";
+  text += "Status: " + escapeHtml(bus.bus_status) + "<br>";
   text += "Speed: " + Math.round(bus.speed) + " km/h<br>";
   if (bus.distance_m !== undefined) text += "Distance travelled: " + (bus.distance_m / 1000).toFixed(2) + " km<br>";
   text += "Passengers: " + occupancyText(bus) + "<br>";

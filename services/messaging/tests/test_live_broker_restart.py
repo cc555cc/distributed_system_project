@@ -32,6 +32,7 @@ from services.messaging.delivery import SequenceTracker
 from services.messaging.lamport import LamportClock
 from services.messaging.publisher import ReliablePublisher
 from services.messaging.relay import wait_for
+from services.messaging.tests import support
 
 HOST = os.getenv("MQTT_RESTART_HOST")
 PORT = int(os.getenv("MQTT_RESTART_PORT", "1883"))
@@ -76,25 +77,15 @@ def broker_running():
 
 
 def reading(region, sequence):
-    return {
-        "bus_id": "R1",
-        "city_id": "CITY-R",
-        "region_id": region,
-        "route_id": "RT",
-        "latitude": 43.9,
-        "longitude": -78.9,
-        "speed_kmh": 30.0,
-        "passengers": 10,
-        "capacity": 50,
-        "sequence_number": sequence,
-        "timestamp": "2026-11-22T12:00:00Z",
-        "bus_status": "moving",
-        "lamport_clock": sequence,
-        "direction_id": 0,
-        "current_stop_id": "S1",
-        "next_stop_id": "S2",
-        "sensor_status": "healthy",
-    }
+    return support.reading(
+        sequence,
+        bus_id="R1",
+        city_id="CITY-R",
+        region_id=region,
+        route_id="RT",
+        timestamp="2026-11-22T12:00:00Z",
+        bus_status="moving",
+    )
 
 
 class CountingSubscriber(TelemetrySubscriber):

@@ -8,8 +8,8 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from services.central.tests.client import OperatorClient as TestClient
 
+from services.central.tests.client import OperatorClient as TestClient
 from services.data_simulation.generate_data import generate_messages
 from services.data_simulation.run_buses import SensorAlerts
 from services.messaging import alerts, commands, topics
@@ -191,6 +191,8 @@ def test_stop_releases_a_paused_bus():
     controls.apply("pause", {})
     controls.stop()
     assert controls.wait_while_paused(1) is False
+    controls.apply("resume", {})  # STOPPED is final
+    assert controls.mode is commands.Mode.STOPPED
 
 
 # ==================== ALERTS ====================

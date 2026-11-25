@@ -15,6 +15,7 @@ import logging
 import math
 from collections import OrderedDict
 from datetime import UTC, datetime
+from enum import Enum
 from threading import Condition
 from typing import Any, Literal
 from uuid import uuid4
@@ -42,32 +43,29 @@ PARAMETERS = {
 }
 
 
-def _check_traffic(value):
+# Numeric settings: (zero allowed, error message). Each must be finite and at most 1.
+RANGES = {
+    "traffic_factor": (False, "traffic_factor must be greater than 0 and at most 1"),
+    "sensor_failure_rate": (True, "sensor_failure_rate must be between 0 and 1"),
+}
+
+
+def check(name, value):
+    """Validate one bus setting and return it normalised. bool is not a number here."""
+    if name == "demand":
+        if value not in ("peak", "off_peak"):
+            raise ValueError("demand must be peak or off_peak")
+        return value
+    zero_allowed, message = RANGES[name]
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
         or not math.isfinite(value)
-        or not 0 < value <= 1
+        or not (0 <= value <= 1)
+        or (value == 0 and not zero_allowed)
     ):
-        raise ValueError("traffic_factor must be greater than 0 and at most 1")
+        raise ValueError(message)
     return float(value)
-
-
-def _check_rate(value):
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-        or not 0 <= value <= 1
-    ):
-        raise ValueError("sensor_failure_rate must be between 0 and 1")
-    return float(value)
-
-
-def _check_demand(value):
-    if value not in ("peak", "off_peak"):
-        raise ValueError("demand must be peak or off_peak")
-    return value
 
 
 class Command(BaseModel):
@@ -89,12 +87,7 @@ class Command(BaseModel):
             raise ValueError(
                 f"{self.action} takes parameters {sorted(PARAMETERS[self.action])}"
             )
-        checks = {
-            "traffic_factor": _check_traffic,
-            "sensor_failure_rate": _check_rate,
-            "demand": _check_demand,
-        }
-        self.params = {name: checks[name](value) for name, value in self.params.items()}
+        self.params = {name: check(name, value) for name, value in self.params.items()}
         return self
 
 
@@ -131,6 +124,16 @@ def bus_subscriptions(region_id: str, bus_id: str) -> tuple[str, str]:
     return topics.command(region_id, bus_id), topics.command(region_id)
 
 
+class Mode(Enum):
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"  # final: the simulator process is ending
+
+
+# pause/resume move between RUNNING and PAUSED; nothing leaves STOPPED.
+MODE_AFTER = {"pause": Mode.PAUSED, "resume": Mode.RUNNING}
+
+
 class BusControls:
     """Live settings a running simulated bus reads on every step.
 
@@ -142,33 +145,36 @@ class BusControls:
         self, *, demand="off_peak", traffic_factor=1.0, sensor_failure_rate=0.0
     ):
         self._changed = Condition()
-        self._paused = False
-        self._stopped = False
-        self._demand = _check_demand(demand)
-        self._traffic = _check_traffic(traffic_factor)
-        self._failure_rate = _check_rate(sensor_failure_rate)
+        self._mode = Mode.RUNNING
+        settings = {
+            "demand": demand,
+            "traffic_factor": traffic_factor,
+            "sensor_failure_rate": sensor_failure_rate,
+        }
+        self._settings = {name: check(name, value) for name, value in settings.items()}
 
-    def _read(self, name):
+    def _setting(self, name):
         with self._changed:
-            return getattr(self, name)
+            return self._settings[name]
 
-    paused = property(lambda self: self._read("_paused"))
-    demand = property(lambda self: self._read("_demand"))
-    traffic_factor = property(lambda self: self._read("_traffic"))
-    sensor_failure_rate = property(lambda self: self._read("_failure_rate"))
+    @property
+    def mode(self) -> Mode:
+        with self._changed:
+            return self._mode
+
+    paused = property(lambda self: self.mode is Mode.PAUSED)
+    demand = property(lambda self: self._setting("demand"))
+    traffic_factor = property(lambda self: self._setting("traffic_factor"))
+    sensor_failure_rate = property(lambda self: self._setting("sensor_failure_rate"))
 
     def apply(self, action: str, params: dict) -> None:
         with self._changed:
-            if action == "pause":
-                self._paused = True
-            elif action == "resume":
-                self._paused = False
-            elif action == "set_traffic":
-                self._traffic = _check_traffic(params["traffic_factor"])
-            elif action == "set_demand":
-                self._demand = _check_demand(params["demand"])
-            elif action == "set_sensor_failure_rate":
-                self._failure_rate = _check_rate(params["sensor_failure_rate"])
+            if action in MODE_AFTER:
+                if self._mode is not Mode.STOPPED:
+                    self._mode = MODE_AFTER[action]
+            elif action in PARAMETERS:  # each set_* action takes exactly one setting
+                (name,) = PARAMETERS[action]
+                self._settings[name] = check(name, params[name])
             else:
                 raise ValueError(f"unknown action {action}")
             self._changed.notify_all()
@@ -176,14 +182,14 @@ class BusControls:
     def stop(self) -> None:
         """Release a paused simulator so its process can end."""
         with self._changed:
-            self._stopped = True
+            self._mode = Mode.STOPPED
             self._changed.notify_all()
 
     def wait_while_paused(self, timeout=None) -> bool:
         """Block while paused. Return False if stop() was called."""
         with self._changed:
-            self._changed.wait_for(lambda: not self._paused or self._stopped, timeout)
-            return not self._stopped
+            self._changed.wait_for(lambda: self._mode is not Mode.PAUSED, timeout)
+            return self._mode is not Mode.STOPPED
 
 
 APPLIED, IGNORED, DUPLICATE, REJECTED = "applied", "ignored", "duplicate", "rejected"

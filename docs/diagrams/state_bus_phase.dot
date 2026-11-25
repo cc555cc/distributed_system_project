@@ -1,0 +1,14 @@
+digraph "state_bus_phase" {
+  rankdir=LR; fontname="Helvetica"; labelloc=t; fontsize=16; label="Simulated bus phase  (services/data_simulation/generate_data.py DemoFleet, implicit)";
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  start [shape=circle, width=0.18, label="", style=filled, fillcolor=black];
+  "start" -> "travelling" [label=""];
+  "travelling" -> "arriving" [label="within 15 m of next stop"];
+  "arriving" -> "stopped" [label="reaches stop (3 s dwell)"];
+  "stopped" -> "boarding" [label="dwell <= 2 s left"];
+  "boarding" -> "departing" [label="dwell <= 1 s left"];
+  "departing" -> "travelling" [label="dwell over"];
+  "travelling" -> "out_of_service" [label="operator condition"];
+  "out_of_service" -> "travelling" [label="dispatched"];
+}

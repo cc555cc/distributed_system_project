@@ -1,42 +1,51 @@
 """MQTT publisher that survives a temporary loss of the broker connection (MQTT-04).
 
-Paho reconnects on its own and keeps unacknowledged QoS 1 messages, resending
-them after the connection returns. This wrapper makes that behaviour explicit:
+Paho reconnects on its own and resends unacknowledged QoS 1 messages. On top of
+that this wrapper reports every message as "sent", "queued" (kept while offline)
+or "dropped" (bounded queue full), restores subscriptions after every reconnect,
+and keeps messages in publish order across a reconnect.
 
-* a message published while offline is reported as "queued", not as an error
-* the offline queue is bounded; a message that does not fit is reported as
-  "dropped" and counted, never silently assumed delivered
-* close() reports how many accepted messages the broker never acknowledged
-* subscribe() registers a topic filter that is restored after every reconnect,
-  including after a broker restart (MQTT-05, MQTT-10)
-* messages stay in publish order across a reconnect (see below)
-
-Ordering across a reconnect: Paho marks the client connected and runs
-on_connect *before* it resends the messages kept from the old connection, so a
-message published from another thread in that gap overtakes them. The edge
-would then reject the older, resent readings as stale. The MQTT-06 benchmark
-measured exactly this. To prevent it, once a connection is lost with messages
-still unacknowledged (or a message is handed to Paho while it is offline), every
-new message waits in a local backlog. A background thread sends the backlog in
-order once the connection is back and every older message is acknowledged.
-
-Payloads are sent unchanged, so a delayed message still carries the sequence
-number, Lamport stamp and timestamp it was generated with. Receivers use those
-to recognise it as stale.
+Ordering: Paho runs on_connect *before* it resends the old connection's
+messages, so a new message published in that gap would overtake them and the
+edge would reject the older ones as stale (found by the MQTT-06 benchmark).
+The connection is therefore an explicit state machine (``LinkState``): only in
+ONLINE do messages go straight to Paho. In every other state they wait in a
+local backlog that a background thread sends, in order, once the link is back
+to ONLINE.
 
 Locking: Paho calls on_publish while holding its own message lock, so this class
-never holds its condition lock while calling into Paho. A separate send lock,
-never taken by Paho's network thread, keeps sends in order.
+never holds ``_changed`` while calling into Paho. ``_send_lock`` keeps sends in
+order and is never taken by Paho's network thread.
 """
 
 import logging
 import time
 from collections import deque
+from enum import Enum
 from threading import Condition, Lock, Thread
 
 logger = logging.getLogger(__name__)
 
 SENT, QUEUED, DROPPED = "sent", "queued", "dropped"
+
+
+class LinkState(Enum):
+    CONNECTING = "connecting"  # before the first successful connection
+    ONLINE = "online"  # connected; new messages go straight to Paho
+    RESENDING = "resending"  # connected; Paho still owes resends from before
+    OFFLINE = "offline"  # connection lost; Paho reconnects in the background
+    CLOSED = "closed"
+
+
+# Allowed transitions. Staying in the same state is always allowed.
+TRANSITIONS = {
+    LinkState.CONNECTING: {LinkState.ONLINE, LinkState.CLOSED},
+    LinkState.ONLINE: {LinkState.RESENDING, LinkState.OFFLINE, LinkState.CLOSED},
+    LinkState.RESENDING: {LinkState.ONLINE, LinkState.OFFLINE, LinkState.CLOSED},
+    LinkState.OFFLINE: {LinkState.ONLINE, LinkState.RESENDING, LinkState.CLOSED},
+    LinkState.CLOSED: set(),
+}
+CONNECTED = {LinkState.ONLINE, LinkState.RESENDING}
 
 
 class ReliablePublisher:
@@ -50,11 +59,7 @@ class ReliablePublisher:
         configure=None,
         client_factory=None,
     ):
-        if (
-            isinstance(max_queued, bool)
-            or not isinstance(max_queued, int)
-            or max_queued < 1
-        ):
+        if type(max_queued) is not int or max_queued < 1:  # bool is not accepted
             raise ValueError("max_queued must be a positive integer")
         import paho.mqtt.client as mqtt
 
@@ -74,27 +79,31 @@ class ReliablePublisher:
         self.client.reconnect_delay_set(min_delay=1, max_delay=10)
         self.client.max_queued_messages_set(max_queued)
         self._changed = Condition()
-        self._send_lock = Lock()  # serialises sends; never taken by the network thread
-        self._connected = False
-        self._connections = 0
-        self._closing = False
-        self._outstanding = set()  # message IDs accepted but not yet acknowledged
-        self._resend_pending = (
-            False  # Paho holds messages it will resend after reconnecting
-        )
-        self._backlog = deque()  # (topic, payload) waiting for the gate to clear
+        self._send_lock = Lock()
+        self._state = LinkState.CONNECTING
+        self._outstanding = set()  # message IDs handed to Paho, not yet acknowledged
+        self._backlog = deque()  # (topic, payload) waiting for ONLINE
         self._sending = False
-        self._early_acks = set()  # acks that arrived before publish() recorded the ID
+        self._early_acks = set()  # acks that arrived before publish() returned the ID
         self._flusher = None
         self._subscriptions = {}  # topic filter -> handler(topic, payload)
-        self.stats = {
-            "sent": 0,
-            "queued": 0,
-            "dropped": 0,
-            "acknowledged": 0,
-            "disconnects": 0,
-            "reconnects": 0,
-        }
+        self.stats = dict.fromkeys(
+            ("sent", "queued", "dropped", "acknowledged", "disconnects", "reconnects"),
+            0,
+        )
+
+    @property
+    def state(self) -> LinkState:
+        with self._changed:
+            return self._state
+
+    def _move(self, new: LinkState) -> None:
+        """Change state. Caller holds _changed. Never raises: Paho threads call this."""
+        if new is not self._state and new not in TRANSITIONS[self._state]:
+            logger.error("Ignored publisher transition %s -> %s", self._state, new)
+            return
+        self._state = new
+        self._changed.notify_all()
 
     # ---- paho callbacks (network thread) ----
     def _on_connect(self, client, userdata, flags, reason_code, properties):
@@ -102,31 +111,26 @@ class ReliablePublisher:
             logger.error("MQTT connection refused: %s", reason_code)
             return
         with self._changed:
-            self._connected = True
-            self._connections += 1
-            if self._connections > 1:
+            if self._state is LinkState.OFFLINE:
                 self.stats["reconnects"] += 1
                 logger.info(
                     "MQTT reconnected; resending %d unacknowledged message(s)",
                     len(self._outstanding),
                 )
+            # Paho resends what is unacknowledged; nothing newer may overtake it.
+            self._move(LinkState.RESENDING if self._outstanding else LinkState.ONLINE)
             filters = list(self._subscriptions)
-            self._changed.notify_all()
         # A clean session forgets subscriptions, so restore them on every connect.
         for topic_filter in filters:
             client.subscribe(topic_filter, qos=1)
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         with self._changed:
-            if self._connected and not self._closing:
+            unexpected = self._state in CONNECTED
+            if unexpected:
                 self.stats["disconnects"] += 1
-            self._connected = False
-            # Paho will resend what is unacknowledged; nothing newer may overtake it.
-            if self._outstanding:
-                self._resend_pending = True
-            self._changed.notify_all()
-            expected = self._closing
-        if not expected:
+                self._move(LinkState.OFFLINE)
+        if unexpected:
             logger.warning(
                 "MQTT disconnected (%s); publishing continues into the offline queue",
                 reason_code,
@@ -136,9 +140,9 @@ class ReliablePublisher:
         with self._changed:
             if mid in self._outstanding:
                 self._outstanding.discard(mid)
-                if not self._outstanding:
-                    self._resend_pending = False
                 self.stats["acknowledged"] += 1
+                if not self._outstanding and self._state is LinkState.RESENDING:
+                    self._move(LinkState.ONLINE)
                 self._changed.notify_all()
             elif self._sending:
                 self._early_acks.add(mid)
@@ -170,8 +174,7 @@ class ReliablePublisher:
                 self._sending = False
                 self._early_acks.clear()
             raise
-        with self._changed:
-            # The broker can acknowledge before publish() returns the message ID.
+        with self._changed:  # one critical section, so no ack can slip between
             self._sending = False
             acknowledged_early = info.mid in self._early_acks
             self._early_acks.clear()
@@ -182,20 +185,17 @@ class ReliablePublisher:
                 raise ConnectionError(
                     f"MQTT publish failed: {mqtt.error_string(info.rc)}"
                 )
-            if acknowledged_early:
+            if acknowledged_early:  # the broker answered before publish() returned
                 self.stats["acknowledged"] += 1
             else:
                 self._outstanding.add(info.mid)
-                if info.rc == mqtt.MQTT_ERR_NO_CONN:
-                    self._resend_pending = True
+                if info.rc == mqtt.MQTT_ERR_NO_CONN and self._state is LinkState.ONLINE:
+                    self._move(LinkState.RESENDING)  # Paho keeps it for a resend
             self._changed.notify_all()
             return SENT if info.rc == mqtt.MQTT_ERR_SUCCESS else QUEUED
 
-    def _held_back(self):
-        return not self._connected or self._resend_pending or bool(self._backlog)
-
     def _backlog_ready(self):
-        return bool(self._backlog) and self._connected and not self._resend_pending
+        return bool(self._backlog) and self._state is LinkState.ONLINE
 
     def _drain_backlog(self):
         with self._send_lock:
@@ -205,33 +205,37 @@ class ReliablePublisher:
                         return
                     topic, payload = self._backlog.popleft()
                 if self._send(topic, payload) == DROPPED:
-                    logger.error(
-                        "Dropped message for %s: offline queue of %d is full",
-                        topic,
-                        self.max_queued,
-                    )
+                    self._log_dropped(topic)
 
     def _flush_backlog_forever(self):
         while True:
             with self._changed:
-                self._changed.wait_for(lambda: self._closing or self._backlog_ready())
-                if self._closing:
+                self._changed.wait_for(
+                    lambda: self._state is LinkState.CLOSED or self._backlog_ready()
+                )
+                if self._state is LinkState.CLOSED:
                     return
             self._drain_backlog()
+
+    def _log_dropped(self, topic):
+        logger.error(
+            "Dropped message for %s: offline queue of %d is full",
+            topic,
+            self.max_queued,
+        )
 
     # ---- caller API ----
     def subscribe(self, topic_filter, handler):
         """Deliver messages matching topic_filter to handler(topic, payload), across reconnects."""
         with self._changed:
             self._subscriptions[topic_filter] = handler
-            connected = self._connected
+            connected = self._state in CONNECTED
         if connected:
             self.client.subscribe(topic_filter, qos=1)
 
     @property
     def connected(self):
-        with self._changed:
-            return self._connected
+        return self.state in CONNECTED
 
     @property
     def unacknowledged(self):
@@ -248,41 +252,40 @@ class ReliablePublisher:
 
     def wait_connected(self, timeout):
         with self._changed:
-            return self._changed.wait_for(lambda: self._connected, timeout)
+            return self._changed.wait_for(lambda: self._state in CONNECTED, timeout)
 
     def publish(self, topic, payload):
         """Return "sent", "queued" (offline or behind a resend, kept) or "dropped" (queue full)."""
         with self._send_lock:
             with self._changed:
-                held_back = self._held_back()
+                held_back = self._state is not LinkState.ONLINE or bool(self._backlog)
                 if held_back:
-                    if len(self._outstanding) + len(self._backlog) >= self.max_queued:
-                        self.stats["dropped"] += 1
-                        outcome = DROPPED
-                    else:
-                        self._backlog.append((topic, payload))
-                        self.stats["queued"] += 1
-                        outcome = QUEUED
-                        if self._flusher is None:
-                            self._flusher = Thread(
-                                target=self._flush_backlog_forever,
-                                daemon=True,
-                                name=f"{self.client_id}-backlog",
-                            )
-                            self._flusher.start()
-                        self._changed.notify_all()
+                    outcome = self._hold(topic, payload)
             if not held_back:
                 outcome = self._send(topic, payload)
                 if outcome != DROPPED:
                     with self._changed:
                         self.stats[outcome] += 1
         if outcome == DROPPED:
-            logger.error(
-                "Dropped message for %s: offline queue of %d is full",
-                topic,
-                self.max_queued,
-            )
+            self._log_dropped(topic)
         return outcome
+
+    def _hold(self, topic, payload):
+        """Keep a message in the backlog until ONLINE. Caller holds _changed."""
+        if len(self._outstanding) + len(self._backlog) >= self.max_queued:
+            self.stats["dropped"] += 1
+            return DROPPED
+        self._backlog.append((topic, payload))
+        self.stats["queued"] += 1
+        if self._flusher is None:
+            self._flusher = Thread(
+                target=self._flush_backlog_forever,
+                daemon=True,
+                name=f"{self.client_id}-backlog",
+            )
+            self._flusher.start()
+        self._changed.notify_all()
+        return QUEUED
 
     def flush(self, timeout=5.0):
         """Wait for broker acknowledgements. Return the number still missing."""
@@ -303,8 +306,7 @@ class ReliablePublisher:
                 missing,
             )
         with self._changed:
-            self._closing = True
-            self._changed.notify_all()
+            self._move(LinkState.CLOSED)
         try:
             self.client.disconnect()
         finally:

@@ -1,0 +1,19 @@
+digraph "state_scheduling" {
+  rankdir=LR; fontname="Helvetica"; labelloc=t; fontsize=16; label="Route demand decision  (services/central/scheduling.py, implicit)";
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  start [shape=circle, width=0.18, label="", style=filled, fillcolor=black];
+  "start" -> "no decision" [label=""];
+  "no decision" -> "pending" [label="3 fresh samples all >= 80%
+(increase) or all <= 20% (reduce),
+30 s since last change"];
+  "pending" -> "no decision" [label="signal back to normal,
+or scenario reset"];
+  "pending" -> "applied" [label="operator approves
+(or automatic mode)"];
+  "applied" -> "pending" [label="signal still sustained
+after 30 s cooldown"];
+  "applied" -> "no decision" [label="signal back to normal"];
+  "pending" -> "pending" [label="stale (> 30 s): refreshed
+with a new decision"];
+}

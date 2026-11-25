@@ -1,0 +1,18 @@
+digraph "state_edge_worker" {
+  rankdir=LR; fontname="Helvetica"; labelloc=t; fontsize=16; label="Simulated edge worker state  (services/edge/main.py, implicit)";
+  node [shape=box, style="rounded,filled", fillcolor="#EAF2FB", color="#3B6EA8", fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10, color="#444444"];
+  start [shape=circle, width=0.18, label="", style=filled, fillcolor=black];
+  "start" -> "healthy" [label="primary edge"];
+  "start" -> "standby" [label="third edge"];
+  "standby" -> "healthy" [label="both primaries >= 70% for 6 s,
+or emergency takeover"];
+  "healthy" -> "failed" [label="fail()"];
+  "standby" -> "failed" [label="fail()"];
+  "recovering" -> "failed" [label="fail()"];
+  "failed" -> "recovering" [label="recover(): replicas
+present, catch-up sync"];
+  "recovering" -> "healthy" [label="after 2 s, re-sync"];
+  "healthy" -> "standby" [label="scale_down(): load low 10 s
+or drained third edge"];
+}
