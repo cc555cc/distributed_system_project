@@ -182,27 +182,27 @@ The web interface is written in plain HTML, CSS and JavaScript, uses Leaflet [11
 
 *Figure 4: Passenger map for the West region, showing routes 302 and 900 and the live buses*
 
-<!-- Screenshot needed: trip search result -->
+![Trip search](report/fig05_trip_search.png){height=3.4in}
 
 *Figure 5: Trip search showing the recommended bus, arrival time, trip time and free seats*
 
 **Operator pages.** Operator pages redirect to a login page until the operator signs in (Figure 6). The dashboard summarizes live buses, crowded buses, healthy edge servers and active alerts, followed by a table of every bus, route occupancy, and each edge server's queue, assigned buses and recent failover events, with problems colour-coded (Figure 7). The read-only bus health page shows one sensor's status, the age of its last valid reading, the owning edge server and every server's queue load (Figure 8). It keeps an unknown state separate from a confirmed fault, so an unreachable server is not mistaken for a broken sensor.
 
-<!-- Screenshot needed: login page -->
+![Operator login](report/fig06_operator_login.png)
 
 *Figure 6: Operator login page*
 
-<!-- Screenshot needed: dashboard -->
+![Operator dashboard](report/fig07_operator_dashboard.png){height=3.4in}
 
 *Figure 7: Operator dashboard with the network summary, alerts and bus table*
 
-<!-- Screenshot needed: health page -->
+![Bus health](report/fig08_bus_health.png){height=3.4in}
 
 *Figure 8: Bus health page showing edge server queues and sensor status*
 
 **Control panel.** The control panel offers six one-click scenarios: normal service with 50 buses, load balancing and edge takeover, sensor fault with traffic delay and peak demand, the scheduling loop, a central server outage and recovery, and an access security check (Figure 9). Manual controls let operators set route demand, resize the fleet, dispatch buses, fail or recover edge servers, send load bursts and change the simulation speed. Invalid commands return a clear error message from the server.
 
-<!-- Screenshot needed: control panel -->
+![Control panel](report/fig09_control_panel.png){height=3.4in}
 
 *Figure 9: Control panel with the one-click demonstration scenarios*
 
@@ -246,7 +246,7 @@ Across fleets of 5 to 50 buses, the surviving West edge server processed every a
 
 Delay grows with fleet size and rises after a failure because one server then does the work of two, while takeover decisions remain well within the one-second failover round. In the browser, failing an edge server marked it as failed on the dashboard, raised an alert and listed the reassigned buses (Figure 10); recovering it moved it through recovering back to healthy.
 
-<!-- Screenshot needed: dashboard after takeover -->
+![Edge takeover](report/fig10_edge_takeover.png){height=3.4in}
 
 *Figure 10: Operator dashboard after the edge takeover scenario*
 
@@ -254,7 +254,7 @@ Delay grows with fleet size and rises after a failure because one server then do
 
 In normal traffic, demand scheduling more than tripled boarded passengers (from 25 to 89), whereas in heavy traffic dispatched reserve buses could not reach waiting passengers within the four-minute test window. Matched four-minute simulations of route 302 began with one active bus, the same reserve buses and the same demand, differing only in whether scheduling was enabled. In normal traffic, scheduling also reduced total waiting time by 0.4% (from 817,328 to 814,071 passenger-seconds) and lowered average occupancy from 99.6% to 97.8% (Figure 11). In heavy traffic, both runs boarded only 5 passengers even though 8 extra buses were dispatched, showing the latency limit of reactive dispatch.
 
-<!-- Screenshot needed: scheduling decision -->
+![Peak demand scheduling](report/fig11_peak_demand_scheduling.png)
 
 *Figure 11: Scheduling decision for a crowded route during the peak demand scenario*
 
