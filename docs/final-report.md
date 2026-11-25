@@ -43,6 +43,8 @@ Section 2 compares this architecture with existing transit tools, and Section 3 
 
 # 2. Related Work
 
+This design builds on three established transit technologies and four distributed systems techniques.
+
 **GTFS Realtime.** Most transit agencies publish live data using the General Transit Feed Specification (GTFS) Realtime format created by Google [1]. A feed exposes vehicle positions, trip updates and service alerts that applications such as Google Maps can read, and Durham Region Transit publishes its schedule data in the GTFS format [2]. However, GTFS Realtime is a data format rather than a complete system: it leaves validation, the handling of late updates, and server failover to each agency's own back end.
 
 **OneBusAway.** OneBusAway is an open source transit information system that originated at the University of Washington [3]. It ingests an agency's schedule and real-time data, and provides arrival predictions through a website, mobile applications and an API. Like most rider applications, it relies on a single central back end that receives every vehicle update.
@@ -66,6 +68,8 @@ Table 1 compares this system with the existing tools. Existing tools focus on pr
 
 # 3. System Architecture and Implementation
 
+This section details the system overview (3.1), bus simulator (3.2), MQTT messaging (3.3), regional edge servers (3.4), central server (3.5) and user interfaces (3.6).
+
 ## 3.1 System Overview
 
 The system consists of five components. Simulated buses generate telemetry, the MQTT broker routes messages, regional edge servers validate and process readings, the central server stores state and makes network-wide decisions, and the web interfaces serve passengers and operators. Because the components interact only through agreed JSON message formats, MQTT topics and REST endpoints, each can be developed, tested and replaced independently.
@@ -86,7 +90,7 @@ The system runs in one of two modes. In live mode, separate bus programs publish
 
 ## 3.2 Bus Simulation
 
-A deterministic simulator makes each bus behave like a real vehicle. Each bus follows the stops of its route at about 30 km/h in normal traffic or 9 km/h in heavy traffic, waits three seconds at each stop, and has 50 seats that fill according to the peak or off-peak demand setting. Around each stop, buses move through five phases: travelling, arriving, stopped, boarding and departing (Appendix B, Figure B6).
+A deterministic simulator models vehicle movement, stop dwell times and passenger demand. Each bus follows the stops of its route at about 30 km/h in normal traffic or 9 km/h in heavy traffic, waits three seconds at each stop, and has 50 seats that fill according to the peak or off-peak demand setting. Around each stop, buses move through five phases: travelling, arriving, stopped, boarding and departing (Appendix B, Figure B6).
 
 Every second, each bus sends a JSON reading with its identity, route, GPS position, speed, direction, passenger count, current and next stop, generation time, sequence number, Lamport clock value, and bus and sensor status. Separately, buses send heartbeats every two seconds for four sensors: GPS, speed, stop status and passenger count. When a sensor fails, the bus reports the failure rather than inventing a value; a broken passenger counter, for example, leaves location tracking intact but marks occupancy as faulty.
 
@@ -121,7 +125,7 @@ Accepted readings enter a queue capped at 50 messages, so a flood of data cannot
 
 Edge servers send their own heartbeat, including queue load, to the central server every two seconds (Appendix B, Figure B1). If both active servers' queues stay at least 70% full for six seconds, the standby server synchronizes and takes part of the load, handing it back once load subsides.
 
-Four safeguards preserve continuity when an edge server fails. In the controlled demonstration, accepted states are replicated to the other edge servers, so a healthy server already holds the latest data when it takes over. Each bus carries an ownership version number, so a returning old owner cannot overwrite newer data. A recovering server catches up before receiving buses back, and if both servers in a region fail, a server in the other region takes over. Figure 3 shows this as a message sequence, and Figure B2 shows the edge server lifecycle.
+Four safeguards preserve continuity when an edge server fails. In the controlled demonstration, accepted states are replicated to the other edge servers, so a healthy server already holds the latest data when it takes over. Each bus carries an ownership version number, so a returning old owner cannot overwrite newer data. A recovering server catches up before receiving buses back, and if both servers in a region fail, a server in the other region takes over. Figure 3 shows this as a message sequence, and Appendix B (Figure B2) shows the edge server lifecycle.
 
 ![Failover sequence](report/failover_sequence.png)
 
@@ -160,7 +164,7 @@ The central server accepts an edge heartbeat only from a known edge server on th
 
 Each of the failed server's buses then moves to the least-loaded healthy edge server in the same region, with ties broken by edge ID. Only a confirmed failure moves buses, so a staggered start-up or brief recovery does not cause buses to bounce between servers. Every change increases the region's ownership epoch and is published as a retained MQTT message, so a restarting edge receives the current owner list immediately; the central server also republishes all assignments whenever its own connection is restored. Once the home server is healthy again, its buses return to it in the next round.
 
-### 3.5.4 Trip Planning and Demand Scheduling
+### 3.5.4 Trip Planning, Demand Scheduling and Access Control
 
 For a trip between two stops, the central server considers direct buses and one-transfer trips, and ranks them by total time, occupancy and number of transfers, counting each transfer as five extra minutes. Buses without enough free seats for the group are listed but never recommended, and each recommendation explains its trip time and free seats.
 
@@ -212,7 +216,7 @@ The automated suite contains 506 tests: 487 passed in the latest run, and 19 wer
 
 ## 4.2 Message Delivery and Ordering
 
-Simulated buses ran as separate MQTT clients, each sending five readings per second for 15 seconds, under three conditions: a normal network, a 200 ms delay on every packet, and a three-second outage of the whole fleet. Table 2 shows a selection of the results.
+No message arrived out of order and no Lamport clock value was incorrect in any run; once the broker's queue limit was raised, no messages were lost either. To measure these properties, simulated buses ran as separate MQTT clients, each sending five readings per second for 15 seconds under three conditions: a normal network, a 200 ms delay on every packet, and a three-second outage of the whole fleet (Table 2).
 
 | Scenario | Buses | Sent | Received | Lost | Out of order | Median delay | Worst delay |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
@@ -225,13 +229,11 @@ Simulated buses ran as separate MQTT clients, each sending five readings per sec
 
 *Table 2: Message delivery results for different numbers of buses and network conditions*
 
-No message arrived out of order and no Lamport clock value was incorrect in any run. The median delay stayed between 1.3 ms and 2.8 ms, while the worst outage delay of 7.0 s to 7.4 s consists of the 3-second cut plus the MQTT library's reconnect wait.
-
-The only loss occurred at 50 buses with an outage, when about 1,400 saved messages were resent at once. This exceeded the broker's default limit of 1,000 queued messages per subscriber, so 140 were dropped; raising the limit to 10,000 eliminated the loss. The one duplicate in that run was detected by per-bus sequence tracking and not applied. A single Python subscriber handles about 1,900 messages per second, roughly 7.6 times the heaviest test load of 250 messages per second, and each region has its own subscribers.
+The median delay stayed between 1.3 ms and 2.8 ms, while the worst outage delay of 7.0 s to 7.4 s consists of the 3-second cut plus the MQTT library's reconnect wait. The only loss occurred at 50 buses with an outage, when about 1,400 saved messages were resent at once and exceeded the broker's default limit of 1,000 queued messages per subscriber, dropping 140 messages; raising the limit to 10,000 eliminated the loss. The one duplicate in that run was detected by per-bus sequence tracking and not applied. A single Python subscriber handles about 1,900 messages per second, roughly 7.6 times the heaviest test load of 250 messages per second, and each region has its own subscribers.
 
 ## 4.3 Fault Tolerance and Scalability
 
-Each test ran 20 rounds in which every bus sent one reading, with `edge-west-1` failing halfway through. Across fleets of 5 to 50 buses, the surviving West server processed every accepted reading, with none rejected or left waiting (Table 3).
+Across fleets of 5 to 50 buses, the surviving West edge server processed every accepted reading with none rejected or left waiting when `edge-west-1` failed halfway through each 20-round run, completing takeover decisions in 0.44 ms to 10.32 ms. Because these runs use a fixed 5 ms simulated processing time per reading rather than a real network, Table 3 shows how the design scales rather than how fast real hardware would be.
 
 | Buses | Readings processed | Delay before failure (ms) | Delay after failure (ms) | Time to decide takeover (ms) | Buses on the surviving west server |
 | :---- | :---- | :---- | :---- | :---- | :---- |
@@ -242,7 +244,7 @@ Each test ran 20 rounds in which every bus sent one reading, with `edge-west-1` 
 
 *Table 3: Edge server results with edge-west-1 failing halfway through each run*
 
-Delay grows with fleet size and rises after a failure, because one server then does the work of two. Takeover decisions took 0.44 ms to 10.32 ms, well within the one-second failover round. These runs use a fixed 5 ms processing time per reading rather than a real network, so they show how the design scales rather than how fast real hardware would be. In the browser, failing an edge server marked it as failed on the dashboard, raised an alert and listed the reassigned buses (Figure 10); recovering it moved it through recovering back to healthy.
+Delay grows with fleet size and rises after a failure because one server then does the work of two, while takeover decisions remain well within the one-second failover round. In the browser, failing an edge server marked it as failed on the dashboard, raised an alert and listed the reassigned buses (Figure 10); recovering it moved it through recovering back to healthy.
 
 <!-- Screenshot needed: dashboard after takeover -->
 
@@ -250,7 +252,7 @@ Delay grows with fleet size and rises after a failure, because one server then d
 
 ## 4.4 Demand Scheduling
 
-Matched four-minute simulations of route 302 began with one active bus, the same reserve buses and the same demand, differing only in whether scheduling was enabled. In normal traffic, scheduling increased boarded passengers from 25 to 89, reduced total waiting time by 0.4% (from 817,328 to 814,071 passenger-seconds), and lowered average occupancy from 99.6% to 97.8% (Figure 11). In heavy traffic, both runs boarded only 5 passengers, even though 8 extra buses were dispatched. Extra buses help, but in heavy traffic they take longer than the test window to reach waiting passengers.
+In normal traffic, demand scheduling more than tripled boarded passengers (from 25 to 89), whereas in heavy traffic dispatched reserve buses could not reach waiting passengers within the four-minute test window. Matched four-minute simulations of route 302 began with one active bus, the same reserve buses and the same demand, differing only in whether scheduling was enabled. In normal traffic, scheduling also reduced total waiting time by 0.4% (from 817,328 to 814,071 passenger-seconds) and lowered average occupancy from 99.6% to 97.8% (Figure 11). In heavy traffic, both runs boarded only 5 passengers even though 8 extra buses were dispatched, showing the latency limit of reactive dispatch.
 
 <!-- Screenshot needed: scheduling decision -->
 
@@ -273,7 +275,7 @@ The passenger page returns one recommended bus with a plain explanation, and lab
 
 ## 4.6 Limitations
 
-Takeover and replication in the controlled demonstration are run by a single in-memory coordinator rather than a distributed agreement protocol, so that state is lost if the central process restarts. The scope is one simulated city with straight-line walking distances. The edge server lifecycle (Figure B2) is still implicit and allows a failed server to move straight to standby, skipping the recovery checks. Together with the gaps in Table 4, the system is not ready for public use.
+Takeover and replication in the controlled demonstration are run by a single in-memory coordinator rather than a distributed agreement protocol, so that state is lost if the central process restarts. The scope is one simulated city with straight-line walking distances. The edge server lifecycle (Appendix B, Figure B2) is still implicit and allows a failed server to move straight to standby, skipping the recovery checks. Together with the gaps in Table 4, the system is not ready for public use.
 
 # 5. Conclusion
 
@@ -303,7 +305,7 @@ Work was divided equally across all five team members (20% each), organized by c
 
 The highest-priority extensions concern real data and central fault tolerance. Connecting to DRT's real-time feed would run the system on real bus positions, and replacing the in-memory coordinator with a replicated agreement protocol such as Raft would let ownership and bus state survive the loss of any server, including the central one.
 
-Next, the remaining implicit lifecycles should be made explicit, starting with the edge server (Figure B2), where a transition table would reject the unsafe failed-to-standby path. A production system would also need HTTPS, TLS for the broker, and role-based operator accounts.
+Next, the remaining implicit lifecycles should be made explicit, starting with the edge server (Appendix B, Figure B2), where a transition table would reject the unsafe failed-to-standby path. A production system would also need HTTPS, TLS for the broker, and role-based operator accounts.
 
 Finally, using past demand to predict busy periods would let reserve buses depart before routes become crowded, addressing the heavy-traffic limit in Section 4.4. A mobile passenger page, street-based walking directions and support for more cities would then test whether the regional design scales as intended.
 
