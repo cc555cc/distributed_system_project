@@ -63,6 +63,11 @@ async function loadHealth() {
       prediction && prediction.eta_minutes !== null ? prediction.eta_minutes.toFixed(1) + ' min' : 'Unavailable'
     ]]);
     if (source === "demo") {
+      const processing = document.createElement("p");
+      processing.textContent = "Processing: " + (bus.pipeline?.bus_processing || "unknown") +
+        " · This bus processed: " + (bus.pipeline?.bus_processed_total ?? "unknown") +
+        ". Other healthy buses continue independently.";
+      document.getElementById("bus-health").appendChild(processing);
       const delivery = document.createElement("p");
       delivery.textContent = "Central " + (bus.central_available ? "available" : "unavailable") +
         " · Delivery " + (bus.central_delivery_pending ? "pending" : "no pending update") +

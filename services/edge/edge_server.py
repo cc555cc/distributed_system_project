@@ -202,6 +202,8 @@ class SimulatedEdge:
         self.clock = LamportClock()  # same receive/send rules as a live worker
         self.credit_ms = 0.0
         self.completed = 0
+        self.completed_by_bus = {}
+        self.blocked_buses = set()
         # Optional recording pace, disabled for live workers and normal experiments.
         self.queue_visibility_seconds = 0.0
         self.visible_jobs_per_second = 0
@@ -221,8 +223,13 @@ class SimulatedEdge:
         available = self.credit_ms + seconds * 1000
         offset_ms = -self.credit_ms
         while self.queue and available + 1e-9 >= self.processing_ms:
+            # Hold an affected bus's accepted work without blocking healthy buses.
+            index = next((i for i, job in enumerate(self.queue) if job[1] not in self.blocked_buses), None)
+            if index is None:
+                break
+            candidate = self.queue[index]
             if self.queue_visibility_seconds:
-                if now - self.queue[0][2] < self.queue_visibility_seconds:
+                if now - candidate[2] < self.queue_visibility_seconds:
                     break
                 if int(now) != self._visible_second:
                     self._visible_second, self._visible_completed = int(now), 0
@@ -230,11 +237,14 @@ class SimulatedEdge:
                     break
             available -= self.processing_ms
             offset_ms += self.processing_ms
+            self.queue.rotate(-index)
             job = self.queue.popleft()
+            self.queue.rotate(index)
             _, _, received_at = job[:3]
             if len(job) > 3:
                 self.on_telemetry(self, job)
             self.completed += 1
+            self.completed_by_bus[job[1]] = self.completed_by_bus.get(job[1], 0) + 1
             self._visible_completed += 1
             self.latency_seconds += max(
                 0.0, now - seconds + offset_ms / 1000 - received_at
@@ -258,6 +268,8 @@ class SimulatedEdge:
             "load_band": load_band(utilization),
             "processing_ms": self.processing_ms,
             "completed": self.completed,
+            "completed_by_bus": dict(self.completed_by_bus),
+            "processing_paused_buses": sorted(self.blocked_buses),
             "average_latency_ms": (
                 self.latency_seconds / self.completed * 1000 if self.completed else None
             ),

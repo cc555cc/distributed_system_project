@@ -688,6 +688,9 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 self.rejected += 1
                 return {"accepted": False, "reason": "; ".join(errors)}
             bus_id = checked["bus_id"]
+            if checked.get("sensor_status", "healthy") != "healthy":
+                self.rejected += 1
+                return {"accepted": False, "reason": "Sensor fault; waiting for healthy readings"}
             owner = self.registry.get(bus_id).edge_id
             worker = self.workers[owner]
             if owner in self.assistance_draining and len(self._primary_workers(worker.region_id)) == 2:
@@ -1152,6 +1155,15 @@ class EdgeClusterSimulation(EdgeLoadSimulation):
                 if self.demo is not None and self.demo_running:
                     self._dispatch_due(self.time + step)
                     self.demo.step(step, self.time + step, self.submit_telemetry)
+                if self.demo is not None:
+                    reports = self.demo.snapshot(self.time + step)
+                    previously_blocked = set().union(*(worker.blocked_buses for worker in self.workers.values()))
+                    blocked = {bus for bus, report in reports.items()
+                               if report["condition"] in {"sensor_fault", "sensors_stopped", "invalid_reading", "process_failure", "silence"}
+                               or report["status"] == "unavailable"
+                               or report["status"] == "recovering" and bus in previously_blocked}
+                    for worker in self.workers.values():
+                        worker.blocked_buses = blocked
                 super().advance(step)
                 self._deliver_central()
                 for edge_id, ready_at in list(self.recover_at.items()):

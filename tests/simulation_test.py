@@ -42,6 +42,29 @@ def test_recording_queue_is_visible_before_small_processing_batches():
     assert slow.completed == 1 and not slow.queue
 
 
+@pytest.mark.parametrize("condition", ["sensor_fault", "sensors_stopped"])
+def test_sensor_fault_freezes_only_affected_bus_processing_until_recovery(system, condition):
+    _, operator, health, _ = system
+    elapsed = real_clock(health)
+    operator.post("/health/simulation/scenarios/normal")
+    elapsed(3)
+    def processed(bus):
+        return sum(worker.completed_by_bus.get(bus, 0) for worker in health.simulation.workers.values())
+    bus, peer = "bus-302-1", "bus-302-2"
+    before, peer_before = processed(bus), processed(peer)
+    sequence = health.simulation.central_states[bus]["sequence_number"]
+    operator.patch("/health/simulation/demo", json={"bus_id":bus, "condition":condition})
+    elapsed(5)
+    assert processed(bus) == before and processed(peer) > peer_before
+    assert health.simulation.central_states[bus]["sequence_number"] == sequence
+    report = operator.get("/buses/" + bus + "/health?source=demo").json()
+    assert report["pipeline"]["bus_processing"].startswith("paused")
+    operator.patch("/health/simulation/demo", json={"bus_id":bus, "condition":"normal"})
+    elapsed(5)
+    assert processed(bus) > before
+    assert health.simulation.central_states[bus]["sequence_number"] > sequence
+
+
 def test_recording_all_cases_verify_recovery_with_new_readings_waiting(system):
     _, operator, health, _ = system
     from services.central import simulation_scenarios as cases

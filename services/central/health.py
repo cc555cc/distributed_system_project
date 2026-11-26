@@ -428,6 +428,8 @@ def bus_health_snapshot(source="live"):
             central_update_age_seconds=(state["virtual_seconds"] - received if received is not None else None),
             central_available=state["central_available"], central_delivery_pending=bus_id in pending_ids,
             pipeline={"bus_delivery_attempts": bus["attempts"] if bus else 0,
+                "bus_processed_total": sum(w.get("completed_by_bus", {}).get(bus_id, 0) for w in state["workers"]),
+                "bus_processing": "paused: waiting for healthy sensors" if any(bus_id in w.get("processing_paused_buses", []) for w in state["workers"]) else "running",
                 "bus_rejected_readings": bus["rejected_readings"] if bus else 0,
                 "global_edge_accepted": state["accepted"], "global_edge_rejected": state["rejected"],
                 "global_processing_outcomes": state["outcomes"], "global_central_acknowledged": state["central_ack_count"],
