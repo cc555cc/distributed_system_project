@@ -23,6 +23,7 @@ _live = None
 _live_queue = []
 _live_fraction = 0.0
 _last_live = None
+_recording_pace = False
 BUS = "bus-302-1"
 A, B, C = "edge-west-1", "edge-west-2", "edge-west-3"
 
@@ -84,12 +85,16 @@ def _frame(cluster, second):
         sequences={bus:value["sequence_number"] for bus,value in state["central_states"].items()},
         sensor_status=dict(state["demo_buses"][BUS]["sensors"]), bus_health=state["demo_buses"][BUS]["status"],
         local_gps=state["demo_buses"][BUS]["local"], central_pending=state["central_pending"],
-        journal_pending=state["pending_telemetry"], acknowledged=state["central_ack_count"])
+        journal_pending=state["pending_telemetry"], journal_ids=list(cluster.journal),
+        journal_buses={job_id: job[1] for job_id, job in cluster.journal.items()}, acknowledged=state["central_ack_count"])
 
 
-def _checks(cluster, case_id, timeline, baseline):
+def _checks(cluster, case_id, timeline, baseline, recording_pace=False):
     last = timeline[-1]
     checks = []
+    # Recording pace deliberately keeps new readings waiting. Verify that the
+    # accepted work present at failure was drained, not that all new traffic stops.
+    drained = not (set(timeline[0]["journal_ids"]) & set(cluster.journal)) if recording_pace else last["journal_pending"] == 0
     def check(label, passed): checks.append(dict(label=label, passed=bool(passed)))
     check("Every queue stays within capacity", all(0 <= e["queue"] <= e["capacity"] for f in timeline for e in f["edges"]))
     check("Central sequences never go backward", all(all(f["sequences"].get(bus,-1) >= sequence for bus,sequence in before["sequences"].items())
@@ -112,16 +117,20 @@ def _checks(cluster, case_id, timeline, baseline):
     elif case_id == "standby_failure":
         check("Standby failure was observed", any(third(f)["state"] == "failed" for f in timeline))
         check("Recovered primary passed through recovery", any(peer(f)["state"] == "recovering" for f in timeline) and peer(last)["state"] == "healthy")
-        check("Accepted journal drained after recovery", last["journal_pending"] == 0)
+        check("Pre-failure accepted work drained after recovery", drained)
     elif case_id == "recovery_handback":
         check("Recovery window was observed", any(peer(f)["state"] == "recovering" for f in timeline))
         check("Ownership returned before standby", third(last)["state"] == "standby" and not third(last)["assigned"])
-        check("Accepted journal drained before handback", last["journal_pending"] == 0)
+        check("Pre-failure accepted work drained before handback", drained)
     elif case_id == "owner_restart_full_peer":
         owner = lambda f: next(e for e in f["edges"] if e["edge_id"] == A)
+        if recording_pace:
+            owned = {bus for bus, edge in timeline[0]["owners"].items() if edge == A}
+            initial = {job_id for job_id, bus in timeline[0]["journal_buses"].items() if bus in owned}
+            drained = not (initial & set(cluster.journal))
         check("Failed owner retained accepted journal", owner(timeline[0])["state"] == "failed" and timeline[0]["journal_pending"] > 0)
         check("Recovery rebuilt the owner's pending queue", any(owner(f)["state"] == "recovering" and owner(f)["queue"] > 0 for f in timeline))
-        check("Recovered owner drained accepted work", owner(last)["state"] == "healthy" and last["journal_pending"] == 0)
+        check("Recovered owner drained pre-failure accepted work", owner(last)["state"] == "healthy" and drained)
         check("Central continued past the saved sequence", last["sequences"][BUS] > baseline[BUS])
     elif case_id == "sensor_fault":
         check("Occupancy fault observed while GPS stays healthy", any(f["sensor_status"]["occupancy"] == "faulty" and f["sensor_status"]["gps"] == "healthy" for f in timeline))
@@ -209,6 +218,16 @@ def stop_live(reason="Stopped by operator"):
     _live, _live_queue, _live_fraction = None, [], 0.0
 
 
+def apply_recording_pace(cluster):
+    """Slow visible processing without fabricating counters or map positions."""
+    from services.central import health
+    cluster.demo.movement_multiplier = 4.0
+    for worker in cluster.workers.values():
+        worker.queue_visibility_seconds = 1.5
+        worker.visible_jobs_per_second = 8
+    health.simulation_clock.speed = 0.5
+
+
 def _start_live_case(case_id):
     global _live, _last_live
     from services.central import health, scheduling
@@ -216,6 +235,8 @@ def _start_live_case(case_id):
     cluster = EdgeClusterSimulation(fleet_size=20)
     cluster.configure_demo(running=True)
     cluster.advance(2)  # establish replicas and initial telemetry before the visible baseline
+    if _recording_pace:
+        apply_recording_pace(cluster)
     health.simulation = cluster
     scheduling.demo_scheduler = scheduling.DemandScheduler()
     _live = dict(definition=definition,cluster=cluster,baseline={},timeline=[],warmup=0,second=0)
@@ -223,14 +244,15 @@ def _start_live_case(case_id):
     results.pop(case_id,None)
 
 
-def start_live(case_id=None):
+def start_live(case_id=None, recording_pace=False):
     """Start one or all cases; return immediately so their transitions stay visible."""
-    global _live_queue
+    global _live_queue, _recording_pace
     from services.central import health
     if case_id is not None and case_id not in {case["id"] for case in CASES}:
         raise ValueError("Unknown simulation case")
     with health.simulation_clock.lock:
         stop_live("Replaced by another live case")
+        _recording_pace = recording_pace
         if case_id is None:
             results.clear()
             names = [case["id"] for case in CASES]
@@ -239,6 +261,8 @@ def start_live(case_id=None):
         _start_live_case(names[0])
         _live_queue = names[1:]
         health.simulation_clock.running = True
+        if recording_pace:
+            health.simulation_clock.speed = 0.5
         health.simulation_clock.last = health.simulation_clock.clock()
         return live_status()
 
@@ -252,7 +276,7 @@ def live_status():
     definition = _live["definition"]
     return dict(running=True,status="running",case_id=definition["id"],title=definition["title"],
                 phase="baseline" if _live["warmup"] < 3 else "observation",paused=not health.simulation_clock.running,
-                elapsed_seconds=_live["warmup"]+_live["second"],duration_seconds=3+definition["seconds"],
+                elapsed_seconds=_live["warmup"]+_live["second"],duration_seconds=3+definition["seconds"] * (3 if _recording_pace else 1),
                 observation_seconds=_live["second"],queued=len(_live_queue))
 
 
@@ -282,14 +306,16 @@ def advance_live(seconds):
                     session["timeline"].append(_frame(cluster,0))
                 continue
             second = session["second"]+1
-            _actions(cluster,definition["id"],second)
+            scale = 3 if _recording_pace else 1
+            if second % scale == 0:
+                _actions(cluster,definition["id"],second // scale)
             cluster.advance(1)
             scheduling.observe_demo()
             session["second"] = second
             session["timeline"].append(_frame(cluster,second))
-            if second < definition["seconds"]:
+            if second < definition["seconds"] * scale:
                 continue
-            checks = _checks(cluster,definition["id"],session["timeline"],session["baseline"])
+            checks = _checks(cluster,definition["id"],session["timeline"],session["baseline"], recording_pace=_recording_pace)
             outcome = dict(case_id=definition["id"],passed=all(c["passed"] for c in checks),checks=checks,
                            timeline=deepcopy(session["timeline"]),baseline=session["baseline"],status="completed",
                            model="elapsed real time multiplied by selected simulation speed")

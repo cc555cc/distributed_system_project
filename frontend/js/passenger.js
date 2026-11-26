@@ -83,7 +83,7 @@ async function updateTrip() {
     }));
     if (!arriving.arrivals.length) arrivalsList.textContent = arriving.message;
     results.replaceChildren();
-    const all = choices.recommended ? [choices.recommended] : [];
+    const all = choices.recommended ? [choices.recommended, ...(choices.alternatives || []).slice(0, 1)] : [];
     all.forEach(function (choice, index) {
       const item = document.createElement('div');
       item.className = index === 0 ? 'recommendation' : 'card';
@@ -98,9 +98,9 @@ async function updateTrip() {
         '<small>' + (choice.stop_name ? escapeHtml(choice.stop_name) + ' · walk ' + choice.walking_metres + ' m' : 'Ranked by time, seats and transfers.') + '</small>';
       results.appendChild(item);
     });
-    if (destinationSelect.value && choices.alternatives.length) {
+    if (destinationSelect.value && choices.alternatives.length > 1) {
       const alternatives = document.createElement('div');
-      alternatives.innerHTML = '<h3>Alternatives</h3>' + tableHtml(['Bus / route', 'Occupancy', 'Trip'], choices.alternatives.slice(0,2).map(function (c) {
+      alternatives.innerHTML = '<h3>More alternatives</h3>' + tableHtml(['Bus / route', 'Occupancy', 'Trip'], choices.alternatives.slice(1,3).map(function (c) {
         return [c.legs.map(l => escapeHtml(l.bus_id + ' / ' + l.route_id)).join('<br>'),
           Math.round(Math.max(...c.legs.map(l => l.occupancy_percent))) + '%', c.total_minutes.toFixed(1) + ' min'];
       }));
@@ -160,6 +160,10 @@ document.getElementById('random-location').addEventListener('click', async funct
 
 const routeLayer = L.layerGroup().addTo(map);
 const busLayer = L.layerGroup().addTo(map);
+document.getElementById('fit-buses').addEventListener('click', function () {
+  const positions = Object.values(busMarkers).map(marker => marker.getLatLng());
+  if (positions.length) map.fitBounds(L.latLngBounds(positions), {padding: [35, 35], maxZoom: 14});
+});
 
 const colors = ["#d9534f", "#0275d8", "#2e9e4f", "#e08a00", "#7b3fb5"];
 let routes = [];
@@ -365,7 +369,7 @@ async function loadBuses(myNumber) {
   try {
     const snapshot = await getPublicSnapshot();
     if (snapshot.clock) passengerFeed.textContent = 'Demonstration · ' + (snapshot.clock.running ? 'running' : 'paused') +
-      ' · ' + snapshot.clock.speed + '× · ' + snapshot.clock.seconds.toFixed(1) + ' simulated s';
+      ' · ' + snapshot.clock.speed + '× clock · ' + (snapshot.clock.movement_multiplier || 1) + '× movement · ' + snapshot.clock.seconds.toFixed(1) + ' simulated s';
   } catch (error) { /* existing fleet error handling below reports unavailable data */ }
   let busIds;
   try {

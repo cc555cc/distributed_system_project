@@ -304,7 +304,7 @@ document.getElementById('scenario-controls').addEventListener('click', async fun
         'PASS: passenger public; health and commands reject unauthenticated access.' : 'Access check failed: ' + responses.map(r => r.status).join('/');
     } else {
       const payload = ['normal','capacity','balancing','scheduling'].includes(button.dataset.scenario) ? {} : {bus_id:demoBus.value || undefined};
-      const result = await sendPost('/health/simulation/scenarios/' + button.dataset.scenario, payload);
+      const result = await sendPost('/health/simulation/scenarios/' + button.dataset.scenario + '?recording_pace=true', payload);
       chooseDemo(); output.textContent = result.message;
       await loadWorkers();
     }
@@ -360,7 +360,7 @@ document.getElementById('combined-cases').addEventListener('click', async functi
       showCaseEvidence(await getJson('/health/simulation/cases/' + button.dataset.evidence));
     } else {
       status.textContent = 'Starting live situation...';
-      const result = await sendPost('/health/simulation/live-cases/' + (button.dataset.case ? button.dataset.case + '/start' : 'start'));
+      const result = await sendPost('/health/simulation/live-cases/' + (button.dataset.case ? button.dataset.case + '/start' : 'start') + '?recording_pace=true');
       chooseDemo();
       status.textContent = result.title + ' started. Watch it unfold in Health and Passenger.';
       await loadWorkers();

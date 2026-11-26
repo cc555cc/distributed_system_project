@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operator Control Panel</title>
-  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/style.css?v=18">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
@@ -24,12 +24,12 @@
       <p id="simulation-clock">Loading clock...</p>
       <div id="clock-controls" class="control-row">
         <label for="clock-speed">Simulation speed</label>
-        <select id="clock-speed"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select>
+        <select id="clock-speed"><option value="0.5">0.5× (recording)</option><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select>
         <button data-running="true">Run clock</button>
         <button data-running="false">Pause clock</button>
       </div><p id="live-case-status" role="status">Live demo</p></div>
     <div class="card" id="combined-cases"><h2>Combined failure tests</h2>
-      <p class="note">Each situation starts a fresh demo and unfolds in real time. Speed and pause apply to movement, balancing, failures and recovery. Health and Passenger update together.</p>
+      <p class="note">Recording pace: 0.5× clock, 4× bus movement, readings wait at least 1.5 simulation seconds (3 real seconds at 0.5×), and each edge handles at most 8 jobs per simulation second. These are demonstration settings, not performance measurements. Health and Passenger follow the same data.</p>
       <button id="run-all-cases">Run all situations</button><p id="case-feedback" role="status">Loading situations...</p>
       <div id="case-table" class="table-wrap"></div>
       <details id="case-evidence"><summary>Observed steps and verification</summary><div id="case-details" class="table-wrap">Run a situation to see evidence.</div></details>
@@ -159,8 +159,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=17"></script>
-  <script src="js/helpers.js?v=17"></script>
-  <script src="js/controls.js?v=17"></script>
+  <script src="js/api.js?v=18"></script>
+  <script src="js/helpers.js?v=18"></script>
+  <script src="js/controls.js?v=18"></script>
 </body>
 </html>

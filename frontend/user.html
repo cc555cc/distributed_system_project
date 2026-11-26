@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Passenger Transit</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body>
   <header>
@@ -26,7 +26,7 @@
       <label for="region-select">City / Region</label>
       <select id="region-select"></select>
 
-      <p class="note">Click the map for nearby stops, or <button id="random-location" type="button">Try a nearby location</button></p>
+      <p class="note">Click the map for nearby stops, or <button id="random-location" type="button">Try a nearby location</button> <button id="fit-buses" type="button">Fit buses on map</button></p>
       <p id="location-status" role="status"></p>
       <form id="journey-form">
         <label for="origin-stop">Your stop</label><select id="origin-stop"></select>
@@ -35,7 +35,7 @@
         <button>Find buses</button>
       </form>
       <p id="journey-status" role="status"></p>
-      <h2>Best option</h2><div id="journey-results"></div>
+      <h2>Best two options</h2><div id="journey-results"></div>
       <h2 id="arrivals-heading">Arriving at your stop</h2><div id="stop-arrivals" class="table-wrap"></div>
       <p id="status">Loading...</p>
 
@@ -51,8 +51,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/config.js"></script>
   <script src="js/mock.js"></script>
-  <script src="js/api.js?v=17"></script>
-  <script src="js/helpers.js?v=17"></script>
-  <script src="js/passenger.js?v=17"></script>
+  <script src="js/api.js?v=18"></script>
+  <script src="js/helpers.js?v=18"></script>
+  <script src="js/passenger.js?v=18"></script>
 </body>
 </html>

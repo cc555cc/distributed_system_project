@@ -362,7 +362,8 @@ class SimulationClock:
                 remaining -= step
 
     def snapshot(self):
-        return {"running": self.running, "speed": self.speed}
+        return {"running": self.running, "speed": self.speed,
+                "movement_multiplier": getattr(simulation.demo, "movement_multiplier", 1.0)}
 
 
 simulation_clock = SimulationClock()

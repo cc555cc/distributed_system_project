@@ -202,6 +202,11 @@ class SimulatedEdge:
         self.clock = LamportClock()  # same receive/send rules as a live worker
         self.credit_ms = 0.0
         self.completed = 0
+        # Optional recording pace, disabled for live workers and normal experiments.
+        self.queue_visibility_seconds = 0.0
+        self.visible_jobs_per_second = 0
+        self._visible_second = None
+        self._visible_completed = 0
         self.latency_seconds = 0.0
         self.state = "healthy" if self.active else "standby"
         self.replicas = {}
@@ -216,6 +221,13 @@ class SimulatedEdge:
         available = self.credit_ms + seconds * 1000
         offset_ms = -self.credit_ms
         while self.queue and available + 1e-9 >= self.processing_ms:
+            if self.queue_visibility_seconds:
+                if now - self.queue[0][2] < self.queue_visibility_seconds:
+                    break
+                if int(now) != self._visible_second:
+                    self._visible_second, self._visible_completed = int(now), 0
+                if self._visible_completed >= self.visible_jobs_per_second:
+                    break
             available -= self.processing_ms
             offset_ms += self.processing_ms
             job = self.queue.popleft()
@@ -223,10 +235,12 @@ class SimulatedEdge:
             if len(job) > 3:
                 self.on_telemetry(self, job)
             self.completed += 1
+            self._visible_completed += 1
             self.latency_seconds += max(
                 0.0, now - seconds + offset_ms / 1000 - received_at
             )
-        self.credit_ms = available if self.queue else 0.0
+        # Do not bank processing credit while deliberately holding a visible queue.
+        self.credit_ms = (min(available, self.processing_ms) if self.queue_visibility_seconds else available) if self.queue else 0.0
 
     def snapshot(self):
         from shared.schema.health import load_band

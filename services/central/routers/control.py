@@ -268,7 +268,7 @@ class Scenario(SimulationInput):
 
 
 @router.post("/simulation/scenarios/{name}")
-def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault", "recovery", "traffic", "peak", "scheduling", "failover", "central_outage"], body: Scenario | None = None):
+def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault", "recovery", "traffic", "peak", "scheduling", "failover", "central_outage"], body: Scenario | None = None, recording_pace: bool = False):
     """Named use cases call the same controls as the manual inputs; no separate fake state."""
     with health.simulation_clock.lock:
         body = body or Scenario()
@@ -317,6 +317,9 @@ def run_scenario(name: Literal["normal", "capacity", "balancing", "sensor_fault"
             message = "Recovery requested. Health reports the observed recovery window."
         else:
             message = "50 active streams: watch regional load." if name == "capacity" else "20 active buses, 30 reserves."
+        if recording_pace:
+            from services.central.simulation_scenarios import apply_recording_pace
+            apply_recording_pace(health.simulation)
         return dict(scenario=name, message=message, state=get_simulation())
 
 
@@ -354,12 +357,12 @@ def live_case_status():
 
 
 @router.post("/simulation/live-cases/start")
-def start_all_live_cases():
+def start_all_live_cases(recording_pace: bool = False):
     from services.central.simulation_scenarios import start_live
-    return simulation_action(start_live)
+    return simulation_action(start_live, None, recording_pace)
 
 
 @router.post("/simulation/live-cases/{case_id}/start")
-def start_live_case(case_id: str):
+def start_live_case(case_id: str, recording_pace: bool = False):
     from services.central.simulation_scenarios import start_live
-    return simulation_action(start_live,case_id)
+    return simulation_action(start_live,case_id, recording_pace)

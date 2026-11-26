@@ -213,6 +213,7 @@ class DemoFleet:
         self.network_path = network_path
         self.route_demand = {}
         self.route_occupancy = {}
+        self.movement_multiplier = 1.0
         self.waiting = {}
         self.waiting_passenger_seconds, self.boarded_passengers = {}, {}
         for bus in definitions:
@@ -294,7 +295,7 @@ class DemoFleet:
             return
         remaining = max(0.0, seconds - bus["dwell"])
         bus["dwell"] = max(0.0, bus["dwell"] - seconds)
-        speed = SPEED_KMH * (0.3 if bus["condition"] == "traffic" else 1.0)
+        speed = SPEED_KMH * self.movement_multiplier * (0.3 if bus["condition"] == "traffic" else 1.0)
         bus["speed"] = speed if remaining else 0.0
         while remaining > 1e-9 and bus["segment"] < len(bus["stops"]) - 1:
             start, end = bus["stops"][bus["segment"]:bus["segment"] + 2]

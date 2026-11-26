@@ -65,3 +65,13 @@ The total-loss case is expected to remain unavailable: cached central positions 
 Speed and pause are visible above the scenario table. One second at 1x advances one source second; 5x advances five. A three-second normal baseline precedes each live failure injection. Run all queues the situations on this same clock. Completed evidence is retained while the fleet continues moving. Manual scenario changes interrupt the prior script instead of letting old failure actions leak into the new scene.
 
 Health shows current speed, source time and live case progress with its queues and sensor reports. Passenger shows that same clock and refreshes arrivals/recommendations from current central state. Its navigation offers Operator login when signed out, and Control/Health/Sign out for an authenticated operator. Login/logout changes propagate to the other open pages; passenger data remains public.
+# Recording pace
+
+Scenario buttons and Run all situations request recording pace: a 0.5× source clock,
+4× simulated vehicle speed, a 1.5-source-second minimum queue wait, and at most
+8 handled jobs per edge per source second (the configured processing time may be slower).
+The movement multiplier also changes reported speed so predictions use the same model.
+These deliberately paced scenarios are for observation, not performance measurements.
+Recovery checks track the pre-failure accepted work separately from newly waiting readings.
+Passenger shows the recommendation and first suitable alternative; Fit buses on map
+frames the currently displayed regional fleet. A second suitable option is not fabricated.

@@ -528,7 +528,7 @@ def test_recovery_clock_runs_without_browser_steps_and_supports_pause_speed(monk
     result = client.get("/health/simulation").json()
     assert result["virtual_seconds"] == 2
     assert health.simulation.workers["edge-west-1"].state == "healthy"
-    assert result["clock"] == {"running": True, "speed": 2.0}
+    assert result["clock"] == {"running": True, "speed": 2.0, "movement_multiplier": 1.0}
     assert client.patch("/health/simulation/clock", json={"running": True, "speed": 0.0}).status_code == 422
     assert client.post("/health/simulation/reset").json()["virtual_seconds"] == 0
     now[0] = 21.5

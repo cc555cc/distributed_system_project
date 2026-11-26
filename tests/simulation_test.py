@@ -21,6 +21,38 @@ def real_clock(health):
     return elapsed
 
 
+def test_recording_queue_is_visible_before_small_processing_batches():
+    from services.edge.edge_server import SimulatedEdge
+    worker = SimulatedEdge("recording-edge", "west", "DURHAM")
+    worker.queue_visibility_seconds, worker.visible_jobs_per_second = 1.5, 8
+    worker.queue.extend((i, "bus", 0.0) for i in range(40))
+    worker.advance(1, 1)
+    assert worker.completed == 0 and len(worker.queue) == 40
+    worker.advance(1, 2)
+    assert worker.completed == 8 and len(worker.queue) == 32
+    worker.advance(0.1, 2.1)
+    assert worker.completed == 8
+    worker.advance(0.9, 3)
+    assert worker.completed == 16 and len(worker.queue) == 24
+    slow = SimulatedEdge("slow", "west", "DURHAM", processing_ms=250)
+    slow.queue_visibility_seconds, slow.visible_jobs_per_second = 1.5, 8
+    slow.queue.append((1, "bus", 0.0))
+    for tick in range(1, 26):
+        slow.advance(0.1, tick / 10)
+    assert slow.completed == 1 and not slow.queue
+
+
+def test_recording_all_cases_verify_recovery_with_new_readings_waiting(system):
+    _, operator, health, _ = system
+    from services.central import simulation_scenarios as cases
+    operator.post("/health/simulation/live-cases/start?recording_pace=true")
+    assert health.simulation_clock.speed == 0.5
+    assert health.simulation.demo.movement_multiplier == 4
+    cases.advance_live(sum(case["seconds"] * 3 + 3 for case in CASES))
+    assert len(cases.results) == len(CASES)
+    assert all(case["passed"] for case in cases.results.values())
+
+
 
 @pytest.mark.parametrize("case",CASES,ids=[case["id"] for case in CASES])
 def test_combined_edge_sensor_and_central_situations(system,case):
