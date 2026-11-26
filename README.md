@@ -70,7 +70,7 @@ Twenty simulated buses start printing their readings. Leave this window open. Pr
 ## 6. Open the web pages
 
 1. Go to <http://localhost:8000/login.html> and sign in with username `ali` and password `123`.
-2. Open <http://localhost:8000/control.html>. Set **Map and dashboard feed** to **Live MQTT**. The default, **Controlled demonstration**, shows a built-in simulation instead of the buses you started.
+2. Open <http://localhost:8000/control.html>. Click a simulation from the options. Monitor using the [health html page](http://localhost:8000/health.html).
 3. Open <http://localhost:8000/user.html> to see the buses on the passenger map.
 
 | Page | Purpose | Login needed |
