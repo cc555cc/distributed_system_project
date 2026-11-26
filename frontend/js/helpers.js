@@ -113,7 +113,8 @@ async function renderSystemOverview(source) {
     (source === 'demo' ? '<p class="note">70% trigger · one batch per crossing · ' + Object.entries(d.assistance).map(([region, policy]) => escapeHtml(region) + ': ' + (policy.third_draining ? 'finishing batch' : policy.armed ? 'armed' : 'waiting for pressure to fall')).join(' | ') + '</p>' : '') +
     (d.clock ? '<p>' + (d.clock.running ? 'Running' : 'Paused') + ' · ' + d.clock.speed + '× real time · ' + Number(d.clock.seconds).toFixed(1) + ' simulated s</p>' : '') +
     (d.live_scenario?.running ? '<p>' + escapeHtml(d.live_scenario.title) + ' · ' + escapeHtml(d.live_scenario.phase) + ' · ' + d.live_scenario.elapsed_seconds + '/' + d.live_scenario.duration_seconds + ' s</p>' : '') +
-    tableHtml(['Edge', 'State', 'Queue', 'Buses', 'Completed'], d.workers.map(function (w) {
+    '<p class="note">Waiting = messages still in the queue. Processed total = all jobs handled since this demo reset; it keeps increasing as buses send new readings.</p>' +
+    tableHtml(['Edge', 'State', 'Waiting', 'Buses', 'Processed total'], d.workers.map(function (w) {
       return [escapeHtml(w.edge_id), tag(w.emergency_takeover ? 'emergency takeover' : w.assistance_draining ? 'finishing batch' : w.state === 'healthy' && w.queue_utilization_percent >= (w.overload_percent || 80) ? 'overloaded' : w.state, w.state === 'healthy' && w.queue_utilization_percent < (w.overload_percent || 80) ? 'good' : 'warn'), queueMeter(w),
         Array.isArray(w.assigned_buses) ? (w.active_assigned_buses ?? w.assigned_buses.length) + ' active / ' + w.assigned_buses.length : (w.assigned_buses ?? '-'), w.completed ?? '-'];
     })) + '<h3>Sensor issues - all buses</h3>' + (d.sensor_issues.length ?

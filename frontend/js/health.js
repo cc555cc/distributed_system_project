@@ -4,6 +4,7 @@ const busChoice = document.getElementById("health-bus");
 const sensorChoice = document.getElementById("health-sensor");
 const healthUpdated = document.getElementById("health-updated");
 let healthRequest = 0;
+let healthLoading = false;
 
 function healthOptions(select, choices, placeholder) {
   const selected = select.value;
@@ -21,6 +22,8 @@ function healthTag(status) {
 }
 
 async function loadHealth() {
+  if (healthLoading) return;
+  healthLoading = true;
   const request = ++healthRequest;
   const source = demoView() ? "demo" : "live";
   const query = "?source=" + source;
@@ -149,6 +152,8 @@ async function loadHealth() {
     ["bus-health", "sensor-health", "route-health", "edge-health", "health-alerts", "health-demand", "health-pipeline"].forEach(function (id) {
       document.getElementById(id).textContent = "Unavailable. Previous readings are not presented as current health.";
     });
+  } finally {
+    healthLoading = false;
   }
 }
 
@@ -157,3 +162,4 @@ async function loadHealth() {
 });
 loadHealth();
 setInterval(loadHealth, 1000);
+window.addEventListener('transit-state-changed', loadHealth);

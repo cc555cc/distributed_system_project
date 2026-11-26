@@ -426,3 +426,4 @@ regionSelect.addEventListener("change", function () {
 
 fillRegions();
 loadRegion(regionSelect.value);
+window.addEventListener('transit-state-changed', function () { loadBuses(loadNumber); });

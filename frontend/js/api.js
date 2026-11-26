@@ -45,6 +45,19 @@ document.addEventListener('DOMContentLoaded', function () {
 window.addEventListener('storage',function (event) {
   if (event.key === 'transit-data-source') location.reload();
   if (event.key === 'transit-auth-revision') refreshAuthNavigation();
+  if (event.key === 'transit-state-revision') refreshTransitViews();
+});
+
+// A control in another tab changed the backend. Discard cached snapshots and
+// refresh immediately; the backend remains the only source of bus positions.
+function refreshTransitViews() {
+  simulationRead = null;
+  publicRead = null;
+  window.dispatchEvent(new Event('transit-state-changed'));
+}
+window.addEventListener('focus', refreshTransitViews);
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) refreshTransitViews();
 });
 
 window.addEventListener('focus',refreshAuthNavigation);
@@ -54,7 +67,7 @@ let simulationRead = null;
 let simulationReadAt = 0;
 
 async function getJson(path) {
-  const response = await fetch(API_URL + path);
+  const response = await fetch(API_URL + path, {cache: 'no-store'});
   requireOperator(response);
   if (!response.ok) {
     throw new Error("Request failed: " + response.status);
@@ -128,6 +141,8 @@ async function sendPost(path, body, method = "POST") {
   }
   const result = await response.json();
   simulationRead = null;
+  publicRead = null;
+  localStorage.setItem('transit-state-revision', String(Date.now()));
   return result;
 }
 
