@@ -401,6 +401,8 @@ class DemoFleet:
             if status == "healthy":
                 if condition in {"sensor_fault", "invalid_reading"}:
                     status = "degraded"
+                elif condition == "sensors_stopped":
+                    status = "unknown"  # silent sensors cannot confirm health before the timeout
                 elif now < bus["recovery_until"]:
                     status = "recovering"
             sensors = {name: "healthy" for name in SENSORS}

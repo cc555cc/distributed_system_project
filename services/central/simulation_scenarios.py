@@ -59,7 +59,8 @@ def _actions(cluster, case_id, second):
     if case_id == "standby_failure":
         if second == 2: cluster.fail(C)
         if second == 4:
-            cluster.workers[B].processing_ms = 5.0
+            # Recover below full speed so the rebuilt journal visibly drains (~6 s) within the case.
+            cluster.workers[B].processing_ms = 50.0
             cluster.recover(B)
         if second == 8: cluster.recover(C)
     elif case_id == "owner_restart_full_peer" and second == 2:
