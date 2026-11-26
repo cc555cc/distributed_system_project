@@ -71,7 +71,7 @@ The image starts `services.edge.main --single` for each of the four configured e
 Heartbeat state is in memory and resets when central restarts. Session IDs and increasing heartbeat sequences prevent delayed duplicates from refreshing liveness. These endpoints do not establish broker authentication or confirm a crash; those remain separate responsibilities.
 
 
-For UI load experiments, `/health/simulation` provides an isolated stateful bus-telemetry simulation and virtual clock. Its instance controls never change these Compose workers. Telemetry, ownership transfer, replica takeover, recovery and scaling run in the single-coordinator simulation; the live MQTT-worker topology remains fixed. See the root README for the request, advance, capacity and third-instance experiment endpoints. Queue capacity defaults to 50 waiting messages in both the live edge and the experiment.
+For UI load experiments, `/health/simulation` provides an isolated stateful bus-telemetry simulation and virtual clock. Its instance controls never change these Compose workers. Telemetry, ownership transfer, replica takeover, recovery and scaling run in the single-coordinator simulation; the live MQTT-worker topology remains fixed. Queue capacity defaults to 50 waiting messages in both the live edge and the experiment.
 
 ## Message ordering (MQTT-03)
 
